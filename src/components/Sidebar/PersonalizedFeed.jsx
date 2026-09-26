@@ -3,6 +3,20 @@ import React, { useState } from "react";
 import TrendingItems from "./TrendingItems";
 import { useLanguage } from "../../context/LanguageContext";
 
+const calculateTrustScore = (item) => {
+  const reporter = (item.reportedBy || "").toLowerCase();
+  if (
+    reporter.includes("police") ||
+    reporter.includes("patrol") ||
+    reporter.includes("btp") ||
+    reporter.includes("monitor")
+  ) {
+    return 96;
+  }
+  const votes = Number(item.verificationCount) || 1;
+  return Math.min(98, Math.max(65, 62 + votes * 6));
+};
+
 const PersonalizedFeed = ({
   events = [],
   selectedEvent,
@@ -40,6 +54,15 @@ const PersonalizedFeed = ({
     activeFilter === "All"
       ? t.sidebar.liveIncidents
       : `${(t.filters && t.filters[activeFilter]) || activeFilter}`;
+
+  const handleWhatsAppShare = (e, item) => {
+    e.stopPropagation();
+    const mapLink = item.position
+      ? `https://maps.google.com/?q=${item.position.lat},${item.position.lng}`
+      : "https://nammapulse.app";
+    const text = `🚨 *NammaPulse Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n_Stay safe & take alternate routes._`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
+  };
 
   return (
     <div className="feed-content">
@@ -79,6 +102,8 @@ const PersonalizedFeed = ({
         ) : (
           filteredEvents.map((item) => {
             const isSelected = selectedEvent && selectedEvent.id === item.id;
+            const trustScore = calculateTrustScore(item);
+
             return (
               <div
                 key={item.id}
@@ -90,6 +115,9 @@ const PersonalizedFeed = ({
                   <span className="card-type">
                     {(t.filters && t.filters[item.type]) || item.type}
                   </span>
+                  <span className="card-trust-pill" title="Citizen & sensor consensus score">
+                    🛡️ {trustScore}% Trust
+                  </span>
                   <span className="card-time">{item.timestamp}</span>
                 </div>
 
@@ -98,9 +126,19 @@ const PersonalizedFeed = ({
 
                 <div className="card-bottom-row">
                   <span className="card-ward">📍 {item.ward || "Bengaluru"}</span>
-                  <div className="card-verifications">
-                    <span>👥 {item.verificationCount || 1} {t.actions.confirmations}</span>
-                    {item.isVerified && <span className="verified-glyph">✓</span>}
+                  <div className="card-actions-right">
+                    <button
+                      type="button"
+                      className="whatsapp-share-btn"
+                      onClick={(e) => handleWhatsAppShare(e, item)}
+                      title="Share emergency hazard alert via WhatsApp"
+                    >
+                      💬 SOS Share
+                    </button>
+                    <div className="card-verifications">
+                      <span>👥 {item.verificationCount || 1} {t.actions.confirmations}</span>
+                      {item.isVerified && <span className="verified-glyph">✓</span>}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -18,6 +18,7 @@ const SafeRouteModal = ({
   const [destId, setDestId] = useState("bellandur");
   const [loading, setLoading] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
+  const [routingError, setRoutingError] = useState(null);
 
   const handleComputeRoute = async () => {
     let startCoords;
@@ -32,6 +33,7 @@ const SafeRouteModal = ({
     const endCoords = { lat: endHub.lat, lng: endHub.lng };
 
     setLoading(true);
+    setRoutingError(null);
     try {
       const routeData = await fetchDrivingRoute(startCoords, endCoords);
       const conflicts = detectRouteHazards(routeData.coordinates, activeHazards, 0.45);
@@ -50,7 +52,10 @@ const SafeRouteModal = ({
         });
       }
     } catch (err) {
-      console.error("Routing error:", err);
+      setRoutingError(
+        "Transit corridor calculation failed or OSRM service is temporarily unreachable. Please exercise caution and verify local road status."
+      );
+      setRouteResult(null);
     } finally {
       setLoading(false);
     }
@@ -118,6 +123,12 @@ const SafeRouteModal = ({
               {loading ? "Computing Safe Corridor..." : "🔍 Check Route & Hazards"}
             </Button>
           </div>
+
+          {routingError && (
+            <div className="route-error-alert" style={{ marginTop: '14px', padding: '12px 14px', background: '#451A1A', border: '1px solid #7F1D1D', borderRadius: '8px', color: '#FCA5A5', fontSize: '0.85rem' }}>
+              ⚠️ {routingError}
+            </div>
+          )}
 
           {routeResult && (
             <div className="route-results-card">

@@ -1,7 +1,7 @@
 {
-  "short_name": "CityPulse",
-  "name": "CityPulse - Intelligent City Data Dashboard",
-  "description": "Real-time city data synthesis and intelligent urban monitoring for Bengaluru",
+  "short_name": "NammaPulse",
+  "name": "NammaPulse - Bengaluru Real-Time Civic Intelligence",
+  "description": "Real-time civic intelligence, flood detection, Doppler rain radar, and urban monitoring for Bengaluru",
   "icons": [
     {
       "src": "favicon.ico",
@@ -21,8 +21,8 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#4285F4",
-  "background_color": "#F8F9FA",
+  "theme_color": "#090D16",
+  "background_color": "#090D16",
   "orientation": "portrait-primary",
   "categories": ["productivity", "utilities", "navigation"],
   "lang": "en-US",

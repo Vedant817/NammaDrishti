@@ -3,6 +3,34 @@ import { useEffect, useRef } from "react";
 import { calculateDistance } from "../services/routingService";
 
 /**
+ * Plays a gentle, pleasant Web Audio notification chime when a hazard geofence is triggered.
+ */
+const playProximityChime = () => {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  } catch (e) {
+    // AudioContext policy gracefully handled if user hasn't interacted yet
+  }
+};
+
+/**
  * Monitors user proximity to high-urgency hazards and triggers notifications.
  * Geofence radius: 2.5 km.
  */
@@ -11,11 +39,14 @@ export const useProximityAlert = (userLocation, events = [], onAlertTriggered) =
 
   useEffect(() => {
     if (!userLocation || !events || events.length === 0) return;
+    if (!Number.isFinite(userLocation.lat) || !Number.isFinite(userLocation.lng)) return;
 
     // Filter for high-urgency waterlogging or accidents
     const criticalHazards = events.filter(
       (e) =>
         e.position &&
+        Number.isFinite(e.position.lat) &&
+        Number.isFinite(e.position.lng) &&
         (e.urgency === "High" || e.type === "Waterlogging" || e.type === "Accident")
     );
 
@@ -32,6 +63,7 @@ export const useProximityAlert = (userLocation, events = [], onAlertTriggered) =
       // Within 2.5 km radius
       if (distKm <= 2.5) {
         alertedIdsRef.current.add(hazard.id);
+        playProximityChime();
 
         const alertPayload = {
           title: `⚠️ Hazard Near You (${distKm.toFixed(1)} km)`,
@@ -56,7 +88,9 @@ export const useProximityAlert = (userLocation, events = [], onAlertTriggered) =
             // Notifications may be restricted in some contexts
           }
         } else if ("Notification" in window && Notification.permission !== "denied") {
-          Notification.requestPermission();
+          try {
+            Notification.requestPermission();
+          } catch (e) {}
         }
       }
     });

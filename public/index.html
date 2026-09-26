@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0F172A" />
+  <meta name="theme-color" content="#090D16" />
   
   <!-- SEO Meta Tags -->
   <meta name="description" content="NammaPulse - Real-time civic intelligence, live traffic, Doppler rain radar, and urban monitoring for Bengaluru" />
@@ -55,6 +55,11 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--border-active) !important;
+      outline-offset: 2px !important;
     }
     
     body {
@@ -136,6 +141,13 @@
     @keyframes pulse-ring {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .loading-bar,
+      .loading-pulse-dot {
+        animation: none !important;
+      }
     }
     
     .app-loaded .loading-screen {

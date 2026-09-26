@@ -1,5 +1,5 @@
 // src/components/Map/MapContainer.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -7,86 +7,98 @@ import {
   Popup,
   Polyline,
   CircleMarker,
-  useMapEvents,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import "./MapContainer.css";
-import { BENGALURU_CENTER } from "../../data/constants";
 import { useLanguage } from "../../context/LanguageContext";
+import { calculateDistance } from "../../services/routingService";
+import "./MapContainer.css";
 
-// Fix default Leaflet icon paths
+// Fix standard Leaflet default icon path issues in React
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: require("leaflet/dist/images/marker-icon-2x.png"),
-  iconUrl: require("leaflet/dist/images/marker-icon.png"),
-  shadowUrl: require("leaflet/dist/images/marker-shadow.png"),
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
-// Map click listener component
-function MapEventsHandler({ onMapClick }) {
+// Center of Bengaluru
+const BENGALURU_CENTER = [12.9716, 77.5946];
+
+// Component to dynamically pan and zoom to selected event
+const MapViewController = ({ center, zoom }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (center && Number.isFinite(center[0]) && Number.isFinite(center[1])) {
+      map.flyTo(center, zoom, { duration: 1.2 });
+    }
+  }, [center, zoom, map]);
+  return null;
+};
+
+// Component to capture user map clicks for reporting
+const MapEventsHandler = ({ onMapClick }) => {
   useMapEvents({
     click(e) {
-      if (onMapClick) {
+      if (onMapClick && e.latlng) {
         onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
       }
     },
   });
   return null;
-}
+};
 
-// Map center controller
-function MapViewController({ center, zoom }) {
-  const map = useMap();
-  useEffect(() => {
-    if (center) {
-      map.setView(center, zoom || 13, { animate: true });
-    }
-  }, [center, zoom, map]);
-  return null;
-}
-
-const MapComponent = ({
+const CustomMapContainer = ({
   events = [],
-  selectedEvent,
-  onEventSelect,
-  onVerifyEvent,
-  onResolveEvent,
-  onMapClick,
-  reportPin,
-  navigationRoute,
-  onClearNavigationRoute,
+  selectedEvent = null,
+  onEventSelect = null,
+  onMapClick = null,
+  onVerifyEvent = null,
+  onResolveEvent = null,
+  reportPin = null,
+  navigationRoute = null,
+  onClearNavigationRoute = null,
 }) => {
   const { t } = useLanguage();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
   const [radarTimestamp, setRadarTimestamp] = useState(null);
 
-  // Fetch latest RainViewer radar layer timestamp
-  useEffect(() => {
-    let isMounted = true;
-    const fetchRadar = async () => {
-      try {
-        const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (isMounted && data.radar && data.radar.past && data.radar.past.length > 0) {
-          const latest = data.radar.past[data.radar.past.length - 1];
-          setRadarTimestamp(latest.path);
-        }
-      } catch (err) {
-        // Fallback to static timestamp if offline
+  // Fetch latest RainViewer radar layer timestamp with auto-refresh every 5 minutes
+  const fetchRadar = useCallback(async () => {
+    try {
+      const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.radar && data.radar.past && data.radar.past.length > 0) {
+        const latest = data.radar.past[data.radar.past.length - 1];
+        setRadarTimestamp(latest.path);
       }
-    };
-    fetchRadar();
-    return () => {
-      isMounted = false;
-    };
+    } catch (err) {
+      // Retain previous timestamp if temporary network issue
+    }
   }, []);
 
-  // Bengaluru real-world traffic corridors with speeds & delays
-  const trafficCorridors = [
+  useEffect(() => {
+    fetchRadar();
+    const radarInterval = setInterval(fetchRadar, 5 * 60 * 1000);
+    return () => clearInterval(radarInterval);
+  }, [fetchRadar]);
+
+  // If user turns on radar and timestamp is missing, fetch immediately
+  useEffect(() => {
+    if (showRadar && !radarTimestamp) {
+      fetchRadar();
+    }
+  }, [showRadar, radarTimestamp, fetchRadar]);
+
+  // Bengaluru arterial corridors with live incident correlation
+  const baseCorridors = [
     {
       id: "corridor_silk_board",
       name: "Silk Board - BTM Corridor",
@@ -96,10 +108,8 @@ const MapComponent = ({
         [12.923, 77.627],
         [12.928, 77.629],
       ],
-      speed: "6 km/h",
-      delay: "+28 min",
-      status: "Severe Gridlock",
-      color: "#EF4444",
+      baselineSpeed: "8-12 km/h",
+      peakDelay: "+28 min",
     },
     {
       id: "corridor_orr_bellandur",
@@ -110,23 +120,19 @@ const MapComponent = ({
         [12.945, 77.692],
         [12.9592, 77.6974],
       ],
-      speed: "14 km/h",
-      delay: "+18 min",
-      status: "Slow Moving",
-      color: "#F59E0B",
+      baselineSpeed: "14-18 km/h",
+      peakDelay: "+18 min",
     },
     {
       id: "corridor_tin_factory",
       name: "Tin Factory & KR Puram Flyover",
       positions: [
-        [12.9934, 77.6606],
-        [12.998, 77.668],
-        [13.003, 77.675],
+        [12.9972, 77.6672],
+        [13.002, 77.675],
+        [13.0075, 77.6959],
       ],
-      speed: "11 km/h",
-      delay: "+22 min",
-      status: "Heavy Congestion",
-      color: "#EF4444",
+      baselineSpeed: "10-15 km/h",
+      peakDelay: "+22 min",
     },
     {
       id: "corridor_hebbal",
@@ -136,12 +142,40 @@ const MapComponent = ({
         [13.045, 77.598],
         [13.055, 77.6],
       ],
-      speed: "18 km/h",
-      delay: "+14 min",
-      status: "Moderate Delay",
-      color: "#F59E0B",
+      baselineSpeed: "20-25 km/h",
+      peakDelay: "+14 min",
     },
   ];
+
+  // Synthesize monitored corridors with active nearby hazard density
+  const dynamicCorridors = baseCorridors.map((corridor) => {
+    // Check active incidents within 1.2km of corridor positions
+    const nearbyHazards = events.filter((evt) => {
+      if (!evt.position || !Number.isFinite(evt.position.lat) || !Number.isFinite(evt.position.lng)) {
+        return false;
+      }
+      return corridor.positions.some(
+        ([cLat, cLng]) => calculateDistance(evt.position.lat, evt.position.lng, cLat, cLng) <= 1.2
+      );
+    });
+
+    let status = "Normal Baseline Flow";
+    let color = "#10B981"; // Emerald green
+    if (nearbyHazards.length >= 2) {
+      status = `High Congestion (${nearbyHazards.length} Active Incidents)`;
+      color = "#EF4444"; // Crimson red
+    } else if (nearbyHazards.length === 1) {
+      status = `Active Caution (${nearbyHazards[0].title})`;
+      color = "#F59E0B"; // Amber
+    }
+
+    return {
+      ...corridor,
+      status,
+      color,
+      hazardCount: nearbyHazards.length,
+    };
+  });
 
   // Modern SVG Pin Generator with semantic colors
   const createCustomIcon = (type, isSelected) => {
@@ -215,7 +249,7 @@ const MapComponent = ({
           type="button"
           className={`toolbar-btn ${showTraffic ? "active-amber" : ""}`}
           onClick={() => setShowTraffic(!showTraffic)}
-          title="Toggle real-time traffic corridor delays"
+          title="Toggle monitored arterial corridor choke points"
         >
           🚗 {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
         </button>
@@ -243,12 +277,15 @@ const MapComponent = ({
         className="leaflet-container"
       >
         <MapEventsHandler onMapClick={onMapClick} />
-        {selectedEvent && selectedEvent.position && (
-          <MapViewController
-            center={[selectedEvent.position.lat, selectedEvent.position.lng]}
-            zoom={14}
-          />
-        )}
+        {selectedEvent &&
+          selectedEvent.position &&
+          Number.isFinite(selectedEvent.position.lat) &&
+          Number.isFinite(selectedEvent.position.lng) && (
+            <MapViewController
+              center={[selectedEvent.position.lat, selectedEvent.position.lng]}
+              zoom={14}
+            />
+          )}
 
         {/* Clean OpenStreetMap Tiles */}
         <TileLayer
@@ -293,17 +330,25 @@ const MapComponent = ({
         )}
 
         {/* User reporting pin preview */}
-        {reportPin && (
-          <Marker position={[reportPin.lat, reportPin.lng]} icon={reportIcon}>
-            <Popup autoPan={false}>
-              <div className="pin-hint-popup">Selected Location for Report</div>
-            </Popup>
-          </Marker>
-        )}
+        {reportPin &&
+          Number.isFinite(reportPin.lat) &&
+          Number.isFinite(reportPin.lng) && (
+            <Marker position={[reportPin.lat, reportPin.lng]} icon={reportIcon}>
+              <Popup autoPan={false}>
+                <div className="pin-hint-popup">Selected Location for Report</div>
+              </Popup>
+            </Marker>
+          )}
 
-        {/* Incident Markers */}
+        {/* Incident Markers - Strictly Guarded against malformed coordinates */}
         {events.map((event) => {
-          if (!event.position) return null;
+          if (
+            !event.position ||
+            !Number.isFinite(event.position.lat) ||
+            !Number.isFinite(event.position.lng)
+          ) {
+            return null;
+          }
           const isSelected = selectedEvent && selectedEvent.id === event.id;
 
           if (event.type === "Rain") {
@@ -350,7 +395,11 @@ const MapComponent = ({
                     <span className={`popup-type-tag ${event.type.toLowerCase()}`}>
                       {translatedType}
                     </span>
-                    <span className={`urgency-pill ${event.urgency ? event.urgency.toLowerCase() : "medium"}`}>
+                    <span
+                      className={`urgency-pill ${
+                        event.urgency ? event.urgency.toLowerCase() : "medium"
+                      }`}
+                    >
                       {event.urgency || "Medium"}
                     </span>
                   </div>
@@ -399,9 +448,9 @@ const MapComponent = ({
           );
         })}
 
-        {/* Real-Time Traffic Corridors */}
+        {/* Monitored Chokepoint Corridors */}
         {showTraffic &&
-          trafficCorridors.map((corridor) => (
+          dynamicCorridors.map((corridor) => (
             <Polyline
               key={corridor.id}
               positions={corridor.positions}
@@ -411,12 +460,17 @@ const MapComponent = ({
             >
               <Popup className="traffic-clean-popup">
                 <div className="traffic-popup-body">
-                  <div className="traffic-badge">{corridor.status}</div>
+                  <div className="traffic-badge" style={{ backgroundColor: corridor.color }}>
+                    {corridor.status}
+                  </div>
                   <h5>{corridor.name}</h5>
                   <div className="traffic-metrics">
-                    <span>Speed: <strong>{corridor.speed}</strong></span>
-                    <span>Delay: <strong style={{ color: corridor.color }}>{corridor.delay}</strong></span>
+                    <span>Baseline Flow: <strong>{corridor.baselineSpeed}</strong></span>
+                    <span>Peak Delay: <strong style={{ color: corridor.color }}>{corridor.peakDelay}</strong></span>
                   </div>
+                  <span className="corridor-note" style={{ fontSize: "0.75rem", color: "#94A3B8", marginTop: "4px", display: "block" }}>
+                    * Correlated with active citizen hazard density in corridor
+                  </span>
                 </div>
               </Popup>
             </Polyline>
@@ -426,4 +480,4 @@ const MapComponent = ({
   );
 };
 
-export default MapComponent;
+export default CustomMapContainer;

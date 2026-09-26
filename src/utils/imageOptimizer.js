@@ -28,10 +28,12 @@ export const compressImage = (file, maxWidth = 1200, maxHeight = 1200, quality =
           }
         } else {
           if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
+            width = Math.round((height * maxHeight) / height);
             height = maxHeight;
           }
         }
+
+        const originalSizeKb = Math.round(file.size / 1024);
 
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -39,14 +41,19 @@ export const compressImage = (file, maxWidth = 1200, maxHeight = 1200, quality =
 
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          return resolve(readerEvent.target.result); // Fallback to raw data URL
+          // Fallback retaining expected object shape if canvas context is unavailable
+          return resolve({
+            dataUrl: readerEvent.target.result,
+            originalSizeKb,
+            compressedSizeKb: originalSizeKb,
+            width,
+            height,
+          });
         }
 
         // Draw and compress to JPEG format
         ctx.drawImage(img, 0, 0, width, height);
         const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-
-        const originalSizeKb = Math.round(file.size / 1024);
         const compressedSizeKb = Math.round((compressedDataUrl.length * 3) / 4 / 1024);
 
         resolve({

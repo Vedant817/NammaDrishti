@@ -28,14 +28,23 @@ const Header = ({
 
         <div className="header-center-info">
           {weather && (
-            <div className="weather-pill" title={`Last updated: ${weather.lastUpdated}`}>
+            <div
+              className={`weather-pill ${weather.isOffline ? 'weather-offline' : ''}`}
+              title={`Last updated: ${weather.lastUpdated || 'Pending'}`}
+            >
               <span className="weather-icon">
-                {weather.precipitation > 0 ? '🌧️' : '⛅'}
+                {weather.isOffline ? '📡' : weather.precipitation > 0 ? '🌧️' : '⛅'}
               </span>
-              <span className="weather-temp">{weather.temp}°C</span>
+              <span className="weather-temp">
+                {weather.temp !== null ? `${weather.temp}°C` : '--'}
+              </span>
               <span className="weather-divider">•</span>
               <span className="weather-desc">{weather.description}</span>
-              <span className={`flood-tag ${weather.floodRisk.toLowerCase()}`}>
+              <span
+                className={`flood-tag ${
+                  weather.floodRisk ? weather.floodRisk.toLowerCase().replace(/\s+/g, '-') : 'low'
+                }`}
+              >
                 {t.floodRiskPrefix} {weather.floodRisk}
               </span>
             </div>

@@ -1,5 +1,5 @@
 // src/components/Dashboard/CityPulseDashboard.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Header from "../Header/Header";
 import MapContainer from "../Map/MapContainer";
 import Sidebar from "../Sidebar/Sidebar";
@@ -27,8 +27,13 @@ function CityPulseDashboard() {
 
   const { events, addEvent, verifyEvent, resolveEvent, isLiveConnected } = useEventData();
   const weather = useWeather();
-  const { location: userLocation } = useGeolocation();
+  const { location: userLocation, getCurrentLocation } = useGeolocation();
   const { t } = useLanguage();
+
+  // Request location on mount to activate real-time proximity geofencing
+  useEffect(() => {
+    getCurrentLocation();
+  }, [getCurrentLocation]);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -65,14 +70,22 @@ function CityPulseDashboard() {
     showToast("✓ Hazard incident broadcast to NammaPulse live stream!");
   };
 
-  const handleVerifyEvent = (id) => {
-    verifyEvent(id);
-    showToast("✓ Confirmation recorded (+1 consensus)!");
+  const handleVerifyEvent = async (id) => {
+    const res = await verifyEvent(id);
+    if (res?.alreadyVoted) {
+      showToast("⚠️ You have already verified this incident.");
+    } else {
+      showToast("✓ Confirmation recorded (+1 consensus)!");
+    }
   };
 
-  const handleResolveEvent = (id) => {
-    resolveEvent(id);
-    showToast("✓ Incident marked as cleared by citizen consensus.");
+  const handleResolveEvent = async (id) => {
+    const res = await resolveEvent(id);
+    if (res?.alreadyVoted) {
+      showToast("⚠️ You have already voted to clear this incident.");
+    } else {
+      showToast("✓ Clearance vote recorded (2 confirmations needed to permanently clear).");
+    }
   };
 
   const handleApplyRouteToMap = (route) => {
@@ -94,98 +107,101 @@ function CityPulseDashboard() {
         isLiveConnected={isLiveConnected}
       />
 
-      {/* Modern Filter Chip Bar */}
+      {/* Real-time Category Filter Panel */}
       <FilterPanel
         activeFilter={activeFilter}
         onFilterChange={setActiveFilter}
-        events={events}
+        eventCounts={events.reduce((acc, evt) => {
+          acc[evt.type] = (acc[evt.type] || 0) + 1;
+          return acc;
+        }, {})}
       />
 
-      {/* Main Workspace */}
+      {/* Main split viewport: Map (interactive) + Sidebar (Feed/Helplines/Diagnostic) */}
       <div className="main-content">
-        <Sidebar
-          activeTab={sidebarTab}
-          onTabChange={setSidebarTab}
-          events={events}
-          selectedEvent={selectedEvent}
-          onEventSelect={setSelectedEvent}
-          activeFilter={activeFilter}
-        />
-
-        <div className="map-section">
+        <main className="map-section" role="region" aria-label="Interactive Map">
           <MapContainer
             events={filteredEvents}
             selectedEvent={selectedEvent}
             onEventSelect={setSelectedEvent}
+            onMapClick={handleMapClick}
             onVerifyEvent={handleVerifyEvent}
             onResolveEvent={handleResolveEvent}
-            onMapClick={handleMapClick}
             reportPin={reportPin}
             navigationRoute={navigationRoute}
             onClearNavigationRoute={() => setNavigationRoute(null)}
           />
 
-          {/* Clean Floating Action Buttons */}
+          {/* Floating Action Buttons */}
           <div className="map-floating-actions">
             <button
               type="button"
-              className="action-fab route-fab"
+              className="action-fab fab-route"
               onClick={() => setShowRouteModal(true)}
-              title="Calculate Safe Transit Route avoiding flooded underpasses"
+              title="Compute Safe Navigation Corridor (OSRM)"
             >
-              🧭 Safe Route
+              <span>🧭</span>
+              <span>Safe Route</span>
             </button>
+
             <button
               type="button"
-              className="action-fab chatbot-fab"
+              className="action-fab fab-report"
+              onClick={handleOpenReportModal}
+              title="Report an active hazard or flooded underpass"
+            >
+              <span>🚨</span>
+              <span>{t.actions.reportHazard}</span>
+            </button>
+
+            <button
+              type="button"
+              className="action-fab fab-ai"
               onClick={() => setShowChatbotModal(true)}
               title="Open NammaPulse AI Assistant"
             >
-              {t.actions.aiAssistant}
-            </button>
-            <button
-              type="button"
-              className="action-fab report-fab"
-              onClick={handleOpenReportModal}
-              title="Report a civic or traffic hazard"
-            >
-              {t.actions.reportHazard}
+              <span>🤖</span>
+              <span>{t.actions.aiAssistant}</span>
             </button>
           </div>
-        </div>
+        </main>
+
+        <Sidebar
+          events={filteredEvents}
+          selectedEvent={selectedEvent}
+          onEventSelect={setSelectedEvent}
+          onVerifyEvent={handleVerifyEvent}
+          onResolveEvent={handleResolveEvent}
+          activeTab={sidebarTab}
+          onTabChange={setSidebarTab}
+          rainIntensity={weather?.precipitation || 0}
+        />
       </div>
 
-      {/* Live Toast Notifications */}
-      {toastMessage && (
-        <div className="dashboard-toast-notification">
-          <span>{toastMessage}</span>
-          <button
-            type="button"
-            className="toast-close"
-            onClick={() => setToastMessage(null)}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Modals */}
+      {/* Citizen Report Modal */}
       {showReportModal && (
         <ReportModal
-          onClose={() => setShowReportModal(false)}
+          isOpen={showReportModal}
+          onClose={() => {
+            setShowReportModal(false);
+            setReportPin(null);
+          }}
           onSubmitReport={handleSubmitReport}
           initialCoordinates={reportPin}
         />
       )}
 
+      {/* NammaPulse Context-Aware AI Chatbot */}
       {showChatbotModal && (
         <ChatbotModal
+          isOpen={showChatbotModal}
           onClose={() => setShowChatbotModal(false)}
-          events={events}
+          currentEvents={events}
           weather={weather}
         />
       )}
 
+      {/* Safe Route Hazard Avoidance Modal */}
       {showRouteModal && (
         <SafeRouteModal
           onClose={() => setShowRouteModal(false)}
@@ -193,6 +209,13 @@ function CityPulseDashboard() {
           onApplyRouteToMap={handleApplyRouteToMap}
           userLocation={userLocation}
         />
+      )}
+
+      {/* Real-time Notification Toast */}
+      {toastMessage && (
+        <div className="toast-notification">
+          <span>{toastMessage}</span>
+        </div>
       )}
     </div>
   );

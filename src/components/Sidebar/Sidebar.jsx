@@ -13,6 +13,7 @@ const Sidebar = ({
   selectedEvent,
   onEventSelect,
   activeFilter = "All",
+  rainIntensity = 0,
 }) => {
   const { t } = useLanguage();
 
@@ -52,7 +53,9 @@ const Sidebar = ({
           />
         )}
 
-        {activeTab === "recap" && <CityRecap events={events} />}
+        {activeTab === "recap" && (
+          <CityRecap events={events} rainIntensity={rainIntensity} />
+        )}
 
         {activeTab === "helpline" && (
           <div className="helpline-tab-content">

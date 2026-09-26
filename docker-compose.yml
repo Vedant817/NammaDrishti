@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  nammapulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nammapulse-app
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - NODE_ENV=production
+      - PORT=5001
+    volumes:
+      - nammapulse_data:/app/server
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  nammapulse_data:

@@ -6,28 +6,81 @@ import { useLanguage } from "../../context/LanguageContext";
 import { compressImage } from "../../utils/imageOptimizer";
 import "./ReportModal.css";
 
-const ReportModal = ({ onClose, onSubmitReport, initialCoordinates }) => {
+// Comprehensive Bengaluru Locality & Chokepoint Geocoding Map
+const BENGALURU_LOCALITY_COORDS = {
+  "silk board": { lat: 12.9171, lng: 77.6238 },
+  "btm": { lat: 12.9166, lng: 77.6101 },
+  "btm layout": { lat: 12.9166, lng: 77.6101 },
+  "hsr": { lat: 12.9121, lng: 77.6446 },
+  "hsr layout": { lat: 12.9121, lng: 77.6446 },
+  "koramangala": { lat: 12.9352, lng: 77.6245 },
+  "indiranagar": { lat: 12.9719, lng: 77.6412 },
+  "whitefield": { lat: 12.9698, lng: 77.7500 },
+  "marathahalli": { lat: 12.9591, lng: 77.6974 },
+  "bellandur": { lat: 12.9260, lng: 77.6744 },
+  "panathur": { lat: 12.9352, lng: 77.7019 },
+  "hebbal": { lat: 13.0358, lng: 77.5970 },
+  "electronic city": { lat: 12.8452, lng: 77.6602 },
+  "ecity": { lat: 12.8452, lng: 77.6602 },
+  "sarjapur": { lat: 12.8596, lng: 77.7884 },
+  "sarjapur road": { lat: 12.9150, lng: 77.6830 },
+  "jayanagar": { lat: 12.9308, lng: 77.5838 },
+  "jp nagar": { lat: 12.9063, lng: 77.5857 },
+  "banashankari": { lat: 12.9255, lng: 77.5468 },
+  "rajajinagar": { lat: 12.9982, lng: 77.5530 },
+  "malleshwaram": { lat: 13.0031, lng: 77.5643 },
+  "yelahanka": { lat: 13.1007, lng: 77.5963 },
+  "majestic": { lat: 12.9767, lng: 77.5713 },
+  "mg road": { lat: 12.9754, lng: 77.6068 },
+  "kalyan nagar": { lat: 13.0280, lng: 77.6433 },
+  "tin factory": { lat: 12.9972, lng: 77.6672 },
+  "kr puram": { lat: 13.0075, lng: 77.6959 },
+  "mahadevapura": { lat: 12.9902, lng: 77.6952 },
+};
+
+const resolveLocalityCoordinates = (text) => {
+  if (!text) return null;
+  const clean = text.toLowerCase();
+  for (const [name, pos] of Object.entries(BENGALURU_LOCALITY_COORDS)) {
+    if (clean.includes(name)) return pos;
+  }
+  return null;
+};
+
+const ReportModal = ({
+  isOpen,
+  onClose,
+  onSubmitReport,
+  initialCoordinates,
+}) => {
   const { t } = useLanguage();
+  const { location, getCurrentLocation, loading: geoLoading } = useGeolocation();
+
   const [formData, setFormData] = useState({
-    type: "Infrastructure",
+    type: "Traffic",
     title: "",
     ward: "",
-    urgency: "Medium",
     description: "",
+    urgency: "Medium",
     mediaUrl: null,
   });
-  const [imagePreview, setImagePreview] = useState(null);
-  const [compressionStats, setCompressionStats] = useState(null);
-  const [compressing, setCompressing] = useState(false);
+
   const [coords, setCoords] = useState(initialCoordinates || null);
+  const [compressing, setCompressing] = useState(false);
+  const [compressionStats, setCompressionStats] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [validationError, setValidationError] = useState(null);
 
-  const { location, loading: geoLoading, error: geoError, getCurrentLocation } =
-    useGeolocation();
+  useEffect(() => {
+    if (initialCoordinates) {
+      setCoords(initialCoordinates);
+    }
+  }, [initialCoordinates]);
 
-  // Update coords when geolocation succeeds
   useEffect(() => {
     if (location) {
       setCoords({ lat: location.lat, lng: location.lng });
+      setValidationError(null);
     }
   }, [location]);
 
@@ -60,10 +113,24 @@ const ReportModal = ({ onClose, onSubmitReport, initialCoordinates }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (compressing) return;
     if (!formData.title.trim() || !formData.description.trim()) return;
 
-    // Use selected coords or fallback to Central Bengaluru
-    const position = coords || { lat: 12.9716, lng: 77.5946 };
+    // Resolve geographic position: explicit pin/GPS, or parsed locality
+    let position = coords;
+    if (!position) {
+      position =
+        resolveLocalityCoordinates(formData.ward) ||
+        resolveLocalityCoordinates(formData.title) ||
+        resolveLocalityCoordinates(formData.description);
+    }
+
+    if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) {
+      setValidationError(
+        "Please pick a point on the map, click 'Use My GPS', or enter a recognized Bengaluru locality (e.g. Whitefield, Silk Board, Koramangala, Hebbal)."
+      );
+      return;
+    }
 
     const reportPayload = {
       ...formData,
@@ -80,6 +147,8 @@ const ReportModal = ({ onClose, onSubmitReport, initialCoordinates }) => {
     }
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -119,72 +188,85 @@ const ReportModal = ({ onClose, onSubmitReport, initialCoordinates }) => {
                 value={formData.urgency}
                 onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
               >
-                <option value="High">{t.reportModal.urgencies.High}</option>
-                <option value="Medium">{t.reportModal.urgencies.Medium}</option>
                 <option value="Low">{t.reportModal.urgencies.Low}</option>
+                <option value="Medium">{t.reportModal.urgencies.Medium}</option>
+                <option value="High">{t.reportModal.urgencies.High}</option>
               </select>
             </div>
           </div>
 
           <div className="form-field">
-            <label>{t.reportModal.headlineLabel}</label>
+            <label>{t.reportModal.titlePlaceholder}</label>
             <input
               type="text"
               className="form-input"
-              placeholder={t.reportModal.headlinePlaceholder}
+              placeholder="e.g., Heavy waterlogging under Panathur rail bridge"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, title: e.target.value });
+                if (validationError) setValidationError(null);
+              }}
               required
             />
           </div>
 
           <div className="form-field">
-            <label>{t.reportModal.wardLabel}</label>
+            <label>{t.reportModal.wardPlaceholder}</label>
             <input
               type="text"
               className="form-input"
-              placeholder={t.reportModal.wardPlaceholder}
+              placeholder="e.g., Mahadevapura Ward 85 / ORR Bellandur"
               value={formData.ward}
-              onChange={(e) => setFormData({ ...formData, ward: e.target.value })}
+              onChange={(e) => {
+                setFormData({ ...formData, ward: e.target.value });
+                if (validationError) setValidationError(null);
+              }}
             />
           </div>
 
           <div className="form-field">
-            <label>{t.reportModal.descLabel}</label>
+            <label>{t.reportModal.descPlaceholder}</label>
             <textarea
-              className="form-input"
-              placeholder={t.reportModal.descPlaceholder}
-              rows="3"
+              className="form-input form-textarea"
+              rows={3}
+              placeholder="Describe depth of water, lane blockage, vehicle types affected..."
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               required
             />
           </div>
 
-          {/* Location Picker Section */}
-          <div className="location-picker-box">
-            <div className="location-picker-status">
-              <span className="loc-label">{t.reportModal.coordsLabel}</span>
-              <span className="loc-coords">
+          {/* Coordinate Resolution & GPS Status */}
+          <div className="location-picker-group">
+            <div className="location-status-badge">
+              <span className="location-pin-icon">📍</span>
+              <span className="location-text">
                 {coords
-                  ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
-                  : "Central Bengaluru (Default)"}
+                  ? `Coordinates: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
+                  : resolveLocalityCoordinates(formData.ward)
+                  ? `Detected Locality: ${formData.ward}`
+                  : t.reportModal.clickMapInstruction}
               </span>
             </div>
             <button
               type="button"
-              className="gps-btn"
+              className="btn-gps"
               onClick={getCurrentLocation}
               disabled={geoLoading}
             >
-              {geoLoading ? t.actions.acquiringGps : t.actions.autoGps}
+              {geoLoading ? "Acquiring GPS..." : t.reportModal.useGpsButton}
             </button>
           </div>
-          {geoError && <p className="form-warning">{geoError}</p>}
 
-          {/* Photo attachment with compression status */}
+          {validationError && (
+            <div className="validation-error-pill" style={{ color: '#F87171', background: '#451A1A', padding: '8px 12px', borderRadius: '6px', fontSize: '0.8rem', marginTop: '8px', border: '1px solid #7F1D1D' }}>
+              {validationError}
+            </div>
+          )}
+
+          {/* Optimized Photo Attachment */}
           <div className="form-field">
-            <label>{t.reportModal.photoLabel}</label>
+            <label>📸 {t.reportModal.attachPhotoLabel}</label>
             <input
               type="file"
               accept="image/*"
@@ -208,8 +290,8 @@ const ReportModal = ({ onClose, onSubmitReport, initialCoordinates }) => {
             <Button type="button" onClick={onClose} variant="secondary">
               {t.actions.cancel}
             </Button>
-            <Button type="submit" variant="primary">
-              {t.actions.submitReport}
+            <Button type="submit" variant="primary" disabled={compressing}>
+              {compressing ? "Compressing..." : t.actions.submitReport}
             </Button>
           </div>
         </form>

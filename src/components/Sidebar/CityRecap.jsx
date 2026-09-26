@@ -1,7 +1,8 @@
 // src/components/Sidebar/CityRecap.jsx
 import React from "react";
+import { BENGALURU_UNDERPASSES, evaluateUnderpassRisk } from "../../data/bengaluruUnderpasses";
 
-const CityRecap = ({ events = [] }) => {
+const CityRecap = ({ events = [], rainIntensity = 0 }) => {
   const trafficCount = events.filter((e) => e.type === "Traffic").length;
   const floodCount = events.filter((e) => e.type === "Waterlogging").length;
   const accidentCount = events.filter((e) => e.type === "Accident").length;
@@ -31,6 +32,30 @@ const CityRecap = ({ events = [] }) => {
           <span className="recap-num" style={{ color: "#8B5CF6" }}>{infraCount}</span>
           <span className="recap-lbl">Potholes/Infra</span>
         </div>
+      </div>
+
+      {/* Bengaluru Chronic Underpass Inundation Watch */}
+      <h5 className="recap-subtitle">🌊 Chronic Underpass Vulnerability Watch</h5>
+      <div className="underpass-watch-list">
+        {BENGALURU_UNDERPASSES.map((up) => {
+          const risk = evaluateUnderpassRisk(up, rainIntensity);
+          return (
+            <div key={up.id} className="underpass-card" style={{ padding: '10px', background: 'var(--bg-surface)', borderRadius: '6px', marginBottom: '8px', borderLeft: `3px solid ${risk.color}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong style={{ fontSize: '0.85rem' }}>{up.name}</strong>
+                <span style={{ fontSize: '0.72rem', color: risk.color, fontWeight: '600', padding: '2px 6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
+                  {risk.level}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                Zone: {up.zone} • Trigger: &gt;{up.criticalThresholdMmPerHour} mm/hr • Max Depth: {up.maxRecordedDepthFt} ft
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '2px' }}>
+                Pump: {up.pumpStation} • Barrier: {up.gateStatus}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <h5 className="recap-subtitle">Key Choke Points & Flood Basins</h5>

@@ -1,3 +1,4 @@
+// src/hooks/useWeather.js
 import { useState, useEffect } from 'react';
 
 // Free Open-Meteo API endpoint for Bengaluru coordinates
@@ -5,15 +6,16 @@ const BENGALURU_COORDS = { lat: 12.9716, lng: 77.5946 };
 
 export const useWeather = () => {
   const [weather, setWeather] = useState({
-    temp: 24,
-    humidity: 72,
+    temp: null,
+    humidity: null,
     precipitation: 0,
-    windSpeed: 12,
-    weatherCode: 1,
-    description: 'Partly Cloudy',
-    floodRisk: 'Low',
-    lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    windSpeed: null,
+    weatherCode: null,
+    description: 'Loading telemetry...',
+    floodRisk: 'Assessing...',
+    lastUpdated: null,
     loading: true,
+    isOffline: false,
   });
 
   useEffect(() => {
@@ -22,14 +24,14 @@ export const useWeather = () => {
     const fetchWeatherData = async () => {
       try {
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${BENGALURU_COORDS.lat}&longitude=${BENGALURU_COORDS.lng}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FKolkata`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
         if (!res.ok) throw new Error('Weather fetch failed');
         const data = await res.json();
-        
+
         if (data.current && isMounted) {
           const current = data.current;
           const precip = current.precipitation || 0;
-          
+
           let desc = 'Clear Sky';
           const code = current.weather_code;
           if (code >= 1 && code <= 3) desc = 'Partly Cloudy';
@@ -54,15 +56,19 @@ export const useWeather = () => {
             floodRisk,
             lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             loading: false,
+            isOffline: false,
           });
         }
       } catch (err) {
         if (isMounted) {
-          // Graceful fallback to default Bengaluru standard values
+          // Explicit offline status indicator without fabricating reassuring "Low risk / 0mm" numbers
           setWeather((prev) => ({
             ...prev,
             loading: false,
-            lastUpdated: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOffline: true,
+            floodRisk: 'Offline',
+            description: 'Weather Telemetry Unavailable',
+            lastUpdated: 'Offline',
           }));
         }
       }
