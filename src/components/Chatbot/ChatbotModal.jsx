@@ -1,109 +1,159 @@
-import React, { useState, useEffect } from 'react';
-import './ChatbotModal.css';
+// src/components/Chatbot/ChatbotModal.jsx
+import React, { useState } from "react";
+import "./ChatbotModal.css";
 
-const ChatbotModal = ({ onClose }) => {
+const QUICK_PROMPTS = [
+  "Is Silk Board jammed?",
+  "Any flooded underpasses?",
+  "Rain radar status?",
+  "How to report a pothole?",
+  "Emergency helplines",
+];
+
+const ChatbotModal = ({ onClose, events = [], weather }) => {
   const [messages, setMessages] = useState([
-    { type: 'bot', text: 'Hello! How can I help you with this event?' }
-  ]);
-  const [input, setInput] = useState('');
-
-  const sampleQuestionsAndResponses = [
     {
-      question: "Is there heavy traffic on Old Airport Road right now?",
-      response: "Yes, there's significant congestion on Old Airport Road due to an accident reported 20 minutes ago. Consider taking Indiranagar 100 Feet Road as an alternative route."
+      type: "bot",
+      text: "Namaskara! I am NammaPulse AI, your live Bengaluru civic & traffic intelligence assistant. How can I assist your transit today?",
     },
-    {
-      question: "Has garbage collection been delayed in my area?",
-      response: "Yes, multiple users have reported delayed garbage collection in Jayanagar 4th Block for the past three days. The municipal corporation has been notified and is addressing the issue."
-    }
-  ];
+  ]);
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
 
-  useEffect(() => {
-    let currentIndex = 0;
+  // Dynamic context-aware query responder
+  const processQuery = (userQuery) => {
+    const q = userQuery.toLowerCase();
 
-    const displayNextQA = () => {
-      if (currentIndex < sampleQuestionsAndResponses.length) {
-        const { question, response } = sampleQuestionsAndResponses[currentIndex];
-
-        // Add user question
-        setMessages(prev => [...prev, { type: 'user', text: question }]);
-
-        // Add bot response after a delay
-        setTimeout(() => {
-          setMessages(prev => [...prev, { type: 'bot', text: response }]);
-          currentIndex++;
-
-          // Continue to next Q&A after another delay
-          if (currentIndex < sampleQuestionsAndResponses.length) {
-            setTimeout(displayNextQA, 2000); // 2 second delay between Q&A pairs
-          }
-        }, 1000); // 1 second delay for bot response
+    // Check Traffic & Silk Board
+    if (q.includes("silk board") || q.includes("btm")) {
+      const silkEvt = events.find((e) => e.title.toLowerCase().includes("silk board"));
+      if (silkEvt) {
+        return `🚨 Silk Board Junction has ${silkEvt.urgency.toLowerCase()} congestion. ${silkEvt.description} Delays are approx +28 minutes. BTP recommends taking Hosur Road elevated tollway if heading to Electronic City.`;
       }
-    };
-
-    // Start displaying Q&A after initial greeting
-    const timer = setTimeout(displayNextQA, 2000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleSendMessage = () => {
-    if (input.trim()) {
-      const newMessages = [...messages, { type: 'user', text: input }];
-      setMessages(newMessages);
-      setInput('');
-
-      // Hardcoded bot response based on user input
-      setTimeout(() => {
-        let botResponse = "I'm sorry, I don't understand that question about the event.";
-
-        if (input.toLowerCase().includes('location')) {
-          botResponse = "The event is located at Central Park, near the fountain.";
-        } else if (input.toLowerCase().includes('time')) {
-          botResponse = "The event starts at 3:00 PM and ends at 7:00 PM.";
-        } else if (input.toLowerCase().includes('type')) {
-          botResponse = "This is a community music festival.";
-        } else if (input.toLowerCase().includes('tickets')) {
-          botResponse = "No tickets are required, it's a free event.";
-        } else if (input.toLowerCase().includes('traffic') && input.toLowerCase().includes('old airport road')) {
-          botResponse = "Yes, there's significant congestion on Old Airport Road due to an accident reported 20 minutes ago. Consider taking Indiranagar 100 Feet Road as an alternative route.";
-        } else if (input.toLowerCase().includes('heavy traffic') || input.toLowerCase().includes('traffic jam')) {
-          botResponse = "Yes, there's significant congestion on Old Airport Road due to an accident reported 20 minutes ago. Consider taking Indiranagar 100 Feet Road as an alternative route.";
-        } else if (input.toLowerCase().includes('garbage collection') || input.toLowerCase().includes('garbage delayed')) {
-          botResponse = "Yes, multiple users have reported delayed garbage collection in Jayanagar 4th Block for the past three days. The municipal corporation has been notified and is addressing the issue.";
-        } else if (input.toLowerCase().includes('waste collection') || input.toLowerCase().includes('trash pickup')) {
-          botResponse = "Yes, multiple users have reported delayed garbage collection in Jayanagar 4th Block for the past three days. The municipal corporation has been notified and is addressing the issue.";
-        }
-
-        setMessages((prevMessages) => [...prevMessages, { type: 'bot', text: botResponse }]);
-      }, 500);
+      return "Silk Board is currently moving at moderate speeds with standard junction signals.";
     }
+
+    // Check Waterlogging / Flooding / Underpass
+    if (q.includes("flood") || q.includes("waterlog") || q.includes("underpass") || q.includes("panathur")) {
+      const floodEvts = events.filter((e) => e.type === "Waterlogging");
+      if (floodEvts.length > 0) {
+        const details = floodEvts.map((f) => `• ${f.title}: ${f.description}`).join("\n");
+        return `⚠️ Active Waterlogging Alert in Bengaluru:\n${details}\n\nCurrent Precipitation: ${weather ? weather.precipitation + " mm" : "Active monitoring"}. Divert from low-lying railway underpasses.`;
+      }
+      return "Good news! No major underpasses or arterial roads are reporting severe inundation right now.";
+    }
+
+    // Check Weather / Rain
+    if (q.includes("rain") || q.includes("weather") || q.includes("radar")) {
+      if (weather) {
+        return `🌧️ Bengaluru Weather: ${weather.temp}°C, ${weather.description}. Relative humidity is ${weather.humidity}% with ${weather.precipitation}mm precipitation. Flood Risk is currently assessed as ${weather.floodRisk}.`;
+      }
+      return "Current weather in Bengaluru is partly cloudy with isolated shower chances in East & South zones.";
+    }
+
+    // Check Hebbal / Airport road
+    if (q.includes("hebbal") || q.includes("airport")) {
+      const hebbalEvt = events.find((e) => e.title.toLowerCase().includes("hebbal"));
+      if (hebbalEvt) {
+        return `✈️ Hebbal Flyover Update: ${hebbalEvt.title}. ${hebbalEvt.description} Allow an extra 20–25 minutes if traveling to KIA.`;
+      }
+      return "Airport Expressway via Hebbal is moving smoothly with usual airport traffic.";
+    }
+
+    // Check Pothole / Reporting
+    if (q.includes("pothole") || q.includes("report") || q.includes("how to report")) {
+      return "To report a hazard directly in NammaPulse:\n1. Click the 'Report Incident' button at the bottom-right of the map.\n2. Choose 'Pothole / Infra' or 'Traffic'.\n3. Click 'Auto-Detect GPS' or tap on the map to pin the exact coordinates.\n4. Submit! It will immediately be added to the live consensus stream.";
+    }
+
+    // Emergency Contacts
+    if (q.includes("emergency") || q.includes("helpline") || q.includes("police") || q.includes("bbmp")) {
+      return "📞 Bengaluru Emergency Helplines:\n• BTP Traffic Police: 1095 / 080-22943030\n• BBMP Control Room: 1533\n• BESCOM Power Breakdown: 1912\n• BWSSB Water Supply: 1916\n• National Emergency: 112";
+    }
+
+    // General fallback
+    return `Currently tracking ${events.length} live incidents across Bengaluru. You can ask me about Silk Board, Hebbal, waterlogging, weather radar, or emergency helplines!`;
+  };
+
+  const handleSendMessage = (textToSend) => {
+    const text = textToSend || input;
+    if (!text.trim()) return;
+
+    const userMessage = { type: "user", text };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsTyping(true);
+
+    setTimeout(() => {
+      const responseText = processQuery(text);
+      setMessages((prev) => [...prev, { type: "bot", text: responseText }]);
+      setIsTyping(false);
+    }, 450);
   };
 
   return (
-    <div className="chatbot-modal-overlay">
-      <div className="chatbot-modal">
+    <div className="chatbot-modal-overlay" onClick={onClose}>
+      <div className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
         <div className="chatbot-modal-header">
-          <h2>Smart Assistant</h2>
-          <button className="close-button" onClick={onClose}>×</button>
+          <div className="bot-header-info">
+            <span className="bot-avatar">🤖</span>
+            <div>
+              <h3>NammaPulse AI</h3>
+              <span className="bot-status">● Live City Context</span>
+            </div>
+          </div>
+          <button type="button" className="close-button" onClick={onClose}>
+            ✕
+          </button>
         </div>
+
         <div className="chatbot-modal-body">
+          <div className="quick-prompts-bar">
+            {QUICK_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                className="quick-prompt-chip"
+                onClick={() => handleSendMessage(prompt)}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
           <div className="messages">
             {messages.map((message, index) => (
               <div key={index} className={`message ${message.type}`}>
-                {message.text}
+                <div className="message-content">
+                  {message.text.split("\n").map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
+                </div>
               </div>
             ))}
+            {isTyping && (
+              <div className="message bot typing">
+                <span className="typing-dot"></span>
+                <span className="typing-dot"></span>
+                <span className="typing-dot"></span>
+              </div>
+            )}
           </div>
+
           <div className="input-area">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Type your message..."
+              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+              placeholder="Ask about traffic, floods, road hazards..."
             />
-            <button onClick={handleSendMessage}>Send</button>
+            <button
+              type="button"
+              className="send-btn"
+              onClick={() => handleSendMessage()}
+            >
+              Send
+            </button>
           </div>
         </div>
       </div>

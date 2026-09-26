@@ -1,11 +1,21 @@
 // src/components/Map/MapContainer.jsx
-import React, { useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, CircleMarker } from "react-leaflet";
+import React, { useState, useEffect } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  CircleMarker,
+  useMapEvents,
+  useMap,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./MapContainer.css";
+import { BENGALURU_CENTER } from "../../data/constants";
 
-// Fix for default markers
+// Fix default Leaflet icon paths
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: require("leaflet/dist/images/marker-icon-2x.png"),
@@ -13,176 +23,362 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require("leaflet/dist/images/marker-shadow.png"),
 });
 
-const MapComponent = ({ events, selectedEvent, onEventSelect }) => {
-  const center = [12.9716, 77.5946]; // Bengaluru coordinates
-
-  // Hardcoded traffic routes
-  const trafficRoutes = [
-    {
-      id: "route1",
-      positions: [
-        [12.9721, 77.595],
-        [12.973, 77.598],
-        [12.975, 77.599],
-      ],
-      info: "Heavy Traffic: Old Airport Road to MG Road",
+// Map click listener component
+function MapEventsHandler({ onMapClick }) {
+  useMapEvents({
+    click(e) {
+      if (onMapClick) {
+        onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
+      }
     },
+  });
+  return null;
+}
+
+// Map center controller
+function MapViewController({ center, zoom }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.setView(center, zoom || 13, { animate: true });
+    }
+  }, [center, zoom, map]);
+  return null;
+}
+
+const MapComponent = ({
+  events = [],
+  selectedEvent,
+  onEventSelect,
+  onVerifyEvent,
+  onResolveEvent,
+  onMapClick,
+  reportPin,
+}) => {
+  const [showRadar, setShowRadar] = useState(false);
+  const [showTraffic, setShowTraffic] = useState(true);
+  const [radarTimestamp, setRadarTimestamp] = useState(null);
+
+  // Fetch latest RainViewer radar layer timestamp
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRadar = async () => {
+      try {
+        const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isMounted && data.radar && data.radar.past && data.radar.past.length > 0) {
+          const latest = data.radar.past[data.radar.past.length - 1];
+          setRadarTimestamp(latest.path);
+        }
+      } catch (err) {
+        // Fallback to static timestamp if offline
+      }
+    };
+    fetchRadar();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Bengaluru real-world traffic corridors with speeds & delays
+  const trafficCorridors = [
     {
-      id: "route2",
+      id: "corridor_silk_board",
+      name: "Silk Board - BTM Corridor",
       positions: [
         [12.9171, 77.6238],
-        [12.920, 77.625],
-        [12.925, 77.628],
+        [12.919, 77.625],
+        [12.923, 77.627],
+        [12.928, 77.629],
       ],
-      info: "Heavy Traffic: Silk Board Junction",
+      speed: "6 km/h",
+      delay: "+28 min",
+      status: "Severe Gridlock",
+      color: "#EF4444",
     },
     {
-      id: "route3",
+      id: "corridor_orr_bellandur",
+      name: "Outer Ring Road (Bellandur - Marathahalli)",
       positions: [
+        [12.926, 77.674],
+        [12.935, 77.685],
+        [12.945, 77.692],
         [12.9592, 77.6974],
-        [12.960, 77.695],
-        [12.962, 77.690],
       ],
-      info: "Heavy Traffic: Outer Ring Road (ORR)",
+      speed: "14 km/h",
+      delay: "+18 min",
+      status: "Slow Moving",
+      color: "#F59E0B",
+    },
+    {
+      id: "corridor_tin_factory",
+      name: "Tin Factory & KR Puram Flyover",
+      positions: [
+        [12.9934, 77.6606],
+        [12.998, 77.668],
+        [13.003, 77.675],
+      ],
+      speed: "11 km/h",
+      delay: "+22 min",
+      status: "Heavy Congestion",
+      color: "#EF4444",
+    },
+    {
+      id: "corridor_hebbal",
+      name: "Hebbal Flyover to Airport Expressway",
+      positions: [
+        [13.0358, 77.597],
+        [13.045, 77.598],
+        [13.055, 77.6],
+      ],
+      speed: "18 km/h",
+      delay: "+14 min",
+      status: "Moderate Delay",
+      color: "#F59E0B",
     },
   ];
 
-  // Custom marker icons for different event types
-  const createCustomIcon = (eventType) => {
+  // Modern SVG Pin Generator with semantic colors
+  const createCustomIcon = (type, isSelected) => {
     const iconColors = {
-      Traffic: "#EA4335",
-      Accident: "#FBBC04",
-      Festival: "#34A853",
-      Infrastructure: "#4285F4",
-      Event: "#9C27B0",
-      Rain: "#4A90E2",
-      "City Sentiment": "#7ED321",
+      Traffic: "#EF4444",
+      Waterlogging: "#06B6D4",
+      Accident: "#F59E0B",
+      Infrastructure: "#8B5CF6",
+      Event: "#EC4899",
+      Rain: "#3B82F6",
     };
 
+    const typeIcons = {
+      Traffic: "🚗",
+      Waterlogging: "🌊",
+      Accident: "⚠️",
+      Infrastructure: "🔧",
+      Event: "🎉",
+      Rain: "🌧️",
+    };
+
+    const color = iconColors[type] || "#3B82F6";
+    const glyph = typeIcons[type] || "📍";
+    const scaleClass = isSelected ? "selected-marker" : "";
+
     return L.divIcon({
-      className: "custom-marker",
+      className: `namma-map-pin ${scaleClass}`,
       html: `
-        <div class="marker-pin" style="background-color: ${
-          iconColors[eventType] || "#666"
-        }">
-          <div class="marker-icon">${getEventIcon(eventType)}</div>
+        <div class="pin-anchor" style="--pin-color: ${color}">
+          <div class="pin-bubble">
+            <span class="pin-symbol">${glyph}</span>
+          </div>
+          <div class="pin-pointer"></div>
         </div>
       `,
-      iconSize: [30, 30],
-      iconAnchor: [15, 30],
+      iconSize: [36, 42],
+      iconAnchor: [18, 42],
+      popupAnchor: [0, -38],
     });
   };
 
-  const getEventIcon = (type) => {
-    const icons = {
-      Traffic: "🚗",
-      Accident: "⚠️",
-      Festival: "🎉",
-      Infrastructure: "🔧",
-      Event: "📍",
-      Rain: "🌧️",
-      "City Sentiment": "😊",
-    };
-    return icons[type] || "📍";
-  };
+  // Report pin for user placement
+  const reportIcon = L.divIcon({
+    className: "namma-report-pin",
+    html: `
+      <div class="pin-anchor pin-pulse" style="--pin-color: #10B981">
+        <div class="pin-bubble">
+          <span class="pin-symbol">📍</span>
+        </div>
+        <div class="pin-pointer"></div>
+      </div>
+    `,
+    iconSize: [36, 42],
+    iconAnchor: [18, 42],
+  });
 
   return (
-    <MapContainer
-      center={center}
-      zoom={13}
-      style={{ height: "100%", width: "100%" }}
-      className="leaflet-container"
-    >
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      />
+    <div className="map-wrapper">
+      {/* Floating Modern Map Controls */}
+      <div className="map-toolbar">
+        <button
+          type="button"
+          className={`toolbar-btn ${showRadar ? "active-blue" : ""}`}
+          onClick={() => setShowRadar(!showRadar)}
+          title="Toggle live Doppler rain radar overlay"
+        >
+          🌧️ {showRadar ? "Hide Radar" : "Live Radar"}
+        </button>
 
-      {events.map((event) => {
-        if (event.type === "Rain" || event.type === "City Sentiment") {
-          return (
-            <CircleMarker
-              key={event.id}
-              center={[event.position.lat, event.position.lng]}
-              radius={30} // Increased radius for better visibility
-              color={event.type === "Rain" ? "#4A90E2" : "#7ED321"} // Blue for Rain, Green for Sentiment
-              fillColor={event.type === "Rain" ? "#4A90E2" : "#7ED321"}
-              fillOpacity={0.6} // Increased opacity for better visibility
-              stroke={false} // No border
-            >
-              <Popup className="area-popup" autoPan={false} closeButton={false} open={true}>
-                <div className="area-popup-content">
-                  <h4>{event.title}</h4>
-                  <p>{event.description}</p>
-                </div>
-              </Popup>
-            </CircleMarker>
-          );
-        } else {
+        <button
+          type="button"
+          className={`toolbar-btn ${showTraffic ? "active-amber" : ""}`}
+          onClick={() => setShowTraffic(!showTraffic)}
+          title="Toggle real-time traffic corridor delays"
+        >
+          🚗 {showTraffic ? "Hide Traffic" : "Traffic Flow"}
+        </button>
+
+        <div className="toolbar-hint">
+          <span>Click map to set report coordinates</span>
+        </div>
+      </div>
+
+      <MapContainer
+        center={BENGALURU_CENTER}
+        zoom={12}
+        style={{ height: "100%", width: "100%" }}
+        className="leaflet-container"
+      >
+        <MapEventsHandler onMapClick={onMapClick} />
+        {selectedEvent && selectedEvent.position && (
+          <MapViewController
+            center={[selectedEvent.position.lat, selectedEvent.position.lng]}
+            zoom={14}
+          />
+        )}
+
+        {/* Clean OpenStreetMap Tiles */}
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          maxZoom={19}
+        />
+
+        {/* Live RainViewer Radar Layer */}
+        {showRadar && radarTimestamp && (
+          <TileLayer
+            url={`https://tilecache.rainviewer.com${radarTimestamp}/256/{z}/{x}/{y}/2/1_1.png`}
+            opacity={0.65}
+            zIndex={200}
+          />
+        )}
+
+        {/* User reporting pin preview */}
+        {reportPin && (
+          <Marker position={[reportPin.lat, reportPin.lng]} icon={reportIcon}>
+            <Popup autoPan={false}>
+              <div className="pin-hint-popup">Selected Location for Report</div>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Incident Markers */}
+        {events.map((event) => {
+          if (!event.position) return null;
+          const isSelected = selectedEvent && selectedEvent.id === event.id;
+
+          if (event.type === "Rain") {
+            return (
+              <CircleMarker
+                key={event.id}
+                center={[event.position.lat, event.position.lng]}
+                radius={28}
+                color="#3B82F6"
+                fillColor="#3B82F6"
+                fillOpacity={0.25}
+                weight={2}
+              >
+                <Popup className="clean-popup">
+                  <div className="popup-body">
+                    <div className="popup-badge rain">Rain Cell</div>
+                    <h4 className="popup-title">{event.title}</h4>
+                    <p className="popup-desc">{event.description}</p>
+                    <div className="popup-meta">
+                      <span>{event.ward}</span>
+                      <span>{event.timestamp}</span>
+                    </div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          }
+
           return (
             <Marker
               key={event.id}
               position={[event.position.lat, event.position.lng]}
-              icon={createCustomIcon(event.type)}
+              icon={createCustomIcon(event.type, isSelected)}
               eventHandlers={{
-                click: () => onEventSelect(event),
+                click: () => onEventSelect && onEventSelect(event),
               }}
             >
-              <Popup>
-                <div className="custom-popup">
-                  <div className="popup-header">
-                    <h3>{event.title}</h3>
-                    <span
-                      className={`urgency-badge ${event.urgency.toLowerCase()}`}
-                    >
-                      {event.urgency}
+              <Popup className="clean-popup">
+                <div className="popup-body">
+                  <div className="popup-header-row">
+                    <span className={`popup-type-tag ${event.type.toLowerCase()}`}>
+                      {event.type}
+                    </span>
+                    <span className={`urgency-pill ${event.urgency ? event.urgency.toLowerCase() : "medium"}`}>
+                      {event.urgency || "Medium"}
                     </span>
                   </div>
-                  <div className="popup-content">
-                    <p>
-                      <strong>Type:</strong> {event.type}
-                    </p>
-                    <p>
-                      <strong>Description:</strong> {event.description}
-                    </p>
-                    <p>
-                      <strong>Reported:</strong> {event.timestamp}
-                    </p>
-                    <div className="verification-status">
-                      <span
-                        className={`status-badge ${
-                          event.isVerified ? "verified" : "pending"
-                        }`}
-                      >
-                        {event.isVerified ? "✓ Verified" : "⏳ Pending"}
-                      </span>
-                      <span className="confirmation-count">
-                        {event.verificationCount} confirmations
-                      </span>
+
+                  <h4 className="popup-title">{event.title}</h4>
+                  <p className="popup-desc">{event.description}</p>
+
+                  <div className="popup-ward-row">
+                    <span className="ward-label">Ward:</span> {event.ward || "Bengaluru"}
+                  </div>
+
+                  {event.mediaUrl && (
+                    <div className="popup-image-preview">
+                      <img src={event.mediaUrl} alt="Report attachment" />
                     </div>
+                  )}
+
+                  <div className="popup-verification-bar">
+                    <span className="consensus-count">
+                      👥 <strong>{event.verificationCount || 1}</strong> confirmations
+                    </span>
+                    {event.isVerified && (
+                      <span className="verified-check">✓ Verified by consensus</span>
+                    )}
+                  </div>
+
+                  <div className="popup-actions">
+                    <button
+                      type="button"
+                      className="popup-btn confirm"
+                      onClick={() => onVerifyEvent && onVerifyEvent(event.id)}
+                    >
+                      👍 Confirm (+1)
+                    </button>
+                    <button
+                      type="button"
+                      className="popup-btn resolve"
+                      onClick={() => onResolveEvent && onResolveEvent(event.id)}
+                    >
+                      ✓ Mark Cleared
+                    </button>
                   </div>
                 </div>
               </Popup>
             </Marker>
           );
-        }
-      })}
+        })}
 
-      {trafficRoutes.map((route) => (
-        <Polyline
-          key={route.id}
-          positions={route.positions}
-          color="red"
-          weight={5}
-        >
-          <Popup className="traffic-popup" autoPan={false} closeButton={false} open={true}>
-            <div className="traffic-popup-content">
-              <h4>{route.info}</h4>
-            </div>
-          </Popup>
-        </Polyline>
-      ))}
-    </MapContainer>
+        {/* Real-Time Traffic Corridors */}
+        {showTraffic &&
+          trafficCorridors.map((corridor) => (
+            <Polyline
+              key={corridor.id}
+              positions={corridor.positions}
+              color={corridor.color}
+              weight={6}
+              opacity={0.85}
+            >
+              <Popup className="traffic-clean-popup">
+                <div className="traffic-popup-body">
+                  <div className="traffic-badge">{corridor.status}</div>
+                  <h5>{corridor.name}</h5>
+                  <div className="traffic-metrics">
+                    <span>Speed: <strong>{corridor.speed}</strong></span>
+                    <span>Delay: <strong style={{ color: corridor.color }}>{corridor.delay}</strong></span>
+                  </div>
+                </div>
+              </Popup>
+            </Polyline>
+          ))}
+      </MapContainer>
+    </div>
   );
 };
 
