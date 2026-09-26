@@ -3,6 +3,7 @@ import React from "react";
 import PersonalizedFeed from "./PersonalizedFeed";
 import CityRecap from "./CityRecap";
 import { EMERGENCY_CONTACTS } from "../../data/constants";
+import { useLanguage } from "../../context/LanguageContext";
 import "./Sidebar.css";
 
 const Sidebar = ({
@@ -13,6 +14,8 @@ const Sidebar = ({
   onEventSelect,
   activeFilter = "All",
 }) => {
+  const { t } = useLanguage();
+
   return (
     <aside className="sidebar-container">
       <div className="sidebar-tabs">
@@ -21,21 +24,21 @@ const Sidebar = ({
           className={`sidebar-tab-btn ${activeTab === "feed" ? "active" : ""}`}
           onClick={() => onTabChange("feed")}
         >
-          🚨 Live Feed
+          {t.tabs.feed}
         </button>
         <button
           type="button"
           className={`sidebar-tab-btn ${activeTab === "recap" ? "active" : ""}`}
           onClick={() => onTabChange("recap")}
         >
-          📊 Diagnostic
+          {t.tabs.recap}
         </button>
         <button
           type="button"
           className={`sidebar-tab-btn ${activeTab === "helpline" ? "active" : ""}`}
           onClick={() => onTabChange("helpline")}
         >
-          ☎️ Helplines
+          {t.tabs.helpline}
         </button>
       </div>
 
@@ -54,8 +57,8 @@ const Sidebar = ({
         {activeTab === "helpline" && (
           <div className="helpline-tab-content">
             <div className="helpline-header">
-              <h4>Bengaluru Emergency Helplines</h4>
-              <p>Direct official control rooms for civic, traffic & utility emergencies.</p>
+              <h4>{t.sidebar.helplineTitle}</h4>
+              <p>{t.sidebar.helplineSub}</p>
             </div>
             <div className="helpline-list">
               {EMERGENCY_CONTACTS.map((c) => (

@@ -12,16 +12,17 @@ describe('NammaPulse Core Platform Tests', () => {
   test('renders hazard filter chips and calculates active incidents', () => {
     render(<App />);
     expect(screen.getByText('All Hazards')).toBeInTheDocument();
-    expect(screen.getByText('Traffic Jams')).toBeInTheDocument();
+    expect(screen.getAllByText('Traffic Jams').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Waterlogging').length).toBeGreaterThan(0);
-    expect(screen.getByText('Accidents')).toBeInTheDocument();
-    expect(screen.getByText('Potholes / Infra')).toBeInTheDocument();
+    expect(screen.getAllByText('Accidents').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Potholes / Infra').length).toBeGreaterThan(0);
   });
 
-  test('renders floating action buttons for reporting and AI', () => {
+  test('renders floating action buttons for reporting, AI, and Safe Route', () => {
     render(<App />);
     expect(screen.getByText(/Report Hazard/i)).toBeInTheDocument();
     expect(screen.getByText(/NammaPulse AI/i)).toBeInTheDocument();
+    expect(screen.getByText(/Safe Route/i)).toBeInTheDocument();
   });
 
   test('switches sidebar tabs between Feed, Diagnostic, and Helplines', () => {
@@ -45,5 +46,27 @@ describe('NammaPulse Core Platform Tests', () => {
     fireEvent.click(cancelBtn);
 
     expect(screen.queryByText('Report Civic or Traffic Incident')).not.toBeInTheDocument();
+  });
+
+  test('opens and closes Safe Route transit navigation modal', () => {
+    render(<App />);
+    const routeBtn = screen.getByText(/Safe Route/i);
+    fireEvent.click(routeBtn);
+
+    expect(screen.getByText('Safe Transit & Hazard Avoidance')).toBeInTheDocument();
+    const closeBtn = screen.getByText('✕');
+    fireEvent.click(closeBtn);
+
+    expect(screen.queryByText('Safe Transit & Hazard Avoidance')).not.toBeInTheDocument();
+  });
+
+  test('toggles language to Kannada and translates UI elements', () => {
+    render(<App />);
+    const select = screen.getByLabelText(/Select Language/i);
+    fireEvent.change(select, { target: { value: 'kn' } });
+
+    expect(screen.getByText('ಬೆಂಗಳೂರು')).toBeInTheDocument();
+    expect(screen.getByText('ನೈಜ-ಸಮಯದ ನಾಗರಿಕ ಮತ್ತು ಸಂಚಾರ ಮಾಹಿತಿ')).toBeInTheDocument();
+    expect(screen.getByText('ಎಲ್ಲಾ ಅಪಾಯಗಳು')).toBeInTheDocument();
   });
 });

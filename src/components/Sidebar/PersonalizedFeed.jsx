@@ -1,6 +1,7 @@
 // src/components/Sidebar/PersonalizedFeed.jsx
 import React, { useState } from "react";
 import TrendingItems from "./TrendingItems";
+import { useLanguage } from "../../context/LanguageContext";
 
 const PersonalizedFeed = ({
   events = [],
@@ -9,6 +10,7 @@ const PersonalizedFeed = ({
   activeFilter = "All",
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const { t } = useLanguage();
 
   const filteredEvents = events.filter((event) => {
     const matchesFilter =
@@ -34,13 +36,18 @@ const PersonalizedFeed = ({
     }
   };
 
+  const translatedFilterName =
+    activeFilter === "All"
+      ? t.sidebar.liveIncidents
+      : `${(t.filters && t.filters[activeFilter]) || activeFilter}`;
+
   return (
     <div className="feed-content">
       {/* Search Input */}
       <div className="feed-search-box">
         <input
           type="text"
-          placeholder="Search by area, ward, or keyword..."
+          placeholder={t.sidebar.searchPlaceholder}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           aria-label="Search incidents"
@@ -58,7 +65,7 @@ const PersonalizedFeed = ({
 
       <div className="feed-section-header">
         <h4>
-          {activeFilter === "All" ? "Live Incidents" : `${activeFilter} Reports`}
+          {translatedFilterName}
           <span className="feed-count-badge">{filteredEvents.length}</span>
         </h4>
       </div>
@@ -67,7 +74,7 @@ const PersonalizedFeed = ({
         {filteredEvents.length === 0 ? (
           <div className="feed-empty-state">
             <span className="empty-icon">✓</span>
-            <p>No active incidents found in this category.</p>
+            <p>{t.sidebar.emptyState}</p>
           </div>
         ) : (
           filteredEvents.map((item) => {
@@ -80,7 +87,9 @@ const PersonalizedFeed = ({
               >
                 <div className="card-top-row">
                   <span className={`urgency-dot ${getUrgencyClass(item.urgency)}`}></span>
-                  <span className="card-type">{item.type}</span>
+                  <span className="card-type">
+                    {(t.filters && t.filters[item.type]) || item.type}
+                  </span>
                   <span className="card-time">{item.timestamp}</span>
                 </div>
 
@@ -90,7 +99,7 @@ const PersonalizedFeed = ({
                 <div className="card-bottom-row">
                   <span className="card-ward">📍 {item.ward || "Bengaluru"}</span>
                   <div className="card-verifications">
-                    <span>👥 {item.verificationCount || 1}</span>
+                    <span>👥 {item.verificationCount || 1} {t.actions.confirmations}</span>
                     {item.isVerified && <span className="verified-glyph">✓</span>}
                   </div>
                 </div>
@@ -101,7 +110,7 @@ const PersonalizedFeed = ({
       </div>
 
       <div className="trending-divider">
-        <h4>Trending Bengaluru Alerts</h4>
+        <h4>{t.sidebar.trendingHeader}</h4>
       </div>
       <TrendingItems />
     </div>

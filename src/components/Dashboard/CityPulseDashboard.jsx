@@ -6,8 +6,12 @@ import Sidebar from "../Sidebar/Sidebar";
 import FilterPanel from "../Filters/FilterPanel";
 import ReportModal from "../Modals/ReportModal";
 import ChatbotModal from "../Chatbot/ChatbotModal";
+import SafeRouteModal from "../Navigation/SafeRouteModal";
 import { useEventData } from "../../hooks/useEventData";
 import { useWeather } from "../../hooks/useWeather";
+import { useGeolocation } from "../../hooks/useGeolocation";
+import { useProximityAlert } from "../../hooks/useProximityAlert";
+import { useLanguage } from "../../context/LanguageContext";
 import "./CityPulseDashboard.css";
 
 function CityPulseDashboard() {
@@ -15,19 +19,28 @@ function CityPulseDashboard() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [showReportModal, setShowReportModal] = useState(false);
   const [showChatbotModal, setShowChatbotModal] = useState(false);
+  const [showRouteModal, setShowRouteModal] = useState(false);
+  const [navigationRoute, setNavigationRoute] = useState(null);
   const [sidebarTab, setSidebarTab] = useState("feed");
   const [reportPin, setReportPin] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
 
-  const { events, addEvent, verifyEvent, resolveEvent } = useEventData();
+  const { events, addEvent, verifyEvent, resolveEvent, isLiveConnected } = useEventData();
   const weather = useWeather();
+  const { location: userLocation } = useGeolocation();
+  const { t } = useLanguage();
 
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage(null);
-    }, 4000);
+    }, 4500);
   };
+
+  // Monitor geofence proximity to active hazards
+  useProximityAlert(userLocation, events, (alert) => {
+    showToast(`${alert.title}: ${alert.body}`);
+  });
 
   // Filter events based on active category
   const filteredEvents =
@@ -38,18 +51,18 @@ function CityPulseDashboard() {
   // Handle map click to pin report coordinates
   const handleMapClick = (coords) => {
     setReportPin(coords);
-    showToast(`📍 Selected map coordinate (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}). Click 'Report Hazard' to file report.`);
+    showToast(`📍 Selected coordinate (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}). Open 'Report Hazard' to file report.`);
   };
 
   const handleOpenReportModal = () => {
     setShowReportModal(true);
   };
 
-  const handleSubmitReport = (newReport) => {
-    const created = addEvent(newReport);
+  const handleSubmitReport = async (newReport) => {
+    const created = await addEvent(newReport);
     setSelectedEvent(created);
     setReportPin(null);
-    showToast("✓ Hazard incident filed and broadcast to NammaPulse live stream!");
+    showToast("✓ Hazard incident broadcast to NammaPulse live stream!");
   };
 
   const handleVerifyEvent = (id) => {
@@ -60,6 +73,11 @@ function CityPulseDashboard() {
   const handleResolveEvent = (id) => {
     resolveEvent(id);
     showToast("✓ Incident marked as cleared by citizen consensus.");
+  };
+
+  const handleApplyRouteToMap = (route) => {
+    setNavigationRoute(route);
+    showToast("🧭 Safe navigation corridor calculated and projected onto map!");
   };
 
   const verifiedPercent = Math.round(
@@ -73,6 +91,7 @@ function CityPulseDashboard() {
         activeEventCount={events.length}
         verifiedPercent={verifiedPercent}
         weather={weather}
+        isLiveConnected={isLiveConnected}
       />
 
       {/* Modern Filter Chip Bar */}
@@ -102,17 +121,27 @@ function CityPulseDashboard() {
             onResolveEvent={handleResolveEvent}
             onMapClick={handleMapClick}
             reportPin={reportPin}
+            navigationRoute={navigationRoute}
+            onClearNavigationRoute={() => setNavigationRoute(null)}
           />
 
           {/* Clean Floating Action Buttons */}
           <div className="map-floating-actions">
             <button
               type="button"
+              className="action-fab route-fab"
+              onClick={() => setShowRouteModal(true)}
+              title="Calculate Safe Transit Route avoiding flooded underpasses"
+            >
+              🧭 Safe Route
+            </button>
+            <button
+              type="button"
               className="action-fab chatbot-fab"
               onClick={() => setShowChatbotModal(true)}
               title="Open NammaPulse AI Assistant"
             >
-              🤖 NammaPulse AI
+              {t.actions.aiAssistant}
             </button>
             <button
               type="button"
@@ -120,7 +149,7 @@ function CityPulseDashboard() {
               onClick={handleOpenReportModal}
               title="Report a civic or traffic hazard"
             >
-              🚨 Report Hazard
+              {t.actions.reportHazard}
             </button>
           </div>
         </div>
@@ -154,6 +183,15 @@ function CityPulseDashboard() {
           onClose={() => setShowChatbotModal(false)}
           events={events}
           weather={weather}
+        />
+      )}
+
+      {showRouteModal && (
+        <SafeRouteModal
+          onClose={() => setShowRouteModal(false)}
+          activeHazards={events}
+          onApplyRouteToMap={handleApplyRouteToMap}
+          userLocation={userLocation}
         />
       )}
     </div>

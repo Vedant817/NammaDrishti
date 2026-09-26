@@ -48,6 +48,19 @@
   box-shadow: var(--shadow-elevated);
 }
 
+.route-fab {
+  background: var(--bg-surface);
+  color: #10B981;
+  border-color: var(--border-light);
+}
+
+.route-fab:hover {
+  background: var(--bg-hover);
+  color: #34D399;
+  border-color: #10B981;
+  transform: translateY(-1px);
+}
+
 .chatbot-fab {
   background: var(--bg-surface);
   color: #38BDF8;
@@ -127,6 +140,7 @@
   .map-floating-actions {
     bottom: 12px;
     right: 12px;
+    gap: 6px;
   }
 
   .action-fab {

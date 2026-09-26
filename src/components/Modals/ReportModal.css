@@ -163,6 +163,18 @@
   color: var(--text-secondary);
 }
 
+.compressing-pill {
+  font-size: 0.72rem;
+  color: #FBBF24;
+}
+
+.compression-badge {
+  font-size: 0.72rem;
+  color: #34D399;
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
 .image-preview-thumbnail {
   margin-top: 6px;
   max-height: 120px;

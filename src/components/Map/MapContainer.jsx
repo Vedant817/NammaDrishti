@@ -14,6 +14,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./MapContainer.css";
 import { BENGALURU_CENTER } from "../../data/constants";
+import { useLanguage } from "../../context/LanguageContext";
 
 // Fix default Leaflet icon paths
 delete L.Icon.Default.prototype._getIconUrl;
@@ -54,7 +55,10 @@ const MapComponent = ({
   onResolveEvent,
   onMapClick,
   reportPin,
+  navigationRoute,
+  onClearNavigationRoute,
 }) => {
+  const { t } = useLanguage();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
   const [radarTimestamp, setRadarTimestamp] = useState(null);
@@ -204,7 +208,7 @@ const MapComponent = ({
           onClick={() => setShowRadar(!showRadar)}
           title="Toggle live Doppler rain radar overlay"
         >
-          🌧️ {showRadar ? "Hide Radar" : "Live Radar"}
+          🌧️ {showRadar ? t.actions.hideRadar : t.actions.liveRadar}
         </button>
 
         <button
@@ -213,8 +217,19 @@ const MapComponent = ({
           onClick={() => setShowTraffic(!showTraffic)}
           title="Toggle real-time traffic corridor delays"
         >
-          🚗 {showTraffic ? "Hide Traffic" : "Traffic Flow"}
+          🚗 {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
         </button>
+
+        {navigationRoute && (
+          <button
+            type="button"
+            className="toolbar-btn active-cyan"
+            onClick={onClearNavigationRoute}
+            title="Clear active navigation route from map"
+          >
+            ✕ Clear Route
+          </button>
+        )}
 
         <div className="toolbar-hint">
           <span>Click map to set report coordinates</span>
@@ -249,6 +264,32 @@ const MapComponent = ({
             opacity={0.65}
             zIndex={200}
           />
+        )}
+
+        {/* Navigation Route Display */}
+        {navigationRoute && navigationRoute.coordinates && (
+          <Polyline
+            positions={navigationRoute.coordinates}
+            color={navigationRoute.hasConflicts ? "#EF4444" : "#10B981"}
+            weight={7}
+            opacity={0.9}
+            dashArray={navigationRoute.hasConflicts ? "6, 8" : undefined}
+          >
+            <Popup className="clean-popup">
+              <div className="popup-body">
+                <h4>
+                  {navigationRoute.hasConflicts
+                    ? "⚠️ Caution: High Hazard Route"
+                    : "✓ Safe Navigation Corridor"}
+                </h4>
+                <p>
+                  {navigationRoute.hasConflicts
+                    ? "Route intersects active waterlogged underpass or severe choke point."
+                    : "Corridor verified clear of major civic hazards."}
+                </p>
+              </div>
+            </Popup>
+          </Polyline>
         )}
 
         {/* User reporting pin preview */}
@@ -291,6 +332,9 @@ const MapComponent = ({
             );
           }
 
+          const translatedType =
+            (t.filters && t.filters[event.type]) || event.type;
+
           return (
             <Marker
               key={event.id}
@@ -304,7 +348,7 @@ const MapComponent = ({
                 <div className="popup-body">
                   <div className="popup-header-row">
                     <span className={`popup-type-tag ${event.type.toLowerCase()}`}>
-                      {event.type}
+                      {translatedType}
                     </span>
                     <span className={`urgency-pill ${event.urgency ? event.urgency.toLowerCase() : "medium"}`}>
                       {event.urgency || "Medium"}
@@ -326,10 +370,10 @@ const MapComponent = ({
 
                   <div className="popup-verification-bar">
                     <span className="consensus-count">
-                      👥 <strong>{event.verificationCount || 1}</strong> confirmations
+                      👥 <strong>{event.verificationCount || 1}</strong> {t.actions.confirmations}
                     </span>
                     {event.isVerified && (
-                      <span className="verified-check">✓ Verified by consensus</span>
+                      <span className="verified-check">{t.actions.verifiedBadge}</span>
                     )}
                   </div>
 
@@ -339,14 +383,14 @@ const MapComponent = ({
                       className="popup-btn confirm"
                       onClick={() => onVerifyEvent && onVerifyEvent(event.id)}
                     >
-                      👍 Confirm (+1)
+                      {t.actions.confirm}
                     </button>
                     <button
                       type="button"
                       className="popup-btn resolve"
                       onClick={() => onResolveEvent && onResolveEvent(event.id)}
                     >
-                      ✓ Mark Cleared
+                      {t.actions.markCleared}
                     </button>
                   </div>
                 </div>

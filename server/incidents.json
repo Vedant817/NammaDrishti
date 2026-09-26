@@ -1,0 +1,82 @@
+[
+  {
+    "id": "bengaluru_evt_1",
+    "type": "Traffic",
+    "title": "Silk Board Junction Gridlock",
+    "ward": "BTM Layout / HSR",
+    "description": "Heavy crawling traffic heading towards Electronic City elevated tollway. Average delay +28 mins.",
+    "position": {
+      "lat": 12.9171,
+      "lng": 77.6238
+    },
+    "timestamp": "10 mins ago",
+    "urgency": "High",
+    "verificationCount": 34,
+    "isVerified": true,
+    "reportedBy": "BTP Traffic Monitor"
+  },
+  {
+    "id": "bengaluru_evt_2",
+    "type": "Waterlogging",
+    "title": "Panathur Railway Underpass Inundated",
+    "ward": "Mahadevapura / Balagere",
+    "description": "Severe water accumulation up to 2.5 feet under the railway bridge. Auto-rickshaws and two-wheelers submerged. Traffic completely halted.",
+    "position": {
+      "lat": 12.9352,
+      "lng": 77.7019
+    },
+    "timestamp": "15 mins ago",
+    "urgency": "High",
+    "verificationCount": 48,
+    "isVerified": true,
+    "reportedBy": "Local Commuter"
+  },
+  {
+    "id": "bengaluru_evt_3",
+    "type": "Infrastructure",
+    "title": "Massive Crater Potholes after Pipe Leakage",
+    "ward": "Indiranagar 100ft Road",
+    "description": "Series of unpaved deep potholes near 12th Main junction after BWSSB emergency pipe repair.",
+    "position": {
+      "lat": 12.9719,
+      "lng": 77.6412
+    },
+    "timestamp": "42 mins ago",
+    "urgency": "Medium",
+    "verificationCount": 16,
+    "isVerified": true,
+    "reportedBy": "Citizen Scout"
+  },
+  {
+    "id": "bengaluru_evt_4",
+    "type": "Waterlogging",
+    "title": "EcoSpace Outer Ring Road Drainage Overflow",
+    "ward": "Bellandur",
+    "description": "Rain runoff overflowing service road onto main carriageway towards Marathahalli.",
+    "position": {
+      "lat": 12.926,
+      "lng": 77.6744
+    },
+    "timestamp": "25 mins ago",
+    "urgency": "High",
+    "verificationCount": 29,
+    "isVerified": true,
+    "reportedBy": "ORRCA Commuter"
+  },
+  {
+    "id": "bengaluru_evt_5",
+    "type": "Accident",
+    "title": "Multi-Vehicle Collision near Airport Expressway Ramp",
+    "ward": "Hebbal Flyover",
+    "description": "Cab collided with median near Esteem Mall approach. 2 lanes blocked heading towards Airport.",
+    "position": {
+      "lat": 13.0358,
+      "lng": 77.597
+    },
+    "timestamp": "32 mins ago",
+    "urgency": "High",
+    "verificationCount": 22,
+    "isVerified": true,
+    "reportedBy": "Highway Patrol"
+  }
+]
