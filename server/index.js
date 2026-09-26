@@ -1,21 +1,18 @@
 // server/index.js
 const express = require('express');
 const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
-const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
 
 const PORT = process.env.PORT || 5001;
 
-// Enable CORS for frontend client
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-}));
+// Middleware
+app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // Socket.io for Real-Time Broadcasting
@@ -30,7 +27,77 @@ const io = new Server(server, {
 const DATA_FILE = path.join(__dirname, 'incidents.json');
 
 const INITIAL_INCIDENTS = [
-  {\n    id: 'bengaluru_evt_1',\n    type: 'Traffic',\n    title: 'Silk Board Junction Gridlock',\n    ward: 'BTM Layout / HSR',\n    description: 'Heavy crawling traffic heading towards Electronic City elevated tollway. Average delay +28 mins.',\n    position: { lat: 12.9171, lng: 77.6238 },\n    timestamp: '10 mins ago',\n    urgency: 'High',\n    verificationCount: 34,\n    isVerified: true,\n    reportedBy: 'BTP Traffic Monitor',\n    resolutionVotes: 0,\n  },\n  {\n    id: 'bengaluru_evt_2',\n    type: 'Waterlogging',\n    title: 'Panathur Railway Underpass Inundated',\n    ward: 'Mahadevapura / Balagere',\n    description: 'Severe water accumulation up to 2.5 feet under the railway bridge. Auto-rickshaws and two-wheelers submerged. Traffic completely halted.',\n    position: { lat: 12.9352, lng: 77.7019 },\n    timestamp: '15 mins ago',\n    urgency: 'High',\n    verificationCount: 48,\n    isVerified: true,\n    reportedBy: 'Local Commuter',\n    resolutionVotes: 0,\n  },\n  {\n    id: 'bengaluru_evt_3',\n    type: 'Infrastructure',\n    title: 'Massive Crater Potholes after Pipe Leakage',\n    ward: 'Indiranagar 100ft Road',\n    description: 'Series of unpaved deep potholes near 12th Main junction after BWSSB emergency pipe repair.',\n    position: { lat: 12.9719, lng: 77.6412 },\n    timestamp: '42 mins ago',\n    urgency: 'Medium',\n    verificationCount: 16,\n    isVerified: true,\n    reportedBy: 'Citizen Scout',\n    resolutionVotes: 0,\n  },\n  {\n    id: 'bengaluru_evt_4',\n    type: 'Waterlogging',\n    title: 'EcoSpace Outer Ring Road Drainage Overflow',\n    ward: 'Bellandur',\n    description: 'Rain runoff overflowing service road onto main carriageway towards Marathahalli.',\n    position: { lat: 12.9260, lng: 77.6744 },\n    timestamp: '25 mins ago',\n    urgency: 'High',\n    verificationCount: 29,\n    isVerified: true,\n    reportedBy: 'ORRCA Commuter',\n    resolutionVotes: 0,\n  },\n  {\n    id: 'bengaluru_evt_5',\n    type: 'Accident',\n    title: 'Multi-Vehicle Collision near Airport Expressway Ramp',\n    ward: 'Hebbal Flyover',\n    description: 'Cab collided with median near Esteem Mall approach. 2 lanes blocked heading towards Airport.',\n    position: { lat: 13.0358, lng: 77.5970 },\n    timestamp: '32 mins ago',\n    urgency: 'High',\n    verificationCount: 22,\n    isVerified: true,\n    reportedBy: 'Highway Patrol',\n    resolutionVotes: 0,\n  },\n];
+  {
+    id: 'bengaluru_evt_1',
+    type: 'Traffic',
+    title: 'Silk Board Junction Gridlock',
+    ward: 'BTM Layout / HSR',
+    description: 'Heavy crawling traffic heading towards Electronic City elevated tollway. Average delay +28 mins.',
+    position: { lat: 12.9171, lng: 77.6238 },
+    timestamp: '10 mins ago',
+    urgency: 'High',
+    verificationCount: 34,
+    isVerified: true,
+    reportedBy: 'BTP Traffic Monitor',
+    resolutionVotes: 0,
+  },
+  {
+    id: 'bengaluru_evt_2',
+    type: 'Waterlogging',
+    title: 'Panathur Railway Underpass Inundated',
+    ward: 'Mahadevapura / Balagere',
+    description: 'Severe water accumulation up to 2.5 feet under the railway bridge. Auto-rickshaws and two-wheelers submerged. Traffic completely halted.',
+    position: { lat: 12.9352, lng: 77.7019 },
+    timestamp: '15 mins ago',
+    urgency: 'High',
+    verificationCount: 48,
+    isVerified: true,
+    reportedBy: 'Local Commuter',
+    resolutionVotes: 0,
+  },
+  {
+    id: 'bengaluru_evt_3',
+    type: 'Infrastructure',
+    title: 'Massive Crater Potholes after Pipe Leakage',
+    ward: 'Indiranagar 100ft Road',
+    description: 'Series of unpaved deep potholes near 12th Main junction after BWSSB emergency pipe repair.',
+    position: { lat: 12.9719, lng: 77.6412 },
+    timestamp: '42 mins ago',
+    urgency: 'Medium',
+    verificationCount: 16,
+    isVerified: true,
+    reportedBy: 'Citizen Scout',
+    resolutionVotes: 0,
+  },
+  {
+    id: 'bengaluru_evt_4',
+    type: 'Waterlogging',
+    title: 'EcoSpace Outer Ring Road Drainage Overflow',
+    ward: 'Bellandur',
+    description: 'Rain runoff overflowing service road onto main carriageway towards Marathahalli.',
+    position: { lat: 12.9260, lng: 77.6744 },
+    timestamp: '25 mins ago',
+    urgency: 'High',
+    verificationCount: 29,
+    isVerified: true,
+    reportedBy: 'ORRCA Commuter',
+    resolutionVotes: 0,
+  },
+  {
+    id: 'bengaluru_evt_5',
+    type: 'Accident',
+    title: 'Multi-Vehicle Collision near Airport Expressway Ramp',
+    ward: 'Hebbal Flyover',
+    description: 'Cab collided with median near Esteem Mall approach. 2 lanes blocked heading towards Airport.',
+    position: { lat: 13.0358, lng: 77.5970 },
+    timestamp: '32 mins ago',
+    urgency: 'High',
+    verificationCount: 22,
+    isVerified: true,
+    reportedBy: 'Highway Patrol',
+    resolutionVotes: 0,
+  },
+];
 
 // Load or initialize incidents store
 let incidents = [];
