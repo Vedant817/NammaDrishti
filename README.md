@@ -1,70 +1,148 @@
-# Getting Started with Create React App
+# 🛰️ NammaPulse — Bengaluru Real-Time Civic & Transit Intelligence
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+> High-accuracy, hyper-localized, real-time civic incident tracking, Doppler rain radar, underpass inundation monitoring, and safe hazard-avoidance routing for Bengaluru commuters.
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## 🌟 Overview
 
-### `npm start`
+**NammaPulse** (ನಮ್ಮ ಪಲ್ಸ್) is a production-grade civic intelligence web application engineered specifically for Bengaluru's urban infrastructure challenges. It bridges the critical information gap during severe monsoons, flash floods, chronic traffic bottlenecks, and civic emergencies by synthesizing:
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+1. **Live Citizen Crowdsourcing & Multi-Peer Consensus**: High-integrity incident reporting with client-side image compression, spatial deduplication, and a multi-citizen consensus mechanism (requiring independent confirmations before clearance) to prevent manipulation.
+2. **Real-Time Doppler Rain Radar**: Live 5-minute automated updates from RainViewer radar frames projected directly over Bengaluru's municipal wards.
+3. **Open-Meteo Precision Weather & Flood Telemetry**: Hourly precipitation intensity, relative humidity, wind vectors, and dynamic flood risk indexing with fail-safe offline state reporting.
+4. **Chronic Underpass Inundation Watch**: Pre-calibrated spatial catalog of Bengaluru's most critical waterlogging bottlenecks (K.R. Circle, Panathur Railway Underpass, Windsor Manor, Okalipuram, Benniganahalli, Marathahalli) with real-time precipitation trigger thresholds.
+5. **Safe Navigation Corridor Routing**: OSRM-powered route calculation augmented with perpendicular point-to-segment distance spatial algorithms (`distanceToSegmentKm`) that flag hazards located along road segments between navigation waypoints.
+6. **2.5 km Proximity Geofencing & Web Audio Alerts**: Browser-based geolocation alerts paired with a gentle dual-tone Web Audio chime that warns drivers when approaching active flooded roads or accidents.
+7. **Trilingual Localization**: Full native UI support for **Kannada (ಕನ್ನಡ)**, **Hindi (हिंदी)**, and **English**.
+8. **Monsoon-Resilient Offline PWA**: Service Worker caching of App Shell assets ensuring uninterrupted access during severe weather-induced mobile packet loss and cell tower degradation.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+---
 
-### `npm test`
+## 🏗️ System Architecture
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```mermaid
+graph TD
+    Client["Client PWA (React 19 / Leaflet)"]
+    ServiceWorker["PWA Service Worker (sw.js)"]
+    API["Express REST API (server/index.js)"]
+    Sockets["Socket.io WebSocket Gateway"]
+    OSRM["OSRM Routing Engine"]
+    OpenMeteo["Open-Meteo Weather API"]
+    RainViewer["RainViewer Doppler Radar"]
 
-### `npm run build`
+    Client -->|App Shell Cache| ServiceWorker
+    Client -->|REST Requests| API
+    Client <-->|Bi-directional Live Stream| Sockets
+    Client -->|Safe Driving Routes| OSRM
+    Client -->|Doppler Radar Tiles| RainViewer
+    Client -->|Precipitation Telemetry| OpenMeteo
+    API -->|Atomic JSON Storage| LocalDisk[(server/data/events.json)]
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+---
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 🚀 Getting Started
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Prerequisites
+- **Node.js**: v18.0.0 or higher
+- **npm**: v9.0.0 or higher
 
-### `npm run eject`
+### Local Development
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Vedant817/NammaPulse.git
+   cd NammaPulse
+   ```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+2. **Install dependencies**:
+   ```bash
+   # Install root frontend dependencies
+   npm install
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+   # Install server backend dependencies
+   cd server && npm install && cd ..
+   ```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+3. **Start both Frontend and Backend concurrently**:
+   ```bash
+   # Terminal 1: Start Express & WebSocket Server (Port 5001)
+   npm run server
 
-## Learn More
+   # Terminal 2: Start React Development Server (Port 3000)
+   npm start
+   ```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+4. Open your browser and navigate to `http://localhost:3000`.
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+---
 
-### Code Splitting
+## 🧪 Testing & Quality Assurance
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+NammaPulse includes unified frontend and backend test suites with zero external mocks required:
 
-### Analyzing the Bundle Size
+```bash
+# Run complete test suite (Frontend + Backend)
+npm run test:all
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+# Run frontend tests only
+npm run test:ci
 
-### Making a Progressive Web App
+# Run backend API & consensus tests only
+npm run test:backend
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+### Production Build
 
-### Advanced Configuration
+```bash
+npm run build
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+---
 
-### Deployment
+## 🐳 Docker & Containerization
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Deploy NammaPulse anywhere with Docker and Docker Compose:
 
-### `npm run build` fails to minify
+```bash
+# Build and run containerized NammaPulse stack
+docker-compose up --build -d
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+# View container logs
+docker-compose logs -f
+
+# Verify container health check
+docker inspect --format='{{json .State.Health}}' nammapulse-app
+```
+
+The application will be accessible at `http://localhost:5001`.
+
+---
+
+## 🛡️ Reliability & Security Highlights
+
+- **Consensus Clearance**: Requires 2 independent citizen confirmations to clear an incident, preventing premature removal of active hazards.
+- **Vote Fraud Prevention**: Tracks user action tokens (`nammapulse_user_votes_v1`) to prevent click-farming and manufactured consensus.
+- **Storage Quota Protection**: Client-side `safeSaveStorage` catches `QuotaExceededError` and downsamples base64 images from older entries, guaranteeing incident titles and coordinates are never lost.
+- **Atomic Server Persistence**: Uses synchronous atomic disk writes with memory rollbacks if disk errors occur.
+- **Perpendicular Spatial Distance**: Employs mathematical line-segment projection to avoid missing road hazards situated along straight highway stretches between OSRM vertices.
+
+---
+
+## 🗺️ Monitored Transit Corridors & Underpass Basins
+
+| Underpass / Corridor | Zone | Critical Rain Threshold | Recorded Max Inundation | Drainage Infrastructure |
+| :--- | :--- | :--- | :--- | :--- |
+| **K.R. Circle Underpass** | Central / Vidhana Soudha | 8.0 mm/hr | 5.5 ft | Dual Submersible 15HP + Automated Barrier |
+| **Panathur Railway Underpass** | Mahadevapura / ORR | 6.0 mm/hr | 4.2 ft | Single Diesel Pump + Manual Barricade |
+| **Windsor Manor Underpass** | West / Sankey | 10.0 mm/hr | 3.5 ft | Dual Electric 20HP + Visual Gauge |
+| **Okalipuram Underpass** | Majestic / West | 9.0 mm/hr | 4.0 ft | Fixed Sump 10HP + Manual Barrier |
+| **Benniganahalli Bridge** | East / KR Puram | 7.5 mm/hr | 4.8 ft | Dual Sump + Police Caution Board |
+| **Silk Board - BTM Corridor** | South / Central Silk Board | Historical Chokepoint | Baseline Delay +28 min | Monitored Transit Corridor |
+
+---
+
+## 📄 License
+
+MIT © 2026 Vedant817

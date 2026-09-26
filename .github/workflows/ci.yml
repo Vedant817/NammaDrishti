@@ -24,11 +24,15 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
 
-    - name: Install Dependencies
+    - name: Install Root Dependencies
       run: npm ci
 
-    - name: Run Test Suite
-      run: npm run test:ci
+    - name: Install Server Dependencies
+      working-directory: ./server
+      run: npm ci
+
+    - name: Run Complete Test Suite (Frontend & Backend)
+      run: npm run test:all
 
     - name: Build Production Bundle
       run: npm run build

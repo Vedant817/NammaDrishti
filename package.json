@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@react-google-maps/api": "^2.20.7",
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "firebase": "^10.14.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^13.5.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "leaflet": "^1.9.4",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-leaflet": "^4.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-leaflet": "^5.0.0",
     "react-scripts": "5.0.1",
     "socket.io": "^4.8.4",
     "socket.io-client": "^4.8.4",
@@ -22,6 +24,8 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "test:ci": "react-scripts test --watchAll=false",
+    "test:backend": "node --test server/test/api.test.js",
+    "test:all": "npm run test:ci && npm run test:backend",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -41,10 +45,5 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "devDependencies": {
-    "@testing-library/jest-dom": "^7.0.1",
-    "@testing-library/react": "^16.3.3",
-    "@types/leaflet": "^1.9.19"
   }
 }
