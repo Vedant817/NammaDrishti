@@ -102,5 +102,27 @@
     "createdAt": "2026-09-27T08:49:19.373Z",
     "timestamp": "Official BTP Bulletin",
     "hexIndex": "hex_r8_9760_2084"
+  },
+  {
+    "id": "btp_official_adv_1",
+    "type": "Traffic",
+    "title": "BTP Advisory: Bannerghatta Road Metro Phase 2 Diversion",
+    "ward": "Bannerghatta Road / Dairy Circle",
+    "description": "BMRCL metro pillar erection work between Dairy Circle and Sagar Hospital. Traffic diverted via Tavarekere Main Road. Expect 20-25 min transit delay.",
+    "position": {
+      "lat": 12.9262,
+      "lng": 77.5996
+    },
+    "urgency": "Medium",
+    "verificationCount": 95,
+    "verificationScore": 95,
+    "clusterCount": 1,
+    "isVerified": true,
+    "isAuthoritative": true,
+    "reportedBy": "Bengaluru Traffic Police (BTP Control Room)",
+    "officialSource": "BTP Traffic Bulletin (Feed Ingestion)",
+    "hexIndex": "hex_r8_9757_2076",
+    "timestamp": "Official BTP Bulletin",
+    "createdAt": "2026-09-27T19:41:18.169Z"
   }
 ]
