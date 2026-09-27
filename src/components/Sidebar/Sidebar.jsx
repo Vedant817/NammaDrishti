@@ -153,6 +153,7 @@ const Sidebar = ({
             events={allEvents || events}
             rainIntensity={rainIntensity}
             isWeatherOffline={isWeatherOffline}
+            onSelectLocation={onEventSelect}
           />
         )}
 
@@ -198,7 +199,7 @@ const Sidebar = ({
                       <span>ℹ️ Browser pop-up blocked. Click "Send WhatsApp SOS" directly below:</span>
                     </div>
                   )}
-                  <div className="sos-actions-row">
+                  <div className="sos-actions-row" style={{ flexWrap: 'wrap' }}>
                     <a
                       href={sosStatus.whatsappUrl}
                       target="_blank"
@@ -206,6 +207,14 @@ const Sidebar = ({
                       className="sos-whatsapp-btn"
                     >
                       💬 Send WhatsApp SOS
+                    </a>
+                    <a
+                      href={`sms:112?body=${encodeURIComponent(
+                        `EMERGENCY ALERT [NammaDrishti]: Stranded in Bengaluru at GPS: ${sosStatus.lat ? sosStatus.lat.toFixed(5) : ''}, ${sosStatus.lng ? sosStatus.lng.toFixed(5) : ''}. Need urgent assistance.`
+                      )}`}
+                      className="sos-sms-btn"
+                    >
+                      📱 SMS (Offline GSM)
                     </a>
                     <a href="tel:112" className="sos-dial-btn">
                       📞 Call 112 (Police/Med)

@@ -133,6 +133,12 @@ const PersonalizedFeed = ({
 
                 <h5 className="card-title">{item.title}</h5>
                 <p className="card-desc">{item.description}</p>
+                {item.waterDepth && (
+                  <div className="card-water-depth-pill" style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4', padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', marginTop: '6px', marginBottom: '4px' }}>
+                    <span>🌊 Depth: <strong>{item.waterDepth}</strong></span>
+                    {item.vehiclePassability && <span>• 🚫 {item.vehiclePassability}</span>}
+                  </div>
+                )}
 
                 <div className="card-bottom-row">
                   <span className="card-ward">📍 {item.ward || "Bengaluru"}</span>

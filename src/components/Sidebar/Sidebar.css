@@ -498,6 +498,23 @@
   background: #059669;
 }
 
+.sos-sms-btn {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  background: #2563EB;
+  color: white;
+  padding: 8px 10px;
+  border-radius: var(--radius-xs, 4px);
+  font-size: 0.74rem;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+.sos-sms-btn:hover {
+  background: #1D4ED8;
+}
+
 .sos-dial-btn {
   flex: 1;
   text-align: center;

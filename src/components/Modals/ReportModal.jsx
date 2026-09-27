@@ -89,6 +89,8 @@ const ReportModal = ({
     ward: "",
     position: initialCoordinates || null,
     mediaUrl: null,
+    waterDepth: "< 6 in (Ankle Deep)",
+    vehiclePassability: "Passable with Caution",
   });
 
   const [locationSource, setLocationSource] = useState(
@@ -174,6 +176,8 @@ const ReportModal = ({
     try {
       const res = await onSubmitReport({
         ...formData,
+        waterDepth: formData.type === "Waterlogging" ? formData.waterDepth : null,
+        vehiclePassability: formData.type === "Waterlogging" ? formData.vehiclePassability : null,
         position: resolvedCoords,
       });
       if (res && res.error) {
@@ -221,6 +225,36 @@ const ReportModal = ({
               ))}
             </div>
           </div>
+
+          {formData.type === "Waterlogging" && (
+            <div className="form-row monsoon-telemetry-row" style={{ background: "rgba(6, 182, 212, 0.08)", padding: "10px", borderRadius: "6px", marginBottom: "14px", border: "1px solid rgba(6, 182, 212, 0.2)" }}>
+              <div className="form-group flex-1">
+                <label htmlFor="report-depth" style={{ color: "#06B6D4", fontWeight: 600 }}>🌊 Inundation Depth</label>
+                <select
+                  id="report-depth"
+                  value={formData.waterDepth}
+                  onChange={(e) => setFormData({ ...formData, waterDepth: e.target.value })}
+                >
+                  <option value="< 6 in (Ankle Deep)">&lt; 6 in (Ankle Deep - Passable)</option>
+                  <option value="1 - 1.5 ft (Exhaust Level)">1 - 1.5 ft (Exhaust Level - 2W Danger)</option>
+                  <option value="> 2.0 ft (Engine Submersion)">&gt; 2.0 ft (Critical Submersion / Closed)</option>
+                </select>
+              </div>
+              <div className="form-group flex-1">
+                <label htmlFor="report-passability" style={{ color: "#06B6D4", fontWeight: 600 }}>🚫 Vehicle Passability</label>
+                <select
+                  id="report-passability"
+                  value={formData.vehiclePassability}
+                  onChange={(e) => setFormData({ ...formData, vehiclePassability: e.target.value })}
+                >
+                  <option value="Passable with Caution">Passable with Caution</option>
+                  <option value="2-Wheelers Blocked">2-Wheelers Blocked</option>
+                  <option value="Cars Blocked / SUV Only">Cars Blocked / SUV Only</option>
+                  <option value="Completely Impassable">Completely Impassable / Blocked</option>
+                </select>
+              </div>
+            </div>
+          )}
 
           <div className="form-group">
             <label htmlFor="report-title">{reportT.hazardTitle}</label>

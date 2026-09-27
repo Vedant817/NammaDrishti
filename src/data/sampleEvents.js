@@ -18,6 +18,8 @@ export const initialBengaluruEvents = [
     position: { lat: 12.9366, lng: 77.6974 },
     type: "Waterlogging",
     title: "Panathur Railway Underpass Inundation",
+    waterDepth: "2.0 ft (Engine Submersion)",
+    vehiclePassability: "2-Wheelers Impassable",
     urgency: "High",
     description: "Water level approximately 2 feet deep after afternoon downpour. Two-wheelers stalled.",
     ward: "Varthur (Ward 149)",

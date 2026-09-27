@@ -17,7 +17,9 @@
     "isVerified": true,
     "reportedBy": "Local Commuter",
     "hexIndex": "hex_r8_9771_2078",
-    "createdAt": "2026-09-27T08:34:19.378Z"
+    "createdAt": "2026-09-27T08:34:19.378Z",
+    "waterDepth": "2.5 ft (Engine Submersion)",
+    "vehiclePassability": "2-Wheelers Impassable"
   },
   {
     "id": "bengaluru_evt_3",
@@ -57,7 +59,9 @@
     "isVerified": true,
     "reportedBy": "ORRCA Commuter",
     "hexIndex": "hex_r8_9768_2076",
-    "createdAt": "2026-09-27T08:24:19.378Z"
+    "createdAt": "2026-09-27T08:24:19.378Z",
+    "waterDepth": "1.8 ft (Exhaust Level)",
+    "vehiclePassability": "Cars Impassable / SUV Only"
   },
   {
     "id": "btp_official_adv_2",

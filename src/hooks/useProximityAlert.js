@@ -3,6 +3,24 @@ import { useEffect, useRef } from "react";
 import { calculateDistance } from "../services/routingService";
 
 /**
+ * Speaks hands-free voice alerts for commuters when approaching close hazards.
+ */
+const speakVoiceAlert = (text) => {
+  try {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.lang = "en-IN";
+      window.speechSynthesis.speak(utterance);
+    }
+  } catch (e) {
+    // Speech synthesis error handled gracefully
+  }
+};
+
+/**
  * Plays a gentle, pleasant Web Audio notification chime when a hazard geofence is triggered.
  */
 const playProximityChime = () => {
@@ -64,6 +82,12 @@ export const useProximityAlert = (userLocation, events = [], onAlertTriggered) =
       if (distKm <= 2.5) {
         alertedIdsRef.current.add(hazard.id);
         playProximityChime();
+
+        if (distKm <= 1.2) {
+          const depthText = hazard.waterDepth ? ` Depth is ${hazard.waterDepth}.` : '';
+          const voiceMessage = `Caution: ${hazard.title} reported ${distKm < 0.5 ? 'less than 500 meters ahead' : distKm.toFixed(1) + ' kilometers ahead'} in ${hazard.ward || 'Bengaluru'}.${depthText}`;
+          speakVoiceAlert(voiceMessage);
+        }
 
         const alertPayload = {
           title: `⚠️ Hazard Near You (${distKm.toFixed(1)} km)`,

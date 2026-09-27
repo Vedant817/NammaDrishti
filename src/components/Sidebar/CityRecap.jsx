@@ -2,7 +2,7 @@
 import React from "react";
 import { BENGALURU_UNDERPASSES, evaluateUnderpassRisk } from "../../data/bengaluruUnderpasses";
 
-const CityRecap = ({ events = [], rainIntensity = 0, isWeatherOffline = false }) => {
+const CityRecap = ({ events = [], rainIntensity = 0, isWeatherOffline = false, onSelectLocation }) => {
   const trafficCount = events.filter((e) => e.type === "Traffic").length;
   const floodCount = events.filter((e) => e.type === "Waterlogging").length;
   const accidentCount = events.filter((e) => e.type === "Accident").length;
@@ -77,8 +77,41 @@ const CityRecap = ({ events = [], rainIntensity = 0, isWeatherOffline = false })
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                 Zone: {up.zone} • Trigger: &gt;{up.criticalThresholdMmPerHour} mm/hr • Max Depth: {up.maxRecordedDepthFt} ft
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '2px' }}>
-                Pump: {up.pumpStation} • Barrier: {up.gateStatus}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                  Pump: {up.pumpStation} • Barrier: {up.gateStatus}
+                </span>
+                {onSelectLocation && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectLocation({
+                      id: `underpass_${up.id}`,
+                      title: up.name,
+                      ward: up.zone,
+                      type: "Waterlogging",
+                      urgency: risk.isFloodedLikely ? "High" : "Medium",
+                      waterDepth: `${up.maxRecordedDepthFt} ft (Historic Max)`,
+                      vehiclePassability: risk.isFloodedLikely ? "Impassable" : "Passable with Caution",
+                      description: `${up.name} in ${up.zone}. ${risk.action} Critical rain threshold: ${up.criticalThresholdMmPerHour} mm/hr.`,
+                      position: { lat: up.lat, lng: up.lng },
+                      verificationCount: 12,
+                      isVerified: true,
+                      timestamp: "Live Diagnostic"
+                    })}
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      color: '#60A5FA',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                    }}
+                  >
+                    📍 View on Map
+                  </button>
+                )}
               </div>
               {risk.action && (
                 <div style={{ fontSize: '0.7rem', color: risk.color, marginTop: '3px', fontStyle: 'italic' }}>

@@ -223,6 +223,11 @@ const SafeRouteModal = ({
                       <div className="conflict-info">
                         <strong>{c.hazard.title}</strong>
                         <p>{c.hazard.description}</p>
+                        {c.hazard.waterDepth && (
+                          <span className="conflict-depth-badge" style={{ color: '#06B6D4', fontSize: '0.74rem', display: 'block', marginTop: '2px', fontWeight: 600 }}>
+                            🌊 Depth: {c.hazard.waterDepth} {c.hazard.vehiclePassability ? `• 🚫 ${c.hazard.vehiclePassability}` : ''}
+                          </span>
+                        )}
                         <span className="conflict-dist">
                           Approx. {Math.round(c.distanceKm * 1000)}m from roadway
                         </span>

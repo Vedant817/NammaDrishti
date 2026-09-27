@@ -346,7 +346,7 @@ app.get('/api/media/status', (req, res) => {
 });
 
 app.post('/api/incidents', reportLimiter, (req, res) => {
-  const { id, type, title, ward, description, position, urgency, mediaUrl } = req.body || {};
+  const { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability } = req.body || {};
 
   const trimmedTitle = typeof title === 'string' ? title.trim() : '';
   const trimmedDesc = typeof description === 'string' ? description.trim() : '';
@@ -414,6 +414,8 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     if (!Array.isArray(clusterMatch.reporters)) {
       clusterMatch.reporters = [clusterMatch.reportedBy || 'initial_reporter'];
     }
+    if (waterDepth && !clusterMatch.waterDepth) clusterMatch.waterDepth = String(waterDepth).slice(0, 50);
+    if (vehiclePassability && !clusterMatch.vehiclePassability) clusterMatch.vehiclePassability = String(vehiclePassability).slice(0, 50);
     const isNewReporter = !clusterMatch.reporters.includes(reporterKey);
     if (isNewReporter) {
       clusterMatch.reporters.push(reporterKey);
@@ -495,6 +497,8 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     isVerified: false,
     isAuthoritative: false,
     reportedBy: sanitizedReportedBy,
+    waterDepth: waterDepth ? String(waterDepth).slice(0, 50) : null,
+    vehiclePassability: vehiclePassability ? String(vehiclePassability).slice(0, 50) : null,
     reporters: [reporterKey],
     verifiedVoters: [reporterKey],
     mediaUrl: mediaUrl || null,
