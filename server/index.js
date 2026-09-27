@@ -6,6 +6,11 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 
+const { getHexIndex, getHexRing } = require('./services/spatialHex.js');
+const { createRateLimiter } = require('./services/rateLimiter.js');
+const { syncBtpAdvisories, getBtpAdvisories } = require('./services/btpIngestion.js');
+const { processMediaUpload } = require('./services/mediaService.js');
+
 const app = express();
 const server = http.createServer(app);
 
@@ -32,21 +37,24 @@ try {
   if (fs.existsSync(DATA_FILE)) {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
     incidents = JSON.parse(raw);
-    // Ensure all incidents have a valid createdAt timestamp for TTL decay
+    // Ensure all incidents have a valid createdAt timestamp and hex index
     const now = Date.now();
     incidents = incidents.map((inc) => {
-      if (!inc.createdAt) {
+      let createdAt = inc.createdAt;
+      if (!createdAt) {
         let minsAgo = 30;
         if (typeof inc.timestamp === 'string') {
           const match = inc.timestamp.match(/(\d+)\s*mins?\s*ago/i);
           if (match) minsAgo = parseInt(match[1], 10);
         }
-        return {
-          ...inc,
-          createdAt: new Date(now - minsAgo * 60 * 1000).toISOString(),
-        };
+        createdAt = new Date(now - minsAgo * 60 * 1000).toISOString();
       }
-      return inc;
+      const hexIndex = inc.hexIndex || getHexIndex(inc.position?.lat, inc.position?.lng, 8);
+      return {
+        ...inc,
+        createdAt,
+        hexIndex,
+      };
     });
   }
 } catch (err) {
@@ -130,6 +138,42 @@ const cleanupExpiredIncidents = () => {
 const ttlInterval = setInterval(cleanupExpiredIncidents, 60000);
 if (ttlInterval.unref) ttlInterval.unref();
 
+// Periodic background sync of BTP civic advisories every 15 minutes
+const btpInterval = setInterval(() => {
+  const result = syncBtpAdvisories(incidents);
+  if (result.addedCount > 0) {
+    persistIncidents();
+    io.emit('advisories:updated', { addedCount: result.addedCount });
+    console.log(`[BTP Ingestion] Ingested ${result.addedCount} new authoritative advisory.`);
+  }
+}, 900000);
+if (btpInterval.unref) btpInterval.unref();
+
+// Rate Limiters
+const reportLimiter = createRateLimiter({
+  windowMs: 60000,
+  maxRequests: 20,
+  message: 'Too many incident submissions from this IP. Please wait a minute before reporting again.',
+});
+
+const verifyLimiter = createRateLimiter({
+  windowMs: 60000,
+  maxRequests: 40,
+  message: 'Verification rate limit exceeded. Please wait a moment.',
+});
+
+const aiLimiter = createRateLimiter({
+  windowMs: 60000,
+  maxRequests: 30,
+  message: 'AI Assistant query limit reached. Please wait a moment before sending another query.',
+});
+
+const mediaLimiter = createRateLimiter({
+  windowMs: 60000,
+  maxRequests: 15,
+  message: 'Media upload rate limit exceeded. Please wait a minute before uploading additional photos.',
+});
+
 // REST API Endpoints
 app.get('/api/health', (req, res) => {
   res.json({
@@ -138,6 +182,13 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime(),
     activeIncidents: incidents.length,
     timestamp: new Date().toISOString(),
+    features: {
+      spatialClustering: true,
+      h3HexPartitioning: true,
+      rateLimiting: true,
+      btpIngestion: true,
+      ttlDecayWorker: true,
+    },
   });
 });
 
@@ -155,7 +206,57 @@ app.get('/api/incidents', (req, res) => {
   res.json(filtered);
 });
 
-app.post('/api/incidents', (req, res) => {
+// Hexagonal spatial partition endpoint (queries hex cell and its 6 neighbor rings)
+app.get('/api/incidents/hex/:hexId', (req, res) => {
+  const { hexId } = req.params;
+  const targetHexes = new Set(getHexRing(hexId));
+
+  const localizedIncidents = incidents.filter((i) => targetHexes.has(i.hexIndex));
+  res.json({
+    hexId,
+    neighborhoodRing: Array.from(targetHexes),
+    totalCount: localizedIncidents.length,
+    incidents: localizedIncidents,
+  });
+});
+
+// Official BTP Traffic Police Advisories Endpoint
+app.get('/api/advisories/btp', (req, res) => {
+  res.json(getBtpAdvisories());
+});
+
+app.post('/api/advisories/sync', (req, res) => {
+  const result = syncBtpAdvisories(incidents);
+  if (result.addedCount > 0) {
+    persistIncidents();
+    io.emit('advisories:updated', { addedCount: result.addedCount });
+  }
+  res.json({
+    message: `Synchronized official BTP civic advisories.`,
+    ...result,
+  });
+});
+
+// Civic Media Upload Endpoint (Cloudinary CDN or direct storage)
+app.post('/api/media/upload', mediaLimiter, (req, res) => {
+  try {
+    const { imageBase64, filename, mimeType } = req.body || {};
+    const mediaResult = processMediaUpload({ imageBase64, filename, mimeType });
+    res.status(201).json(mediaResult);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/media/status', (req, res) => {
+  res.json({
+    cloudinaryConfigured: Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY),
+    provider: process.env.CLOUDINARY_CLOUD_NAME ? 'Cloudinary CDN' : 'Optimized Direct Storage',
+    maxPayloadMb: 10,
+  });
+});
+
+app.post('/api/incidents', reportLimiter, (req, res) => {
   const { id, type, title, ward, description, position, urgency, mediaUrl } = req.body;
 
   if (!title || !description || !position) {
@@ -178,6 +279,7 @@ app.post('/api/incidents', (req, res) => {
   }
 
   const category = type || 'Infrastructure';
+  const hexIndex = getHexIndex(lat, lng, 8);
 
   // 1. SPATIAL CLUSTERING & AUTO-MERGE (200m / 60 min threshold)
   const now = Date.now();
@@ -229,7 +331,7 @@ app.post('/api/incidents', (req, res) => {
       return res.status(500).json({ error: 'Failed to write clustered incident to persistent storage.' });
     }
 
-    // Broadcast cluster update to all clients
+    // Broadcast cluster update to all clients and to the spatial hex room
     io.emit('incident:clustered', {
       id: clusterMatch.id,
       verificationCount: clusterMatch.verificationCount,
@@ -237,6 +339,7 @@ app.post('/api/incidents', (req, res) => {
       isVerified: clusterMatch.isVerified,
       latestUpdate: clusterMatch.updates[0],
     });
+    io.to(`hex:${clusterMatch.hexIndex || hexIndex}`).emit('incident:spatial_update', clusterMatch);
 
     return res.status(200).json({
       ...clusterMatch,
@@ -253,6 +356,7 @@ app.post('/api/incidents', (req, res) => {
     ward: ward || 'Bengaluru Urban',
     description: String(description).trim(),
     position: { lat, lng },
+    hexIndex,
     timestamp: 'Just now',
     createdAt: new Date().toISOString(),
     urgency: urgency || 'Medium',
@@ -274,14 +378,15 @@ app.post('/api/incidents', (req, res) => {
     return res.status(500).json({ error: 'Failed to write incident to persistent storage.' });
   }
 
-  // Real-time broadcast to all connected WebSocket clients
+  // Real-time broadcast to all connected WebSocket clients and hex room
   io.emit('incident:created', newIncident);
+  io.to(`hex:${hexIndex}`).emit('incident:spatial_update', newIncident);
 
   res.status(201).json(newIncident);
 });
 
 // 3. PROXIMITY-WEIGHTED VERIFICATION ENDPOINT
-app.post('/api/incidents/:id/verify', (req, res) => {
+app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
   const { id } = req.params;
   const { voterPosition } = req.body || {};
   const incident = incidents.find((i) => i.id === id);
@@ -395,7 +500,7 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
 });
 
 // 5. CONVERSATIONAL AI TRANSIT ASSISTANT ENDPOINT
-app.post('/api/assistant/chat', (req, res) => {
+app.post('/api/assistant/chat', aiLimiter, (req, res) => {
   const { message } = req.body || {};
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'Prompt message is required.' });
@@ -466,6 +571,15 @@ io.on('connection', (socket) => {
   // Send initial dataset snapshot to freshly connected client
   socket.emit('initial:data', incidents);
 
+  // Subscribe client to specific H3-style hexagonal spatial room cells
+  socket.on('subscribe:hex', (hexIds) => {
+    if (Array.isArray(hexIds)) {
+      hexIds.forEach((id) => socket.join(`hex:${id}`));
+    } else if (typeof hexIds === 'string') {
+      socket.join(`hex:${hexIds}`);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log(`[Socket.io] Client disconnected: ${socket.id}`);
   });
@@ -478,6 +592,11 @@ module.exports = {
   getDistanceKm,
   cleanupExpiredIncidents,
   TTL_HOURS_BY_TYPE,
+  getHexIndex,
+  getHexRing,
+  syncBtpAdvisories,
+  getBtpAdvisories,
+  processMediaUpload,
 };
 
 // Start Server if executed directly

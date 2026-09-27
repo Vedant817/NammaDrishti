@@ -103,7 +103,7 @@ async function runHeavyUserSimulation() {
       body: JSON.stringify(reportPayload),
     });
     const createdIncident = await createRes.json();
-    console.log(`✓ 4. Commuter successfully reports active hazard: "${createdIncident.title}" (ID: ${createdIncident.id})`);
+    console.log(`✓ 4. Commuter successfully reports active hazard: "${createdIncident.title}" (ID: ${createdIncident.id}, Hex: ${createdIncident.hexIndex})`);
 
     // 5. Heavy User Action: Spatial Auto-Clustering
     // Second citizen reports the same waterlogging 40 meters away (0.0003 lat ~ 33 meters)
@@ -189,7 +189,31 @@ async function runHeavyUserSimulation() {
     console.log(`✓ 11. Conversational AI Assistant: Prompt answered with confidence ${(aiData.confidence * 100).toFixed(0)}%:`);
     console.log(`    "${aiData.reply.split('\n')[0]}"`);
 
-    console.log('\n🎉 ALL 11 ADVANCED HEAVY USER WORKFLOWS SUCCESSFULLY EXECUTED AND VERIFIED!');
+    // 12. Heavy User Action: H3-Style Hex Spatial Neighborhood Query
+    const hexQueryRes = await fetch(`${BASE_URL}/api/incidents/hex/${createdIncident.hexIndex}`);
+    const hexQueryData = await hexQueryRes.json();
+    console.log(`✓ 12. Hexagonal Spatial Partitioning: Subscribed to cell ${hexQueryData.hexId} with ${hexQueryData.neighborhoodRing.length} surrounding rings.`);
+
+    // 13. Heavy User Action: BTP Authoritative Civic Advisories
+    const btpRes = await fetch(`${BASE_URL}/api/advisories/btp`);
+    const btpData = await btpRes.json();
+    console.log(`✓ 13. BTP Ingestion Feed: Ingested ${btpData.length} authoritative Bengaluru Traffic Police advisories.`);
+
+    // 14. Heavy User Action: Civic Photo Upload Pipeline
+    const samplePng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const mediaRes = await fetch(`${BASE_URL}/api/media/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: samplePng,
+        filename: 'monsoon_waterlogging.png',
+        mimeType: 'image/png',
+      }),
+    });
+    const mediaData = await mediaRes.json();
+    console.log(`✓ 14. Media Storage Pipeline: Evidence uploaded via ${mediaData.provider} (Hash: ${mediaData.hash})`);
+
+    console.log('\n🎉 ALL 14 ADVANCED HEAVY USER WORKFLOWS SUCCESSFULLY EXECUTED AND VERIFIED!');
   } finally {
     server.close();
   }

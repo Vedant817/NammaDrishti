@@ -11,11 +11,13 @@
     },
     "timestamp": "10 mins ago",
     "urgency": "High",
-    "verificationCount": 34,
-    "verificationScore": 34,
+    "verificationCount": 36,
+    "verificationScore": 35.25,
     "clusterCount": 1,
     "isVerified": true,
-    "reportedBy": "BTP Traffic Monitor"
+    "reportedBy": "BTP Traffic Monitor",
+    "hexIndex": "hex_r8_9762_2075",
+    "createdAt": "2026-09-27T08:39:19.378Z"
   },
   {
     "id": "bengaluru_evt_2",
@@ -33,7 +35,9 @@
     "verificationScore": 48,
     "clusterCount": 1,
     "isVerified": true,
-    "reportedBy": "Local Commuter"
+    "reportedBy": "Local Commuter",
+    "hexIndex": "hex_r8_9771_2078",
+    "createdAt": "2026-09-27T08:34:19.378Z"
   },
   {
     "id": "bengaluru_evt_3",
@@ -51,7 +55,9 @@
     "verificationScore": 16,
     "clusterCount": 1,
     "isVerified": true,
-    "reportedBy": "Citizen Scout"
+    "reportedBy": "Citizen Scout",
+    "hexIndex": "hex_r8_9760_2084",
+    "createdAt": "2026-09-27T08:07:19.378Z"
   },
   {
     "id": "bengaluru_evt_4",
@@ -69,7 +75,9 @@
     "verificationScore": 29,
     "clusterCount": 1,
     "isVerified": true,
-    "reportedBy": "ORRCA Commuter"
+    "reportedBy": "ORRCA Commuter",
+    "hexIndex": "hex_r8_9768_2076",
+    "createdAt": "2026-09-27T08:24:19.378Z"
   },
   {
     "id": "bengaluru_evt_5",
@@ -87,6 +95,71 @@
     "verificationScore": 22,
     "clusterCount": 1,
     "isVerified": true,
-    "reportedBy": "Highway Patrol"
+    "reportedBy": "Highway Patrol",
+    "hexIndex": "hex_r8_9748_2094",
+    "createdAt": "2026-09-27T08:17:19.378Z"
+  },
+  {
+    "id": "btp_official_adv_1",
+    "type": "Traffic",
+    "title": "BTP Advisory: Bannerghatta Road Metro Phase 2 Diversion",
+    "ward": "Bannerghatta Road / Dairy Circle",
+    "description": "BMRCL metro pillar erection work between Dairy Circle and Sagar Hospital. Traffic diverted via Tavarekere Main Road. Expect 20-25 min transit delay.",
+    "position": {
+      "lat": 12.9262,
+      "lng": 77.5996
+    },
+    "urgency": "Medium",
+    "verificationCount": 95,
+    "verificationScore": 95,
+    "clusterCount": 1,
+    "isVerified": true,
+    "isAuthoritative": true,
+    "reportedBy": "Bengaluru Traffic Police (BTP Control Room)",
+    "officialSource": "BTP Traffic Bulletin",
+    "createdAt": "2026-09-27T08:49:19.372Z",
+    "timestamp": "Official BTP Bulletin"
+  },
+  {
+    "id": "btp_official_adv_2",
+    "type": "Waterlogging",
+    "title": "BTP Alert: Okalipuram Underpass Water Drainage Inundation",
+    "ward": "Majestic / Okalipuram",
+    "description": "Heavy water logging inside Okalipuram underpass towards Rajajinagar. BBMP suction pumps deployed. Two-wheelers strictly advised to use Anand Rao Circle flyover.",
+    "position": {
+      "lat": 12.9818,
+      "lng": 77.5684
+    },
+    "urgency": "High",
+    "verificationCount": 120,
+    "verificationScore": 120,
+    "clusterCount": 1,
+    "isVerified": true,
+    "isAuthoritative": true,
+    "reportedBy": "Bengaluru Traffic Police (BTP Control Room)",
+    "officialSource": "BBMP Disaster Management Cell",
+    "createdAt": "2026-09-27T08:49:19.373Z",
+    "timestamp": "Official BTP Bulletin"
+  },
+  {
+    "id": "btp_official_adv_3",
+    "type": "Infrastructure",
+    "title": "BWSSB Emergency Pipeline Work: 100ft Road Indiranagar",
+    "ward": "Indiranagar 12th Main",
+    "description": "Major Cauvery water feeder pipeline breach near 12th Main junction. Left carriage closed for 48 hours for excavation and welding.",
+    "position": {
+      "lat": 12.9719,
+      "lng": 77.6412
+    },
+    "urgency": "Medium",
+    "verificationCount": 78,
+    "verificationScore": 78,
+    "clusterCount": 1,
+    "isVerified": true,
+    "isAuthoritative": true,
+    "reportedBy": "BWSSB & Traffic Police Central",
+    "officialSource": "BWSSB Civic Advisory",
+    "createdAt": "2026-09-27T08:49:19.373Z",
+    "timestamp": "Official BTP Bulletin"
   }
 ]
