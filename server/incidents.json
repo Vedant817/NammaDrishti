@@ -1,63 +1,5 @@
 [
   {
-    "id": "namma_1790496368067_5vk87",
-    "type": "Waterlogging",
-    "title": "Waterlogging at Sony World Junction",
-    "ward": "Koramangala",
-    "description": "Water ponding near signal.",
-    "position": {
-      "lat": 15.464381857485828,
-      "lng": 75.04009719948522
-    },
-    "timestamp": "Just now",
-    "urgency": "High",
-    "verificationCount": 2,
-    "verificationScore": 2,
-    "clusterCount": 2,
-    "isVerified": false,
-    "resolutionVotes": 0,
-    "reportedBy": "You (Citizen)",
-    "mediaUrl": null,
-    "createdAt": "2026-09-27T08:06:08.067Z",
-    "updates": [
-      {
-        "timestamp": "Just now",
-        "description": "Vehicles struggling in water.",
-        "reportedBy": "Citizen Scout (Auto-Cluster)",
-        "mediaUrl": null
-      }
-    ]
-  },
-  {
-    "id": "namma_1790496346438_pjyt2",
-    "type": "Waterlogging",
-    "title": "Waterlogging at Sony World Junction",
-    "ward": "Koramangala",
-    "description": "Water ponding near signal.",
-    "position": {
-      "lat": 15.243446357914578,
-      "lng": 75.16517320297078
-    },
-    "timestamp": "Just now",
-    "urgency": "High",
-    "verificationCount": 2,
-    "verificationScore": 2,
-    "clusterCount": 2,
-    "isVerified": false,
-    "resolutionVotes": 0,
-    "reportedBy": "You (Citizen)",
-    "mediaUrl": null,
-    "createdAt": "2026-09-27T08:05:46.438Z",
-    "updates": [
-      {
-        "timestamp": "Just now",
-        "description": "Vehicles struggling in water.",
-        "reportedBy": "Citizen Scout (Auto-Cluster)",
-        "mediaUrl": null
-      }
-    ]
-  },
-  {
     "id": "bengaluru_evt_1",
     "type": "Traffic",
     "title": "Silk Board Junction Gridlock",
@@ -69,8 +11,8 @@
     },
     "timestamp": "10 mins ago",
     "urgency": "High",
-    "verificationCount": 38,
-    "verificationScore": 36.5,
+    "verificationCount": 34,
+    "verificationScore": 34,
     "clusterCount": 1,
     "isVerified": true,
     "reportedBy": "BTP Traffic Monitor"
