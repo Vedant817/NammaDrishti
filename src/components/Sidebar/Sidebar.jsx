@@ -6,7 +6,19 @@ import { EMERGENCY_CONTACTS } from "../../data/constants";
 import { useLanguage } from "../../context/LanguageContext";
 import "./Sidebar.css";
 
-const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+const getApiBase = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname !== "localhost" &&
+    window.location.hostname !== "127.0.0.1"
+  ) {
+    return `${window.location.origin}/api`;
+  }
+  return "http://localhost:5001/api";
+};
+
+const API_BASE = getApiBase();
 
 const Sidebar = ({
   activeTab = "feed",
@@ -47,20 +59,26 @@ const Sidebar = ({
         // Continue even if network is restricted
       }
 
+      let popupBlocked = false;
+      try {
+        if (typeof window !== "undefined") {
+          const win = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+          if (!win || win.closed || typeof win.closed === "undefined") {
+            popupBlocked = true;
+          }
+        }
+      } catch (openErr) {
+        popupBlocked = true;
+      }
+
       setSosStatus({
         lat,
         lng,
         whatsappUrl,
         isVerifiedGps: true,
+        popupBlocked,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       });
-
-      // Automatically launch WhatsApp dispatch link
-      try {
-        if (typeof window !== "undefined") {
-          window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-        }
-      } catch (openErr) {}
     };
 
     if (userLocation && Number.isFinite(userLocation.lat) && Number.isFinite(userLocation.lng)) {
@@ -173,6 +191,11 @@ const Sidebar = ({
                   ) : (
                     <div className="sos-coords-row sos-error-coords" style={{ color: "#EF4444" }}>
                       <span>⚠️ {sosStatus.error}</span>
+                    </div>
+                  )}
+                  {sosStatus.popupBlocked && (
+                    <div className="sos-coords-row" style={{ color: "#F59E0B", fontSize: "0.82rem" }}>
+                      <span>ℹ️ Browser pop-up blocked. Click "Send WhatsApp SOS" directly below:</span>
                     </div>
                   )}
                   <div className="sos-actions-row">

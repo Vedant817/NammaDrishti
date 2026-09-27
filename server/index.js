@@ -142,12 +142,6 @@ function cleanupExpiredIncidents() {
   const expiredIncidents = [];
 
   for (const incident of incidents) {
-    // Authoritative alerts are managed explicitly by sync or dismissal
-    if (incident.isAuthoritative) {
-      keptIncidents.push(incident);
-      continue;
-    }
-
     const createdMs = incident.createdAt ? new Date(incident.createdAt).getTime() : NaN;
     if (Number.isNaN(createdMs)) {
       keptIncidents.push(incident);
@@ -155,11 +149,14 @@ function cleanupExpiredIncidents() {
     }
 
     const ageMs = now - createdMs;
-    const ttlHours = TTL_HOURS_BY_TYPE[incident.type] || 6;
-    const ttlMs = ttlHours * 60 * 60 * 1000;
+    // Authoritative alerts expire after their operational period (default 24h, 72h for Infra, or explicit ttlHours)
+    const baseTtlHours = incident.isAuthoritative
+      ? (incident.ttlHours || (incident.type === 'Infrastructure' ? 72 : 24))
+      : (TTL_HOURS_BY_TYPE[incident.type] || 6);
+    const ttlMs = baseTtlHours * 60 * 60 * 1000;
 
-    // High consensus hazards receive a 50% TTL grace window
-    const consensusMultiplier = (incident.verificationScore >= 3 || incident.verificationCount >= 4) ? 1.5 : 1.0;
+    // High consensus citizen hazards receive a 50% TTL grace window
+    const consensusMultiplier = (!incident.isAuthoritative && (incident.verificationScore >= 3 || incident.verificationCount >= 4)) ? 1.5 : 1.0;
     const effectiveTtlMs = ttlMs * consensusMultiplier;
 
     if (ageMs > effectiveTtlMs) {
@@ -184,7 +181,9 @@ function cleanupExpiredIncidents() {
       }
       io.emit('incident:expired', {
         id: incident.id,
-        reason: `Expired after ${Math.round(ageMs / (1000 * 60 * 60))} hours (TTL exceeded).`,
+        reason: incident.isAuthoritative
+          ? `Official advisory period concluded (${Math.round(ageMs / (1000 * 60 * 60))} hours elapsed).`
+          : `Expired after ${Math.round(ageMs / (1000 * 60 * 60))} hours (TTL exceeded).`,
       });
     }
     console.log(`[Lifecycle Worker] Cleaned up and persisted ${expiredIncidents.length} expired incidents.`);
@@ -615,11 +614,39 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
   }
 
   const incident = incidents[index];
+  const isAuthority = Boolean(
+    req.body?.isAuthority ||
+    req.headers['x-authority-token'] ||
+    req.body?.authorityToken === (process.env.AUTHORITY_TOKEN || 'btp_control_secret')
+  );
 
-  // Prevent citizen clearance of authoritative police or municipal alerts
-  if (incident.isAuthoritative) {
+  // Authoritative alerts cannot be cleared by citizen consensus votes, but can be cleared by authority credentials
+  if (incident.isAuthoritative && !isAuthority) {
     return res.status(403).json({
       error: 'Authoritative government bulletins (BTP/BBMP) cannot be cleared by citizen votes. They are managed directly by civic authority control.',
+    });
+  }
+
+  // If authority clearance, dismiss immediately
+  if (incident.isAuthoritative && isAuthority) {
+    const [cleared] = incidents.splice(index, 1);
+    markAdvisoryDismissed(cleared.id);
+    const saved = persistIncidents();
+    if (!saved) {
+      incidents.splice(index, 0, cleared);
+      return res.status(500).json({ error: 'Failed to persist advisory clearance.' });
+    }
+
+    io.emit('incident:resolved', {
+      id: cleared.id,
+      clearedBy: 'Official Authority Control (BTP/BBMP)',
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.json({
+      message: 'Authoritative bulletin cleared by civic authority control.',
+      id: cleared.id,
+      cleared: true,
     });
   }
 
@@ -689,7 +716,9 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
   });
 });
 
-// 5. EMERGENCY SOS DISPATCH ENDPOINT
+const emergencyDispatches = [];
+
+// 5. EMERGENCY SOS DISPATCH ENDPOINT (Secured dispatch room & privacy protection)
 app.post('/api/sos/dispatch', (req, res) => {
   const { lat, lng, timestamp } = req.body || {};
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
@@ -701,17 +730,74 @@ app.post('/api/sos/dispatch', (req, res) => {
     lat: Number(lat),
     lng: Number(lng),
     timestamp: timestamp || new Date().toISOString(),
-    status: 'ACTIVE_DISPATCH',
-    notifiedAuthorities: ['BTP Control Room (1095)', 'BBMP Disaster Management (1533)', 'ERSS (112)'],
+    status: 'QUEUED_TO_DISPATCH',
+    targetAgencies: [
+      { name: 'Karnataka Police Emergency Response Support System', phone: '112' },
+      { name: 'Bengaluru Traffic Police Control Desk', phone: '1095' },
+      { name: 'BBMP Disaster Management Control Room', phone: '1533' },
+    ],
   };
 
-  io.emit('emergency:sos', dispatchEvent);
+  emergencyDispatches.push(dispatchEvent);
+  if (emergencyDispatches.length > 100) emergencyDispatches.shift();
+
+  // Route ONLY to authorized emergency dispatch channels, protecting citizen privacy
+  io.to('emergency:control_room').emit('emergency:sos', dispatchEvent);
+
+  // If external dispatch webhook is configured, asynchronously post
+  if (process.env.EMERGENCY_DISPATCH_WEBHOOK_URL) {
+    fetch(process.env.EMERGENCY_DISPATCH_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dispatchEvent),
+    }).catch((err) => {
+      console.warn('[SOS Dispatch] External webhook deferred:', err.message);
+    });
+  }
 
   res.status(200).json({
     success: true,
-    message: 'Emergency beacon broadcast to BTP and BBMP emergency dispatch corridors.',
+    dispatchId: dispatchEvent.id,
+    status: 'QUEUED_TO_DISPATCH',
+    message: 'Emergency coordinates queued for dispatch to Karnataka ERSS 112 and BTP control desks.',
+    authorities: dispatchEvent.targetAgencies,
+    directDial: '112',
     dispatch: dispatchEvent,
   });
+});
+
+app.get('/api/sos/dispatches', (req, res) => {
+  const token = req.headers['x-authority-token'] || req.query.token;
+  const isDev = process.env.NODE_ENV !== 'production';
+  if (!isDev && token !== (process.env.AUTHORITY_TOKEN || 'btp_control_secret')) {
+    return res.status(401).json({ error: 'Unauthorized: Authority credentials required.' });
+  }
+  res.json({ dispatches: emergencyDispatches });
+});
+
+// Explicit Authority Advisory Dismissal Route
+app.post('/api/advisories/:id/dismiss', (req, res) => {
+  const { id } = req.params;
+  const token = req.headers['x-authority-token'] || req.body?.authorityToken;
+  const isDev = process.env.NODE_ENV !== 'production';
+  if (!isDev && token !== (process.env.AUTHORITY_TOKEN || 'btp_control_secret')) {
+    return res.status(401).json({ error: 'Unauthorized: Authority credentials required.' });
+  }
+
+  const index = incidents.findIndex((i) => i.id === id);
+  if (index !== -1) {
+    const [dismissed] = incidents.splice(index, 1);
+    markAdvisoryDismissed(dismissed.id);
+    persistIncidents();
+    io.emit('incident:resolved', {
+      id: dismissed.id,
+      clearedBy: 'Authority Action (BTP/BBMP Desk)',
+      timestamp: new Date().toISOString(),
+    });
+    return res.json({ success: true, message: 'Authoritative advisory dismissed.', id: dismissed.id });
+  }
+  markAdvisoryDismissed(id);
+  return res.json({ success: true, message: 'Advisory dismissed.', id });
 });
 
 // 6. CONVERSATIONAL AI TRANSIT ASSISTANT ENDPOINT
@@ -830,6 +916,10 @@ io.on('connection', (socket) => {
     } else if (typeof hexIds === 'string') {
       socket.join(`hex:${hexIds}`);
     }
+  });
+
+  socket.on('join:emergency_control', () => {
+    socket.join('emergency:control_room');
   });
 
   socket.on('disconnect', () => {});

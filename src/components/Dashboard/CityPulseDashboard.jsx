@@ -140,8 +140,11 @@ const CityPulseDashboard = () => {
   return (
     <div className="citypulse-app">
       <Header
+        activeEventCount={events.length}
         activeAlertsCount={events.length}
+        verifiedPercent={verifiedPercent}
         verifiedPercentage={verifiedPercent}
+        weather={weather}
         isLiveConnected={isLiveConnected}
         offlineQueueCount={offlineQueueCount}
       />
@@ -149,6 +152,7 @@ const CityPulseDashboard = () => {
       <FilterPanel
         activeFilter={activeFilter}
         onFilterChange={handleFilterChange}
+        events={events}
         incidentCounts={{
           All: events.length,
           Traffic: events.filter((e) => e.type === "Traffic").length,

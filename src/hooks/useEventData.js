@@ -73,19 +73,23 @@ const getOfflineQueue = () => {
 const saveOfflineQueue = (queue) => {
   try {
     localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-    return true;
+    return { success: true, photoDropped: false };
   } catch (err) {
     if (err.name === "QuotaExceededError" || err.code === 22) {
       try {
         const leanQueue = queue.map(({ mediaUrl, ...rest }) => rest);
         localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(leanQueue));
-        return true;
+        return {
+          success: true,
+          photoDropped: true,
+          warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
+        };
       } catch (retryErr) {
         console.warn("[OfflineQueue] Failed to save lean queue:", retryErr);
       }
     }
     console.warn("[OfflineQueue] Failed to save queue:", err);
-    return false;
+    return { success: false, photoDropped: false, error: err.message };
   }
 };
 
@@ -235,8 +239,20 @@ export const useEventData = () => {
               body: JSON.stringify({ voterId: getOrCreateDeviceId() }),
               signal: AbortSignal.timeout(3000),
             });
-            if (res.ok || res.status === 409 || res.status === 403) {
+            if (res.ok || res.status === 409) {
               syncedVoteTimestamps.add(vote.timestamp);
+            } else if (res.status === 403) {
+              syncedVoteTimestamps.add(vote.timestamp);
+              removeUserVote(vote.incidentId, "clear");
+              fetch(`${API_BASE}/incidents`)
+                .then((r) => r.json())
+                .then((fresh) => {
+                  if (Array.isArray(fresh) && fresh.length > 0) {
+                    setEvents(fresh);
+                    safeSaveStorage(fresh);
+                  }
+                })
+                .catch(() => {});
             }
           }
         } catch (voteErr) {
@@ -549,15 +565,27 @@ export const useEventData = () => {
         // Enqueue for background sync
         const queue = getOfflineQueue();
         queue.push(formatted);
-        const saved = saveOfflineQueue(queue);
-        if (saved) setOfflineQueueCount(queue.length);
+        const saveRes = saveOfflineQueue(queue);
+        if (saveRes?.success) setOfflineQueueCount(queue.length);
+        if (saveRes?.photoDropped) {
+          return {
+            ...formatted,
+            warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
+          };
+        }
       }
     } catch (err) {
       // Backend unavailable; enqueue for background sync
       const queue = getOfflineQueue();
       queue.push(formatted);
-      const saved = saveOfflineQueue(queue);
-      if (saved) setOfflineQueueCount(queue.length);
+      const saveRes = saveOfflineQueue(queue);
+      if (saveRes?.success) setOfflineQueueCount(queue.length);
+      if (saveRes?.photoDropped) {
+        return {
+          ...formatted,
+          warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
+        };
+      }
     }
 
     return formatted;
