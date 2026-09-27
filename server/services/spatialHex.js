@@ -26,7 +26,7 @@ function getHexIndex(lat, lng, resolution = 8) {
 }
 
 /**
- * Returns the hex cell along with its 6 immediate neighboring hexagonal rings.
+ * Returns the hex cell along with its adjoining neighboring hexagonal cells (8-way neighborhood ring).
  */
 function getHexRing(hexId) {
   if (!hexId || typeof hexId !== 'string') return [hexId];
@@ -39,7 +39,8 @@ function getHexRing(hexId) {
 
   const directions = [
     [1, 0], [1, -1], [0, -1],
-    [-1, 0], [-1, 1], [0, 1]
+    [-1, 0], [-1, 1], [0, 1],
+    [1, 1], [-1, -1]
   ];
 
   const neighbors = directions.map(([dq, dr]) => `hex_${res}_${q + dq}_${r + dr}`);

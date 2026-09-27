@@ -23,12 +23,12 @@ function createRateLimiter({ windowMs = 60000, maxRequests = 30, message = 'Too 
   if (cleanupTimer.unref) cleanupTimer.unref();
 
   return (req, res, next) => {
-    // Bypass in test runs or with explicit test header
-    if (process.env.NODE_ENV === 'test' || req.headers['x-test-bypass-rate-limit'] === 'true') {
+    // Only bypass in automated unit test environments (NODE_ENV === 'test')
+    if (process.env.NODE_ENV === 'test') {
       return next();
     }
 
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || req.connection?.remoteAddress || '127.0.0.1';
+    const ip = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
     const now = Date.now();
     const timestamps = requestLog.get(ip) || [];
 

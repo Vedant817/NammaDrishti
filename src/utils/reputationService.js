@@ -36,6 +36,16 @@ export const REPUTATION_TIERS = {
   },
 };
 
+export const getCitizenTier = (points = 0) => {
+  if (points >= REPUTATION_TIERS.GUARDIAN.minPoints) {
+    return REPUTATION_TIERS.GUARDIAN;
+  }
+  if (points >= REPUTATION_TIERS.SENTINEL.minPoints) {
+    return REPUTATION_TIERS.SENTINEL;
+  }
+  return REPUTATION_TIERS.SCOUT;
+};
+
 export const getCitizenReputation = () => {
   try {
     const raw = localStorage.getItem(REPUTATION_STORAGE_KEY);
@@ -59,6 +69,11 @@ export const getCitizenReputation = () => {
 export const saveCitizenReputation = (profile) => {
   try {
     localStorage.setItem(REPUTATION_STORAGE_KEY, JSON.stringify(profile));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('nammapulse:reputation_updated', { detail: profile })
+      );
+    }
   } catch (err) {
     console.warn('[Reputation] Failed to save to localStorage:', err.message);
   }
@@ -86,15 +101,4 @@ export const recordReputationEvent = (eventType) => {
 
   saveCitizenReputation(current);
   return current;
-};
-
-export const getCitizenTier = (points) => {
-  const pts = Number(points) || 0;
-  if (pts >= REPUTATION_TIERS.GUARDIAN.minPoints) {
-    return REPUTATION_TIERS.GUARDIAN;
-  }
-  if (pts >= REPUTATION_TIERS.SENTINEL.minPoints) {
-    return REPUTATION_TIERS.SENTINEL;
-  }
-  return REPUTATION_TIERS.SCOUT;
 };

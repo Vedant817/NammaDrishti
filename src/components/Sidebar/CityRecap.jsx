@@ -2,7 +2,7 @@
 import React from "react";
 import { BENGALURU_UNDERPASSES, evaluateUnderpassRisk } from "../../data/bengaluruUnderpasses";
 
-const CityRecap = ({ events = [], rainIntensity = 0 }) => {
+const CityRecap = ({ events = [], rainIntensity = 0, isWeatherOffline = false }) => {
   const trafficCount = events.filter((e) => e.type === "Traffic").length;
   const floodCount = events.filter((e) => e.type === "Waterlogging").length;
   const accidentCount = events.filter((e) => e.type === "Accident").length;
@@ -38,12 +38,39 @@ const CityRecap = ({ events = [], rainIntensity = 0 }) => {
       <h5 className="recap-subtitle">🌊 Chronic Underpass Vulnerability Watch</h5>
       <div className="underpass-watch-list">
         {BENGALURU_UNDERPASSES.map((up) => {
-          const risk = evaluateUnderpassRisk(up, rainIntensity);
+          const risk = isWeatherOffline
+            ? {
+                level: "Telemetry Offline",
+                color: "#94A3B8",
+                action: "Precipitation telemetry unavailable. Exercise caution at low-lying underpasses.",
+                isFloodedLikely: false,
+              }
+            : evaluateUnderpassRisk(up, rainIntensity);
+
           return (
-            <div key={up.id} className="underpass-card" style={{ padding: '10px', background: 'var(--bg-surface)', borderRadius: '6px', marginBottom: '8px', borderLeft: `3px solid ${risk.color}` }}>
+            <div
+              key={up.id}
+              className="underpass-card"
+              style={{
+                padding: '10px',
+                background: 'var(--bg-surface)',
+                borderRadius: '6px',
+                marginBottom: '8px',
+                borderLeft: `3px solid ${risk.color}`,
+              }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong style={{ fontSize: '0.85rem' }}>{up.name}</strong>
-                <span style={{ fontSize: '0.72rem', color: risk.color, fontWeight: '600', padding: '2px 6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    color: risk.color,
+                    fontWeight: '600',
+                    padding: '2px 6px',
+                    background: 'rgba(255,255,255,0.05)',
+                    borderRadius: '4px',
+                  }}
+                >
                   {risk.level}
                 </span>
               </div>
@@ -53,6 +80,11 @@ const CityRecap = ({ events = [], rainIntensity = 0 }) => {
               <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '2px' }}>
                 Pump: {up.pumpStation} • Barrier: {up.gateStatus}
               </div>
+              {risk.action && (
+                <div style={{ fontSize: '0.7rem', color: risk.color, marginTop: '3px', fontStyle: 'italic' }}>
+                  {risk.action}
+                </div>
+              )}
             </div>
           );
         })}

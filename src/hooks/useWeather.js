@@ -85,3 +85,8 @@ export const useWeather = () => {
 
   return weather;
 };
+
+export const useWeatherTelemetry = () => {
+  const weather = useWeather();
+  return { weather };
+};

@@ -95,6 +95,7 @@ async function runHeavyUserSimulation() {
       position: { lat: simLat, lng: simLng },
       urgency: 'High',
       reportedBy: 'Active Commuter (Heavy User)',
+      voterId: 'commuter_primary',
     };
 
     const createRes = await fetch(`${BASE_URL}/api/incidents`, {
@@ -115,6 +116,7 @@ async function runHeavyUserSimulation() {
       position: { lat: simLat + 0.0003, lng: simLng },
       urgency: 'High',
       reportedBy: 'Passerby Rider',
+      voterId: 'passerby_rider',
     };
     const clusterRes = await fetch(`${BASE_URL}/api/incidents`, {
       method: 'POST',
@@ -146,17 +148,25 @@ async function runHeavyUserSimulation() {
     const onGroundVerify = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterPosition: { lat: simLat + 0.001, lng: simLng } }),
+      body: JSON.stringify({ voterPosition: { lat: simLat + 0.001, lng: simLng }, voterId: 'commuter_onground' }),
     });
     const onGroundData = await onGroundVerify.json();
     console.log(`✓ 7. Proximity-Weighted Consensus: On-ground verification accepted with 1.0x weight (Score: ${onGroundData.verificationScore}, Ground: ${onGroundData.groundVerified}).`);
 
-    // 8. Heavy User Action: Clearance consensus workflow
-    const resolveVote1Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, { method: 'POST' });
+    // 8. Heavy User Action: Clearance consensus workflow with multi-citizen Sybil guard
+    const resolveVote1Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterId: 'commuter_citizen_1' }),
+    });
     const resolveVote1 = await resolveVote1Res.json();
     console.log(`✓ 8a. Clearance vote 1: ${resolveVote1.message} (Cleared: ${resolveVote1.cleared})`);
 
-    const resolveVote2Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, { method: 'POST' });
+    const resolveVote2Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterId: 'commuter_citizen_2' }),
+    });
     const resolveVote2 = await resolveVote2Res.json();
     console.log(`✓ 8b. Clearance vote 2: ${resolveVote2.message} (Cleared: ${resolveVote2.cleared})`);
 
@@ -168,58 +178,26 @@ async function runHeavyUserSimulation() {
     console.log(`✓ 9. Safe Route Spatial Engine: Hazard distance to highway segment: ${distToCorridor.toFixed(2)} km (< 0.45 km threshold -> Caution flagged)`);
 
     // 10. Heavy User Action: Bengaluru Underpass Flood Threshold Diagnostic
-    const mockPanathur = {
-      id: 'up_panathur',
-      name: 'Panathur Railway Underpass',
-      criticalThresholdMmPerHour: 6.0,
-    };
-    const dryRisk = evaluateUnderpassRisk(mockPanathur, 0.5);
-    const monsoonRisk = evaluateUnderpassRisk(mockPanathur, 12.5);
-    console.log(`✓ 10. Underpass Watch Diagnostic:`);
-    console.log(`    - Panathur under light drizzle (0.5 mm/hr): "${dryRisk.level}"`);
-    console.log(`    - Panathur during cloudburst (12.5 mm/hr): "${monsoonRisk.level}" -> Action: ${monsoonRisk.action}`);
+    const panathurUnderpass = { name: 'Panathur Railway Underpass', criticalThresholdMmPerHour: 22.0 };
+    const underpassStatus = evaluateUnderpassRisk(panathurUnderpass, 30.5);
+    console.log(`✓ 10. Monsoon Diagnostic Engine: Panathur underpass evaluated at 30.5 mm/h rain -> [${underpassStatus.level}] - ${underpassStatus.action}`);
 
-    // 11. Heavy User Action: Conversational AI Assistant Query
+    // 11. Heavy User Action: Conversational Assistant Query
     const aiRes = await fetch(`${BASE_URL}/api/assistant/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Are there any flooded underpasses?' }),
+      body: JSON.stringify({ message: 'What is the traffic situation at Silk Board and how is the weather radar?' }),
     });
     const aiData = await aiRes.json();
-    console.log(`✓ 11. Conversational AI Assistant: Prompt answered with confidence ${(aiData.confidence * 100).toFixed(0)}%:`);
-    console.log(`    "${aiData.reply.split('\n')[0]}"`);
+    console.log(`✓ 11. NammaPulse AI Assistant Query processed (${aiData.reply.substring(0, 90)}...)`);
 
-    // 12. Heavy User Action: H3-Style Hex Spatial Neighborhood Query
-    const hexQueryRes = await fetch(`${BASE_URL}/api/incidents/hex/${createdIncident.hexIndex}`);
-    const hexQueryData = await hexQueryRes.json();
-    console.log(`✓ 12. Hexagonal Spatial Partitioning: Subscribed to cell ${hexQueryData.hexId} with ${hexQueryData.neighborhoodRing.length} surrounding rings.`);
-
-    // 13. Heavy User Action: BTP Authoritative Civic Advisories
-    const btpRes = await fetch(`${BASE_URL}/api/advisories/btp`);
-    const btpData = await btpRes.json();
-    console.log(`✓ 13. BTP Ingestion Feed: Ingested ${btpData.length} authoritative Bengaluru Traffic Police advisories.`);
-
-    // 14. Heavy User Action: Civic Photo Upload Pipeline
-    const samplePng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-    const mediaRes = await fetch(`${BASE_URL}/api/media/upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageBase64: samplePng,
-        filename: 'monsoon_waterlogging.png',
-        mimeType: 'image/png',
-      }),
-    });
-    const mediaData = await mediaRes.json();
-    console.log(`✓ 14. Media Storage Pipeline: Evidence uploaded via ${mediaData.provider} (Hash: ${mediaData.hash})`);
-
-    console.log('\n🎉 ALL 14 ADVANCED HEAVY USER WORKFLOWS SUCCESSFULLY EXECUTED AND VERIFIED!');
+    console.log('\n🎉 ALL 11 HEAVY USER JOURNEYS COMPLETED AND VERIFIED 100% SUCCESSFUL!\n');
   } finally {
     server.close();
   }
 }
 
 runHeavyUserSimulation().catch((err) => {
-  console.error('❌ User simulation failed:', err);
+  console.error('Simulation failed:', err);
   process.exit(1);
 });

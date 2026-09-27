@@ -9,6 +9,7 @@
   --border-subtle: #27354E;
   --border-light: #334155;
   --border-focus: #3B82F6;
+  --brand-accent: #3B82F6;
   
   --text-primary: #F8FAFC;
   --text-secondary: #94A3B8;
@@ -49,22 +50,24 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.5;
   overflow: hidden;
+  height: 100vh;
 }
 
-code, pre {
-  font-family: var(--font-mono);
+/* Accessibility Focus Ring */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 
-/* Crisp Scrollbar */
+/* Custom Minimal Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-surface);
+  background: var(--bg-canvas);
 }
 
 ::-webkit-scrollbar-thumb {

@@ -24,7 +24,9 @@ const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
-const ChatbotModal = ({ onClose, events = [], weather }) => {
+const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) => {
+  const activeEvents = Array.isArray(currentEvents) ? currentEvents : (Array.isArray(events) ? events : []);
+
   const [messages, setMessages] = useState([
     {
       type: "bot",
@@ -38,18 +40,30 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
   const processQueryLocally = (userQuery) => {
     const q = userQuery.toLowerCase();
 
-    // Check Traffic & Silk Board
+    // Check Traffic & Silk Board / BTM
     if (q.includes("silk board") || q.includes("btm")) {
-      const silkEvt = events.find((e) => e.title.toLowerCase().includes("silk board"));
-      if (silkEvt) {
-        return `🚨 Silk Board Junction has ${silkEvt.urgency.toLowerCase()} congestion. ${silkEvt.description} Delays are approx +28 minutes. BTP recommends taking Hosur Road elevated tollway if heading to Electronic City.`;
+      const matchEvt = activeEvents.find((e) =>
+        (e.title && (e.title.toLowerCase().includes("silk board") || e.title.toLowerCase().includes("btm"))) ||
+        (e.ward && (e.ward.toLowerCase().includes("silk board") || e.ward.toLowerCase().includes("btm"))) ||
+        (e.description && (e.description.toLowerCase().includes("silk board") || e.description.toLowerCase().includes("btm")))
+      );
+      if (matchEvt) {
+        return `🚨 ${matchEvt.title} (${matchEvt.ward || 'BTM / Silk Board'}): ${matchEvt.description} Delays are approx +28 minutes. BTP recommends taking Hosur Road elevated tollway if heading to Electronic City.`;
       }
-      return "Silk Board is currently moving at moderate speeds with standard junction signals.";
+      return "Silk Board and BTM Layout corridors are currently moving at moderate speeds with standard signal delays.";
+    }
+
+    // Check Doppler Weather Radar specifically
+    if (q.includes("radar")) {
+      const rainStatus = weather?.precipitation > 0
+        ? `RainViewer Doppler radar indicates active rain bands (${weather.precipitation} mm/hr) over municipal wards. Toggle the 'Doppler Rain Radar' button on the map to inspect live 5-minute reflectivity frames.`
+        : `RainViewer Doppler radar shows clear skies over Bengaluru currently with zero significant precipitation echoes detected. Toggle the radar layer on the map to view live reflectivity scans.`;
+      return `📡 Doppler Weather Radar: ${rainStatus}`;
     }
 
     // Check Waterlogging / Flooding / Underpass
     if (q.includes("flood") || q.includes("waterlog") || q.includes("underpass") || q.includes("panathur")) {
-      const floodEvts = events.filter((e) => e.type === "Waterlogging");
+      const floodEvts = activeEvents.filter((e) => e.type === "Waterlogging");
       if (floodEvts.length > 0) {
         const details = floodEvts.map((f) => `• ${f.title}: ${f.description}`).join("\n");
         return `⚠️ Active Waterlogging Alert in Bengaluru:\n${details}\n\nCurrent Precipitation: ${weather ? weather.precipitation + " mm" : "Active monitoring"}. Divert from low-lying railway underpasses.`;
@@ -58,7 +72,7 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
     }
 
     // Check Weather / Rain
-    if (q.includes("rain") || q.includes("weather") || q.includes("radar")) {
+    if (q.includes("rain") || q.includes("weather")) {
       if (weather) {
         return `🌧️ Bengaluru Weather: ${weather.temp}°C, ${weather.description}. Relative humidity is ${weather.humidity}% with ${weather.precipitation}mm precipitation. Flood Risk is currently assessed as ${weather.floodRisk}.`;
       }
@@ -67,7 +81,11 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
 
     // Check Hebbal / Airport road
     if (q.includes("hebbal") || q.includes("airport")) {
-      const hebbalEvt = events.find((e) => e.title.toLowerCase().includes("hebbal"));
+      const hebbalEvt = activeEvents.find((e) =>
+        (e.title && e.title.toLowerCase().includes("hebbal")) ||
+        (e.ward && e.ward.toLowerCase().includes("hebbal")) ||
+        (e.description && e.description.toLowerCase().includes("airport"))
+      );
       if (hebbalEvt) {
         return `✈️ Hebbal Flyover Update: ${hebbalEvt.title}. ${hebbalEvt.description} Allow an extra 20–25 minutes if traveling to KIA.`;
       }
@@ -85,7 +103,7 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
     }
 
     // General fallback
-    return `Currently tracking ${events.length} live incidents across Bengaluru. You can ask me about Silk Board, Hebbal, waterlogging, weather radar, or emergency helplines!`;
+    return `Currently tracking ${activeEvents.length} live incidents across Bengaluru. You can ask me about Silk Board, BTM, Hebbal, waterlogging, weather radar, or emergency helplines!`;
   };
 
   const handleSendMessage = async (textToSend) => {
@@ -103,7 +121,7 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          context: { weather, rainIntensity: weather?.precipitation },
+          context: { weather, rainIntensity: weather?.precipitation, incidents: activeEvents },
         }),
         signal: AbortSignal.timeout(2500),
       });
@@ -125,7 +143,8 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
 
   return (
     <div className="chatbot-modal-overlay" onClick={onClose}>
-      <div className="chatbot-modal" onClick={(e) => e.stopPropagation()}>\n        <div className="chatbot-modal-header">
+      <div className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="chatbot-modal-header">
           <div className="bot-header-info">
             <span className="bot-avatar">🤖</span>
             <div>

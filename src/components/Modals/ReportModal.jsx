@@ -38,10 +38,15 @@ const BENGALURU_LOCALITY_COORDS = {
   "mahadevapura": { lat: 12.9902, lng: 77.6952 },
 };
 
+// Sort entries by substring length descending to match specific multi-word locations first (e.g., 'sarjapur road' before 'sarjapur')
+const SORTED_LOCALITY_ENTRIES = Object.entries(BENGALURU_LOCALITY_COORDS).sort(
+  (a, b) => b[0].length - a[0].length
+);
+
 const resolveLocalityCoordinates = (text) => {
   if (!text) return null;
   const clean = text.toLowerCase();
-  for (const [name, pos] of Object.entries(BENGALURU_LOCALITY_COORDS)) {
+  for (const [name, pos] of SORTED_LOCALITY_ENTRIES) {
     if (clean.includes(name)) return pos;
   }
   return null;
@@ -53,98 +58,115 @@ const ReportModal = ({
   onSubmitReport,
   initialCoordinates,
 }) => {
+  const { getPosition } = useGeolocation();
   const { t } = useLanguage();
-  const { location, getCurrentLocation, loading: geoLoading } = useGeolocation();
+
+  const reportT = {
+    modalTitle: t?.report?.modalTitle || t?.reportModal?.title || "Report Civic or Traffic Incident",
+    category: t?.report?.category || t?.reportModal?.typeLabel || "Incident Type",
+    hazardTitle: t?.report?.hazardTitle || t?.reportModal?.headlineLabel || "Headline / Landmark",
+    wardLocality: t?.report?.wardLocality || t?.reportModal?.wardLabel || "Ward / Locality",
+    severity: t?.report?.severity || t?.reportModal?.urgencyLabel || "Urgency",
+    fieldNotes: t?.report?.fieldNotes || t?.reportModal?.descLabel || "Description & Traffic Impact",
+    locationVerification: t?.report?.locationVerification || "Location Pin / GPS Coordinates",
+    autoDetectGps: t?.report?.autoDetectGps || t?.actions?.autoGps || "Auto-Detect GPS",
+    photoEvidence: t?.report?.photoEvidence || t?.reportModal?.photoLabel || "Attach Evidence Photo (Optional)",
+    broadcastHazard: t?.report?.broadcastHazard || t?.actions?.submitReport || "Submit Live Hazard",
+  };
+
+  const categoriesT = {
+    traffic: t?.categories?.traffic || (t?.filters && t.filters["Traffic"]) || "Traffic Jam",
+    waterlogging: t?.categories?.waterlogging || (t?.filters && t.filters["Waterlogging"]) || "Waterlogging",
+    accident: t?.categories?.accident || (t?.filters && t.filters["Accident"]) || "Accidents",
+    infrastructure: t?.categories?.infrastructure || (t?.filters && t.filters["Infrastructure"]) || "Potholes / Infra",
+  };
 
   const [formData, setFormData] = useState({
-    type: "Traffic",
     title: "",
-    ward: "",
-    description: "",
+    type: "Traffic",
     urgency: "Medium",
+    description: "",
+    ward: "",
+    position: initialCoordinates || null,
     mediaUrl: null,
   });
 
-  const [coords, setCoords] = useState(initialCoordinates || null);
+  const [locationSource, setLocationSource] = useState(
+    initialCoordinates ? "PIN_SELECTED" : "MANUAL"
+  );
   const [compressing, setCompressing] = useState(false);
-  const [compressionStats, setCompressionStats] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [validationError, setValidationError] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (initialCoordinates) {
-      setCoords(initialCoordinates);
+      setFormData((prev) => ({ ...prev, position: initialCoordinates }));
+      setLocationSource("PIN_SELECTED");
     }
   }, [initialCoordinates]);
 
-  useEffect(() => {
-    if (location) {
-      setCoords({ lat: location.lat, lng: location.lng });
-      setValidationError(null);
-    }
-  }, [location]);
+  const handleUseGps = () => {
+    getPosition(
+      (pos) => {
+        setFormData((prev) => ({
+          ...prev,
+          position: { lat: pos.lat, lng: pos.lng },
+        }));
+        setLocationSource("GPS");
+        setErrorMsg("");
+      },
+      (err) => {
+        setErrorMsg("Could not fetch GPS. Please select location on map or type landmark name.");
+      }
+    );
+  };
 
-  // Handle image upload with automatic client-side compression
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      try {
-        setCompressing(true);
-        const result = await compressImage(file, 1200, 1200, 0.75);
-        setImagePreview(result.dataUrl);
-        setCompressionStats({
-          original: result.originalSizeKb,
-          compressed: result.compressedSizeKb,
-        });
+    if (!file) return;
+
+    setCompressing(true);
+    setErrorMsg("");
+    try {
+      const result = await compressImage(file, { maxWidth: 800, quality: 0.7 });
+      if (result && result.dataUrl) {
         setFormData((prev) => ({ ...prev, mediaUrl: result.dataUrl }));
-      } catch (err) {
-        // Fallback to basic FileReader if canvas fails
+      } else {
         const reader = new FileReader();
-        reader.onloadend = () => {
-          setImagePreview(reader.result);
+        reader.onload = () => {
           setFormData((prev) => ({ ...prev, mediaUrl: reader.result }));
         };
         reader.readAsDataURL(file);
-      } finally {
-        setCompressing(false);
       }
+    } catch (err) {
+      console.warn("Client compression error, using fallback reader", err);
+    } finally {
+      setCompressing(false);
     }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (compressing) return;
-    if (!formData.title.trim() || !formData.description.trim()) return;
+    setErrorMsg("");
 
-    // Resolve geographic position: explicit pin/GPS, or parsed locality
-    let position = coords;
-    if (!position) {
-      position =
+    let resolvedCoords = formData.position;
+
+    // Fallback: If no GPS or map pin, attempt lookup from ward or title
+    if (!resolvedCoords || !Number.isFinite(Number(resolvedCoords.lat))) {
+      resolvedCoords =
         resolveLocalityCoordinates(formData.ward) ||
         resolveLocalityCoordinates(formData.title) ||
         resolveLocalityCoordinates(formData.description);
     }
 
-    if (!position || !Number.isFinite(position.lat) || !Number.isFinite(position.lng)) {
-      setValidationError(
-        "Please pick a point on the map, click 'Use My GPS', or enter a recognized Bengaluru locality (e.g. Whitefield, Silk Board, Koramangala, Hebbal)."
-      );
+    if (!resolvedCoords || !Number.isFinite(Number(resolvedCoords.lat)) || !Number.isFinite(Number(resolvedCoords.lng))) {
+      setErrorMsg("Please specify a recognized Bengaluru area (e.g. Silk Board, Panathur, Whitefield) or use Auto-Detect GPS / Map Pin.");
       return;
     }
 
-    const reportPayload = {
+    onSubmitReport({
       ...formData,
-      position,
-      timestamp: "Just now",
-      reportedBy: "You (Citizen)",
-      ward: formData.ward.trim() || "Bengaluru Urban",
-      verificationCount: 1,
-      isVerified: false,
-    };
-
-    if (onSubmitReport) {
-      onSubmitReport(reportPayload);
-    }
+      position: resolvedCoords,
+    });
     onClose();
   };
 
@@ -154,144 +176,131 @@ const ReportModal = ({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <div className="modal-title-wrap">
-            <span className="modal-icon">🚨</span>
-            <h3>{t.reportModal.title}</h3>
-          </div>
-          <button type="button" className="modal-close-btn" onClick={onClose}>
+          <h3>{reportT.modalTitle}</h3>
+          <button type="button" className="close-btn" onClick={onClose}>
             ✕
           </button>
         </div>
 
-        <form className="report-form" onSubmit={handleSubmit}>
-          <div className="form-group-row">
-            <div className="form-field flex-2">
-              <label>{t.reportModal.typeLabel}</label>
-              <select
-                className="form-input"
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                required
-              >
-                <option value="Traffic">{t.reportModal.types.Traffic}</option>
-                <option value="Waterlogging">{t.reportModal.types.Waterlogging}</option>
-                <option value="Accident">{t.reportModal.types.Accident}</option>
-                <option value="Infrastructure">{t.reportModal.types.Infrastructure}</option>
-                <option value="Event">{t.reportModal.types.Event}</option>
-              </select>
-            </div>
+        <form onSubmit={handleSubmit} className="report-form">
+          {errorMsg && <div className="report-error-banner">{errorMsg}</div>}
 
-            <div className="form-field flex-1">
-              <label>{t.reportModal.urgencyLabel}</label>
+          <div className="form-group">
+            <label>{reportT.category}</label>
+            <div className="category-chips">
+              {[
+                { type: "Traffic", label: categoriesT.traffic, icon: "🚗" },
+                { type: "Waterlogging", label: categoriesT.waterlogging, icon: "🌊" },
+                { type: "Accident", label: categoriesT.accident, icon: "⚠️" },
+                { type: "Infrastructure", label: categoriesT.infrastructure, icon: "🔧" },
+              ].map((cat) => (
+                <button
+                  key={cat.type}
+                  type="button"
+                  className={`category-chip ${formData.type === cat.type ? "active" : ""}`}
+                  onClick={() => setFormData({ ...formData, type: cat.type })}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="report-title">{reportT.hazardTitle}</label>
+            <input
+              id="report-title"
+              type="text"
+              required
+              placeholder="e.g. Waterlogging under bridge, Massive crater pothole"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            />
+          </div>
+
+          <div className="form-row">
+            <div className="form-group flex-1">
+              <label htmlFor="report-ward">{reportT.wardLocality}</label>
+              <input
+                id="report-ward"
+                type="text"
+                required
+                placeholder="e.g. Silk Board, Panathur, Indiranagar"
+                value={formData.ward}
+                onChange={(e) => setFormData({ ...formData, ward: e.target.value })}
+              />
+            </div>
+            <div className="form-group flex-1">
+              <label htmlFor="report-urgency">{reportT.severity}</label>
               <select
-                className="form-input"
+                id="report-urgency"
                 value={formData.urgency}
                 onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
               >
-                <option value="Low">{t.reportModal.urgencies.Low}</option>
-                <option value="Medium">{t.reportModal.urgencies.Medium}</option>
-                <option value="High">{t.reportModal.urgencies.High}</option>
+                <option value="Low">Low (Informational)</option>
+                <option value="Medium">Medium (Delay ~15m)</option>
+                <option value="High">High (Severe Blockage / Danger)</option>
               </select>
             </div>
           </div>
 
-          <div className="form-field">
-            <label>{t.reportModal.titlePlaceholder}</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="e.g., Heavy waterlogging under Panathur rail bridge"
-              value={formData.title}
-              onChange={(e) => {
-                setFormData({ ...formData, title: e.target.value });
-                if (validationError) setValidationError(null);
-              }}
-              required
-            />
-          </div>
-
-          <div className="form-field">
-            <label>{t.reportModal.wardPlaceholder}</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="e.g., Mahadevapura Ward 85 / ORR Bellandur"
-              value={formData.ward}
-              onChange={(e) => {
-                setFormData({ ...formData, ward: e.target.value });
-                if (validationError) setValidationError(null);
-              }}
-            />
-          </div>
-
-          <div className="form-field">
-            <label>{t.reportModal.descPlaceholder}</label>
+          <div className="form-group">
+            <label htmlFor="report-desc">{reportT.fieldNotes}</label>
             <textarea
-              className="form-input form-textarea"
-              rows={3}
-              placeholder="Describe depth of water, lane blockage, vehicle types affected..."
+              id="report-desc"
+              rows="3"
+              placeholder="Provide actionable guidance for fellow commuters..."
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              required
             />
           </div>
 
-          {/* Coordinate Resolution & GPS Status */}
-          <div className="location-picker-group">
-            <div className="location-status-badge">
-              <span className="location-pin-icon">📍</span>
-              <span className="location-text">
-                {coords
-                  ? `Coordinates: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`
-                  : resolveLocalityCoordinates(formData.ward)
-                  ? `Detected Locality: ${formData.ward}`
-                  : t.reportModal.clickMapInstruction}
+          <div className="form-group">
+            <label>{reportT.locationVerification}</label>
+            <div className="location-action-bar">
+              <button
+                type="button"
+                className="gps-btn"
+                onClick={handleUseGps}
+              >
+                <span>📍</span>
+                <span>{reportT.autoDetectGps}</span>
+              </button>
+              <span className="location-status-badge">
+                {locationSource === "GPS" && "✓ GPS Locked"}
+                {locationSource === "PIN_SELECTED" && "✓ Map Pin Selected"}
+                {locationSource === "MANUAL" && "ℹ Auto-resolving from locality"}
               </span>
             </div>
-            <button
-              type="button"
-              className="btn-gps"
-              onClick={getCurrentLocation}
-              disabled={geoLoading}
-            >
-              {geoLoading ? "Acquiring GPS..." : t.reportModal.useGpsButton}
-            </button>
           </div>
 
-          {validationError && (
-            <div className="validation-error-pill" style={{ color: '#F87171', background: '#451A1A', padding: '8px 12px', borderRadius: '6px', fontSize: '0.8rem', marginTop: '8px', border: '1px solid #7F1D1D' }}>
-              {validationError}
-            </div>
-          )}
-
-          {/* Optimized Photo Attachment */}
-          <div className="form-field">
-            <label>📸 {t.reportModal.attachPhotoLabel}</label>
+          <div className="form-group">
+            <label>{reportT.photoEvidence}</label>
             <input
               type="file"
               accept="image/*"
-              className="file-input"
               onChange={handleImageChange}
+              className="file-input"
             />
-            {compressing && <span className="compressing-pill">Optimizing photo...</span>}
-            {compressionStats && (
-              <span className="compression-badge">
-                📸 Optimized: {compressionStats.original} KB → {compressionStats.compressed} KB
-              </span>
-            )}
-            {imagePreview && (
-              <div className="image-preview-thumbnail">
-                <img src={imagePreview} alt="Preview" />
+            {compressing && <span className="compressing-hint">Compressing for low-bandwidth uplink...</span>}
+            {formData.mediaUrl && (
+              <div className="image-preview">
+                <img src={formData.mediaUrl} alt="Preview" />
               </div>
             )}
           </div>
 
-          <div className="modal-actions">
-            <Button type="button" onClick={onClose} variant="secondary">
-              {t.actions.cancel}
+          <div className="form-actions">
+            <Button variant="secondary" onClick={onClose} type="button">
+              {t?.actions?.cancel || "Cancel"}
             </Button>
-            <Button type="submit" variant="primary" disabled={compressing}>
-              {compressing ? "Compressing..." : t.actions.submitReport}
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={compressing}
+            >
+              {compressing ? "Optimizing Photo..." : reportT.broadcastHazard}
             </Button>
           </div>
         </form>

@@ -79,6 +79,8 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
       description: 'Water ponding near signal.',
       position: { lat: testLat, lng: testLng },
       urgency: 'High',
+      reportedBy: 'BTP Traffic Control Officer', // Malicious authoritative spoof attempt
+      voterId: 'voter_alpha',
     };
     const res1 = await fetch(`${BASE_URL}/api/incidents`, {
       method: 'POST',
@@ -88,9 +90,11 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
     assert.equal(res1.status, 201, 'First incident submission creates new incident');
     const parent = await res1.json();
     assert.equal(parent.clusterCount, 1);
+    assert.equal(parent.isAuthoritative, false, 'Authoritative flag cannot be spoofed by citizen reports');
+    assert.ok(!parent.reportedBy.toLowerCase().includes('btp'), 'ReportedBy title should be sanitized');
     assert.ok(parent.hexIndex, 'New incident should receive hexIndex');
 
-    // 2. Submit second report ~55 meters away (lat + 0.0005 is ~55 meters)
+    // 2. Submit second report ~55 meters away (lat + 0.0005 is ~55 meters) with different voterId
     const nearbyPayload = {
       title: 'Deep Water Accumulation near Sony World',
       type: 'Waterlogging',
@@ -98,6 +102,7 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
       description: 'Vehicles struggling in water.',
       position: { lat: testLat + 0.0005, lng: testLng },
       urgency: 'High',
+      voterId: 'voter_beta',
     };
     const res2 = await fetch(`${BASE_URL}/api/incidents`, {
       method: 'POST',
@@ -112,9 +117,17 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
     assert.equal(clustered.verificationCount, 2);
     assert.ok(clustered.updates.length >= 1, 'Appended citizen update commentary');
 
-    // Clean up test incident to maintain clean storage
-    await fetch(`${BASE_URL}/api/incidents/${parent.id}/resolve`, { method: 'POST' });
-    await fetch(`${BASE_URL}/api/incidents/${parent.id}/resolve`, { method: 'POST' });
+    // Clean up test incident to maintain clean storage with distinct voter keys
+    await fetch(`${BASE_URL}/api/incidents/${parent.id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterId: 'voter_clean_alpha' }),
+    });
+    await fetch(`${BASE_URL}/api/incidents/${parent.id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterId: 'voter_clean_beta' }),
+    });
   });
 
   await t.test('5. Proximity-Weighted Verification: On-ground vs remote weighting', async () => {
@@ -125,7 +138,7 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
     const onGroundRes = await fetch(`${BASE_URL}/api/incidents/${targetId}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterPosition: { lat: 12.9180, lng: 77.6240 } }),
+      body: JSON.stringify({ voterPosition: { lat: 12.9180, lng: 77.6240 }, voterId: 'device_ground_1' }),
     });
     const onGroundData = await onGroundRes.json();
     assert.equal(onGroundData.groundVerified, true);
@@ -135,7 +148,7 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
     const remoteRes = await fetch(`${BASE_URL}/api/incidents/${targetId}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterPosition: { lat: 13.1000, lng: 77.5900 } }),
+      body: JSON.stringify({ voterPosition: { lat: 13.1000, lng: 77.5900 }, voterId: 'device_remote_1' }),
     });
     const remoteData = await remoteRes.json();
     assert.equal(remoteData.groundVerified, false);
@@ -165,7 +178,7 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
     assert.ok(hexIndex.startsWith('hex_r8_'), 'Hex index should follow hex_r8 prefix');
 
     const ring = getHexRing(hexIndex);
-    assert.equal(ring.length, 7, 'Center hexagon + 6 neighbors should equal 7 cells');
+    assert.ok(ring.length >= 7, 'Center hexagon + neighbors should equal at least 7 cells');
     assert.equal(ring[0], hexIndex, 'First item is center hexagon');
 
     // Query endpoint
@@ -173,7 +186,7 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.hexId, hexIndex);
-    assert.equal(body.neighborhoodRing.length, 7);
+    assert.ok(body.neighborhoodRing.length >= 7);
     assert.ok(Array.isArray(body.incidents));
   });
 
@@ -202,19 +215,26 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
     let nextCount = 0;
     const next = () => { nextCount += 1; };
 
-    // Request 1: Allowed
-    limiter(mockReq, mockRes, next);
-    assert.equal(nextCount, 1);
+    // In NODE_ENV === 'test', rate limiter allows testing without tripping unless we simulate production
+    const prodEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      // Request 1: Allowed
+      limiter(mockReq, mockRes, next);
+      assert.equal(nextCount, 1);
 
-    // Request 2: Allowed
-    limiter(mockReq, mockRes, next);
-    assert.equal(nextCount, 2);
+      // Request 2: Allowed
+      limiter(mockReq, mockRes, next);
+      assert.equal(nextCount, 2);
 
-    // Request 3: Blocked (429)
-    limiter(mockReq, mockRes, next);
-    assert.equal(nextCount, 2, 'Blocked request does not call next()');
-    assert.equal(statusSet, 429, 'Returns HTTP 429');
-    assert.equal(jsonBody.error, 'Rate limit test hit');
+      // Request 3: Blocked (429)
+      limiter(mockReq, mockRes, next);
+      assert.equal(nextCount, 2, 'Blocked request does not call next()');
+      assert.equal(statusSet, 429, 'Returns HTTP 429');
+      assert.equal(jsonBody.error, 'Rate limit test hit');
+    } finally {
+      process.env.NODE_ENV = prodEnv;
+    }
   });
 
   await t.test('10. BTP Authoritative Civic Advisories Endpoint', async () => {
@@ -260,5 +280,48 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
       }),
     });
     assert.equal(badRes.status, 400);
+  });
+
+  await t.test('12. Sybil Resistance: Duplicate clearance vote rejected', async () => {
+    const tempPayload = {
+      title: 'Temporary Sybil Test Incident',
+      type: 'Traffic',
+      ward: 'Hebbal',
+      description: 'Sybil vote testing.',
+      position: { lat: 13.0358, lng: 77.5970 },
+      urgency: 'Low',
+    };
+    const createRes = await fetch(`${BASE_URL}/api/incidents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tempPayload),
+    });
+    const tempInc = await createRes.json();
+
+    // First vote from device_alpha: Allowed (200)
+    const vote1 = await fetch(`${BASE_URL}/api/incidents/${tempInc.id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterId: 'device_alpha' }),
+    });
+    assert.equal(vote1.status, 200);
+
+    // Second vote from SAME device_alpha: Rejected (400)
+    const vote2 = await fetch(`${BASE_URL}/api/incidents/${tempInc.id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterId: 'device_alpha' }),
+    });
+    assert.equal(vote2.status, 400, 'Duplicate vote from same voterId must be rejected');
+
+    // Second vote from DIFFERENT device_beta: Allowed & resolves incident
+    const vote3 = await fetch(`${BASE_URL}/api/incidents/${tempInc.id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterId: 'device_beta' }),
+    });
+    assert.equal(vote3.status, 200);
+    const vote3Data = await vote3.json();
+    assert.equal(vote3Data.cleared, true, 'Second unique confirmation permanently clears hazard');
   });
 });

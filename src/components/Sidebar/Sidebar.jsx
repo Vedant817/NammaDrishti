@@ -10,16 +10,20 @@ const Sidebar = ({
   activeTab = "feed",
   onTabChange,
   events = [],
+  allEvents = null,
   selectedEvent,
   onEventSelect,
+  onVerifyEvent,
+  onResolveEvent,
   activeFilter = "All",
   rainIntensity = 0,
+  isWeatherOffline = false,
 }) => {
   const { t } = useLanguage();
 
   return (
     <aside className="sidebar-container">
-      <div className="sidebar-tabs">
+      <div className="sidebar-tab-nav">
         <button
           type="button"
           className={`sidebar-tab-btn ${activeTab === "feed" ? "active" : ""}`}
@@ -49,12 +53,18 @@ const Sidebar = ({
             events={events}
             selectedEvent={selectedEvent}
             onEventSelect={onEventSelect}
+            onVerifyEvent={onVerifyEvent}
+            onResolveEvent={onResolveEvent}
             activeFilter={activeFilter}
           />
         )}
 
         {activeTab === "recap" && (
-          <CityRecap events={events} rainIntensity={rainIntensity} />
+          <CityRecap
+            events={allEvents || events}
+            rainIntensity={rainIntensity}
+            isWeatherOffline={isWeatherOffline}
+          />
         )}
 
         {activeTab === "helpline" && (

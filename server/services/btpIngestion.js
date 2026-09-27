@@ -5,6 +5,8 @@
  * metro construction diversions, and emergency monsoon road closures.
  */
 
+const { getHexIndex } = require('./spatialHex');
+
 const BTP_OFFICIAL_ADVISORIES = [
   {
     id: 'btp_official_adv_1',
@@ -20,8 +22,7 @@ const BTP_OFFICIAL_ADVISORIES = [
     isVerified: true,
     isAuthoritative: true,
     reportedBy: 'Bengaluru Traffic Police (BTP Control Room)',
-    officialSource: 'BTP Traffic Bulletin',
-    createdAt: new Date().toISOString(),
+    officialSource: 'BTP Traffic Bulletin (Feed Ingestion)',
   },
   {
     id: 'btp_official_adv_2',
@@ -37,8 +38,7 @@ const BTP_OFFICIAL_ADVISORIES = [
     isVerified: true,
     isAuthoritative: true,
     reportedBy: 'Bengaluru Traffic Police (BTP Control Room)',
-    officialSource: 'BBMP Disaster Management Cell',
-    createdAt: new Date().toISOString(),
+    officialSource: 'BBMP Disaster Management Cell (Feed Ingestion)',
   },
   {
     id: 'btp_official_adv_3',
@@ -54,15 +54,23 @@ const BTP_OFFICIAL_ADVISORIES = [
     isVerified: true,
     isAuthoritative: true,
     reportedBy: 'BWSSB & Traffic Police Central',
-    officialSource: 'BWSSB Civic Advisory',
-    createdAt: new Date().toISOString(),
+    officialSource: 'BWSSB Civic Advisory (Feed Ingestion)',
   }
 ];
+
+// Set of advisories that have been dismissed, resolved, or expired by the system
+const dismissedAdvisoryIds = new Set();
+
+function markAdvisoryDismissed(id) {
+  dismissedAdvisoryIds.add(id);
+}
 
 function getBtpAdvisories() {
   return BTP_OFFICIAL_ADVISORIES.map((adv) => ({
     ...adv,
+    hexIndex: getHexIndex(adv.position.lat, adv.position.lng, 8),
     timestamp: 'Official BTP Bulletin',
+    createdAt: new Date().toISOString(),
   }));
 }
 
@@ -71,10 +79,14 @@ function syncBtpAdvisories(incidents) {
   const currentIds = new Set(incidents.map((i) => i.id));
 
   BTP_OFFICIAL_ADVISORIES.forEach((adv) => {
-    if (!currentIds.has(adv.id)) {
+    // Only insert if not already present AND not previously dismissed/expired
+    if (!currentIds.has(adv.id) && !dismissedAdvisoryIds.has(adv.id)) {
+      const hexIndex = getHexIndex(adv.position.lat, adv.position.lng, 8);
       incidents.push({
         ...adv,
+        hexIndex,
         timestamp: 'Official BTP Bulletin',
+        createdAt: new Date().toISOString(),
       });
       addedCount += 1;
     }
@@ -87,4 +99,5 @@ module.exports = {
   BTP_OFFICIAL_ADVISORIES,
   getBtpAdvisories,
   syncBtpAdvisories,
+  markAdvisoryDismissed,
 };

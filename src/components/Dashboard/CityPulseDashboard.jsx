@@ -1,62 +1,59 @@
 // src/components/Dashboard/CityPulseDashboard.jsx
 import React, { useState, useEffect } from "react";
 import Header from "../Header/Header";
+import FilterPanel from "../Filters/FilterPanel";
 import MapContainer from "../Map/MapContainer";
 import Sidebar from "../Sidebar/Sidebar";
-import FilterPanel from "../Filters/FilterPanel";
 import ReportModal from "../Modals/ReportModal";
 import ChatbotModal from "../Chatbot/ChatbotModal";
 import SafeRouteModal from "../Navigation/SafeRouteModal";
 import { useEventData } from "../../hooks/useEventData";
-import { useWeather } from "../../hooks/useWeather";
-import { useGeolocation } from "../../hooks/useGeolocation";
-import { useProximityAlert } from "../../hooks/useProximityAlert";
+import { useWeatherTelemetry } from "../../hooks/useWeatherTelemetry";
 import { useLanguage } from "../../context/LanguageContext";
 import "./CityPulseDashboard.css";
 
-function CityPulseDashboard() {
-  const [selectedEvent, setSelectedEvent] = useState(null);
+const CityPulseDashboard = () => {
+  const { events, isLiveConnected, addEvent, verifyEvent, resolveEvent } = useEventData();
+  const { weather } = useWeatherTelemetry();
+  const { t } = useLanguage();
+
   const [activeFilter, setActiveFilter] = useState("All");
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showChatbotModal, setShowChatbotModal] = useState(false);
   const [showRouteModal, setShowRouteModal] = useState(false);
-  const [navigationRoute, setNavigationRoute] = useState(null);
   const [sidebarTab, setSidebarTab] = useState("feed");
   const [reportPin, setReportPin] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
+  const [navigationRoute, setNavigationRoute] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
 
-  const { events, addEvent, verifyEvent, resolveEvent, isLiveConnected } = useEventData();
-  const weather = useWeather();
-  const { location: userLocation, getCurrentLocation } = useGeolocation();
-  const { t } = useLanguage();
-
-  // Request location on mount to activate real-time proximity geofencing
+  // Auto-detect commuter GPS on mount to power proximity verification
   useEffect(() => {
-    getCurrentLocation();
-  }, [getCurrentLocation]);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setUserLocation({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          });
+        },
+        (err) => {
+          console.warn("[Dashboard] GPS detection deferred:", err.message);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+  }, []);
 
   const showToast = (msg) => {
     setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 4500);
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Monitor geofence proximity to active hazards
-  useProximityAlert(userLocation, events, (alert) => {
-    showToast(`${alert.title}: ${alert.body}`);
-  });
-
-  // Filter events based on active category
-  const filteredEvents =
-    activeFilter === "All"
-      ? events
-      : events.filter((e) => e.type === activeFilter);
-
-  // Handle map click to pin report coordinates
-  const handleMapClick = (coords) => {
+  const handleMapPinSelected = (coords) => {
     setReportPin(coords);
-    showToast(`📍 Selected coordinate (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}). Open 'Report Hazard' to file report.`);
+    setShowReportModal(true);
   };
 
   const handleOpenReportModal = () => {
@@ -71,11 +68,13 @@ function CityPulseDashboard() {
   };
 
   const handleVerifyEvent = async (id) => {
-    const res = await verifyEvent(id);
+    const res = await verifyEvent(id, userLocation);
     if (res?.alreadyVoted) {
       showToast("⚠️ You have already verified this incident.");
-    } else {
+    } else if (res?.success) {
       showToast("✓ Confirmation recorded (+1 consensus)!");
+    } else if (res?.error) {
+      showToast(`⚠️ ${res.error}`);
     }
   };
 
@@ -83,19 +82,29 @@ function CityPulseDashboard() {
     const res = await resolveEvent(id);
     if (res?.alreadyVoted) {
       showToast("⚠️ You have already voted to clear this incident.");
-    } else {
+    } else if (res?.success) {
       showToast("✓ Clearance vote recorded (2 confirmations needed to permanently clear).");
+    } else if (res?.error) {
+      showToast(`⚠️ ${res.error}`);
     }
   };
 
   const handleApplyRouteToMap = (route) => {
     setNavigationRoute(route);
-    showToast("🧭 Safe navigation corridor calculated and projected onto map!");
+    if (route) {
+      showToast("🧭 Safe navigation corridor calculated and projected onto map!");
+    } else {
+      showToast("Route cleared from map.");
+    }
   };
 
   const verifiedPercent = Math.round(
     (events.filter((e) => e.isVerified).length / (events.length || 1)) * 100
   );
+
+  const filteredEvents = activeFilter === "All"
+    ? events
+    : events.filter((e) => e.type === activeFilter);
 
   return (
     <div className="dashboard-container">
@@ -111,6 +120,7 @@ function CityPulseDashboard() {
       <FilterPanel
         activeFilter={activeFilter}
         onFilterChange={setActiveFilter}
+        events={events}
         eventCounts={events.reduce((acc, evt) => {
           acc[evt.type] = (acc[evt.type] || 0) + 1;
           return acc;
@@ -124,50 +134,46 @@ function CityPulseDashboard() {
             events={filteredEvents}
             selectedEvent={selectedEvent}
             onEventSelect={setSelectedEvent}
-            onMapClick={handleMapClick}
-            onVerifyEvent={handleVerifyEvent}
-            onResolveEvent={handleResolveEvent}
-            reportPin={reportPin}
+            onMapClick={handleMapPinSelected}
+            onOpenReportModal={handleOpenReportModal}
             navigationRoute={navigationRoute}
-            onClearNavigationRoute={() => setNavigationRoute(null)}
+            userLocation={userLocation}
           />
 
-          {/* Floating Action Buttons */}
-          <div className="map-floating-actions">
+          <div className="floating-action-buttons">
             <button
               type="button"
-              className="action-fab fab-route"
-              onClick={() => setShowRouteModal(true)}
-              title="Compute Safe Navigation Corridor (OSRM)"
-            >
-              <span>🧭</span>
-              <span>Safe Route</span>
-            </button>
-
-            <button
-              type="button"
-              className="action-fab fab-report"
+              className="report-trigger-btn"
               onClick={handleOpenReportModal}
-              title="Report an active hazard or flooded underpass"
+              title="Report Civic Hazard"
             >
               <span>🚨</span>
-              <span>{t.actions.reportHazard}</span>
+              <span>{t.actions?.reportHazard || "Report Hazard"}</span>
             </button>
-
             <button
               type="button"
-              className="action-fab fab-ai"
+              className="safe-route-trigger-btn"
+              onClick={() => setShowRouteModal(true)}
+              title="Calculate Safe Hazard-Avoidance Corridor"
+            >
+              <span>🧭</span>
+              <span>{t.actions?.safeRoute || "Safe Route"}</span>
+            </button>
+            <button
+              type="button"
+              className="chatbot-trigger-btn"
               onClick={() => setShowChatbotModal(true)}
               title="Open NammaPulse AI Assistant"
             >
               <span>🤖</span>
-              <span>{t.actions.aiAssistant}</span>
+              <span>{t.actions?.aiAssistant}</span>
             </button>
           </div>
         </main>
 
         <Sidebar
           events={filteredEvents}
+          allEvents={events}
           selectedEvent={selectedEvent}
           onEventSelect={setSelectedEvent}
           onVerifyEvent={handleVerifyEvent}
@@ -175,6 +181,7 @@ function CityPulseDashboard() {
           activeTab={sidebarTab}
           onTabChange={setSidebarTab}
           rainIntensity={weather?.precipitation || 0}
+          isWeatherOffline={weather?.isOffline || false}
         />
       </div>
 
@@ -196,6 +203,7 @@ function CityPulseDashboard() {
         <ChatbotModal
           isOpen={showChatbotModal}
           onClose={() => setShowChatbotModal(false)}
+          events={events}
           currentEvents={events}
           weather={weather}
         />
@@ -219,6 +227,6 @@ function CityPulseDashboard() {
       )}
     </div>
   );
-}
+};
 
 export default CityPulseDashboard;

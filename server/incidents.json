@@ -11,8 +11,8 @@
     },
     "timestamp": "10 mins ago",
     "urgency": "High",
-    "verificationCount": 36,
-    "verificationScore": 35.25,
+    "verificationCount": 38,
+    "verificationScore": 36.5,
     "clusterCount": 1,
     "isVerified": true,
     "reportedBy": "BTP Traffic Monitor",
@@ -118,7 +118,8 @@
     "reportedBy": "Bengaluru Traffic Police (BTP Control Room)",
     "officialSource": "BTP Traffic Bulletin",
     "createdAt": "2026-09-27T08:49:19.372Z",
-    "timestamp": "Official BTP Bulletin"
+    "timestamp": "Official BTP Bulletin",
+    "hexIndex": "hex_r8_9757_2076"
   },
   {
     "id": "btp_official_adv_2",
@@ -139,7 +140,8 @@
     "reportedBy": "Bengaluru Traffic Police (BTP Control Room)",
     "officialSource": "BBMP Disaster Management Cell",
     "createdAt": "2026-09-27T08:49:19.373Z",
-    "timestamp": "Official BTP Bulletin"
+    "timestamp": "Official BTP Bulletin",
+    "hexIndex": "hex_r8_9749_2085"
   },
   {
     "id": "btp_official_adv_3",
@@ -160,6 +162,7 @@
     "reportedBy": "BWSSB & Traffic Police Central",
     "officialSource": "BWSSB Civic Advisory",
     "createdAt": "2026-09-27T08:49:19.373Z",
-    "timestamp": "Official BTP Bulletin"
+    "timestamp": "Official BTP Bulletin",
+    "hexIndex": "hex_r8_9760_2084"
   }
 ]

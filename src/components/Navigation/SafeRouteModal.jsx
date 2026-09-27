@@ -1,11 +1,7 @@
 // src/components/Navigation/SafeRouteModal.jsx
 import React, { useState } from "react";
-import {
-  BENGALURU_HUBS,
-  fetchDrivingRoute,
-  detectRouteHazards,
-} from "../../services/routingService";
-import Button from "../Common/Button";
+import { fetchDrivingRoute, detectRouteHazards } from "../../services/routingService";
+import { BENGALURU_HUBS } from "../../data/constants";
 import "./SafeRouteModal.css";
 
 const SafeRouteModal = ({
@@ -14,18 +10,19 @@ const SafeRouteModal = ({
   onApplyRouteToMap,
   userLocation,
 }) => {
-  const [originId, setOriginId] = useState("koramangala");
-  const [destId, setDestId] = useState("bellandur");
+  const [startId, setStartId] = useState("silk-board");
+  const [destId, setDestId] = useState("marathahalli");
+  const [useCurrentGps, setUseCurrentGps] = useState(false);
   const [loading, setLoading] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
   const [routingError, setRoutingError] = useState(null);
 
-  const handleComputeRoute = async () => {
+  const handleCalculateRoute = async () => {
     let startCoords;
-    if (originId === "current_gps" && userLocation) {
-      startCoords = { lat: userLocation.lat, lng: userLocation.lng };
+    if (useCurrentGps && userLocation) {
+      startCoords = userLocation;
     } else {
-      const hub = BENGALURU_HUBS.find((h) => h.id === originId) || BENGALURU_HUBS[0];
+      const hub = BENGALURU_HUBS.find((h) => h.id === startId) || BENGALURU_HUBS[0];
       startCoords = { lat: hub.lat, lng: hub.lng };
     }
 
@@ -56,6 +53,9 @@ const SafeRouteModal = ({
         "Transit corridor calculation failed or OSRM service is temporarily unreachable. Please exercise caution and verify local road status."
       );
       setRouteResult(null);
+      if (onApplyRouteToMap) {
+        onApplyRouteToMap(null); // Clear previous route line from map on failure
+      }
     } finally {
       setLoading(false);
     }
@@ -78,106 +78,117 @@ const SafeRouteModal = ({
         </div>
 
         <div className="safe-route-body">
-          <div className="route-selectors">
-            <div className="route-field">
-              <label>Origin (Start Point)</label>
-              <select
-                className="route-select"
-                value={originId}
-                onChange={(e) => setOriginId(e.target.value)}
-              >
-                {userLocation && <option value="current_gps">📍 My Detected Location</option>}
-                {BENGALURU_HUBS.map((hub) => (
-                  <option key={hub.id} value={hub.id}>
-                    {hub.name}
-                  </option>
-                ))}
-              </select>
+          <div className="safe-route-controls">
+            <div className="route-input-group">
+              <label>Origin Hub</label>
+              <div className="origin-toggle-row">
+                <select
+                  value={startId}
+                  disabled={useCurrentGps}
+                  onChange={(e) => setStartId(e.target.value)}
+                  className="route-select"
+                >
+                  {BENGALURU_HUBS.map((hub) => (
+                    <option key={hub.id} value={hub.id}>
+                      {hub.name} ({hub.zone})
+                    </option>
+                  ))}
+                </select>
+                {userLocation && (
+                  <button
+                    type="button"
+                    className={`gps-toggle-btn ${useCurrentGps ? "active" : ""}`}
+                    onClick={() => setUseCurrentGps(!useCurrentGps)}
+                    title="Use current GPS as starting waypoint"
+                  >
+                    📍 My GPS
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="route-divider-arrow">↓</div>
-
-            <div className="route-field">
-              <label>Destination</label>
+            <div className="route-input-group">
+              <label>Destination Hub</label>
               <select
-                className="route-select"
                 value={destId}
                 onChange={(e) => setDestId(e.target.value)}
+                className="route-select"
               >
                 {BENGALURU_HUBS.map((hub) => (
-                  <option key={hub.id} value={hub.id} disabled={hub.id === originId}>
-                    {hub.name}
+                  <option key={hub.id} value={hub.id}>
+                    {hub.name} ({hub.zone})
                   </option>
                 ))}
               </select>
             </div>
-          </div>
 
-          <div className="compute-btn-wrap">
-            <Button
+            <button
               type="button"
-              variant="primary"
-              onClick={handleComputeRoute}
+              className="calculate-route-btn"
+              onClick={handleCalculateRoute}
               disabled={loading}
             >
-              {loading ? "Computing Safe Corridor..." : "🔍 Check Route & Hazards"}
-            </Button>
+              {loading ? "Calculating Safest Corridor..." : "🔍 Find Safe Route"}
+            </button>
           </div>
 
           {routingError && (
-            <div className="route-error-alert" style={{ marginTop: '14px', padding: '12px 14px', background: '#451A1A', border: '1px solid #7F1D1D', borderRadius: '8px', color: '#FCA5A5', fontSize: '0.85rem' }}>
-              ⚠️ {routingError}
+            <div className="routing-error-box">
+              <span>⚠️</span>
+              <p>{routingError}</p>
             </div>
           )}
 
           {routeResult && (
-            <div className="route-results-card">
-              <div className="results-summary-row">
-                <div className="metric-box">
+            <div className="route-summary-card">
+              <div className="route-metrics-bar">
+                <div className="route-metric">
                   <span className="metric-val">{routeResult.distanceKm} km</span>
-                  <span className="metric-lbl">Distance</span>
+                  <span className="metric-lbl">Total Distance</span>
                 </div>
-                <div className="metric-box">
-                  <span className="metric-val">~{routeResult.durationMin} min</span>
-                  <span className="metric-lbl">Est. Duration</span>
+                <div className="route-metric">
+                  <span className="metric-val">{routeResult.durationMins} mins</span>
+                  <span className="metric-lbl">Estimated Transit</span>
                 </div>
-                <div className="metric-box">
+                <div className="route-metric">
                   <span
-                    className={`metric-val ${
-                      routeResult.conflicts.length > 0 ? "alert-hazard" : "alert-safe"
-                    }`}
+                    className="metric-val"
+                    style={{
+                      color:
+                        routeResult.conflicts.length === 0
+                          ? "var(--status-verified)"
+                          : "var(--status-traffic)",
+                    }}
                   >
-                    {routeResult.conflicts.length === 0
-                      ? "✓ Safe"
-                      : `${routeResult.conflicts.length} Warning`}
+                    {routeResult.conflicts.length === 0 ? "CLEAR" : `${routeResult.conflicts.length} HAZARD(S)`}
                   </span>
-                  <span className="metric-lbl">Hazard Status</span>
+                  <span className="metric-lbl">Corridor Safety</span>
                 </div>
               </div>
 
-              {routeResult.conflicts.length > 0 ? (
-                <div className="route-hazard-alert">
-                  <div className="alert-header">
-                    <span>⚠️ Active Hazard On / Near Route</span>
+              {routeResult.conflicts.length === 0 ? (
+                <div className="route-safe-banner">
+                  <span>✓</span>
+                  <div>
+                    <strong>Clear Corridor Verified</strong>
+                    <p>No active waterlogging or major accidents detected along this path.</p>
                   </div>
-                  <ul className="hazard-warning-list">
-                    {routeResult.conflicts.map(({ hazard, distanceKm }) => (
-                      <li key={hazard.id} className="hazard-warning-item">
-                        <strong>{hazard.title}</strong> ({hazard.type})
-                        <p>{hazard.description}</p>
-                        <span className="hazard-dist-tag">
-                          Within {(distanceKm * 1000).toFixed(0)}m of route corridor
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="bypass-tip">
-                    💡 <em>Recommendation: Follow secondary bypass to avoid inundation delays.</em>
-                  </p>
                 </div>
               ) : (
-                <div className="route-safe-alert">
-                  <span>✓ Corridor clear of reported waterlogging and severe blockades.</span>
+                <div className="route-conflicts-list">
+                  <h5>⚠️ Road Hazards Along Transit Route:</h5>
+                  {routeResult.conflicts.map((c) => (
+                    <div key={c.hazard.id} className="route-conflict-item">
+                      <span className="conflict-type">{c.hazard.type}</span>
+                      <div className="conflict-info">
+                        <strong>{c.hazard.title}</strong>
+                        <p>{c.hazard.description}</p>
+                        <span className="conflict-dist">
+                          Approx. {Math.round(c.distanceKm * 1000)}m from roadway
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

@@ -6,24 +6,26 @@
 
 ## 🌟 Overview
 
-**NammaPulse** (ನಮ್ಮ ಪಲ್ಸ್) is a production-grade civic intelligence web application engineered specifically for Bengaluru's urban infrastructure challenges. It bridges the critical information gap during severe monsoons, flash floods, chronic traffic bottlenecks, and civic emergencies by synthesizing:
+**NammaPulse** (ನಮ್ಮ ಪಲ್ಸ್) is a production-grade civic intelligence platform engineered specifically for Bengaluru's complex urban infrastructure. It bridges the critical information gap during severe monsoons, flash floods, chronic traffic bottlenecks, and civic emergencies by synthesizing:
 
 1. **Spatial Auto-Clustering (200m / 60-min window)**: When multiple citizens report hazards of the same type within 200 meters of an active report, NammaPulse automatically merges them into a single consolidated hazard cluster with appended commentary, preventing pin clutter.
 2. **Hexagonal Spatial Partitioning & Rooms**: Discrete hexagonal cell indexing (Resolution 8 ~460m) mapping coordinates to discrete spatial rooms with neighbor ring queries (`/api/incidents/hex/:hexId`), enabling targeted WebSocket room broadcasts.
 3. **Proximity-Weighted Multi-Peer Consensus**: High-integrity validation where on-ground commuters ($\le 1.5$ km) receive full 1.0x confirmation weight, while remote observations receive 0.25x weight. Incidents require 2 independent citizen confirmations to clear from the live map.
-4. **Time-To-Live (TTL) Dynamic Hazard Decay**: Category-based half-life decay worker (Accidents: 2h, Waterlogging: 4h, Traffic: 3h, Infrastructure: 72h) that automatically retires stale hazards.
-5. **Sliding-Window IP Rate Limiting**: In-memory rate limiting across incident reporting, verification votes, media uploads, and AI chat queries to prevent bot spam and denial of service.
-6. **BTP & BBMP Official Advisory Ingestion**: Background integration worker ingesting authoritative alerts from Bengaluru Traffic Police and BBMP Disaster Management (metro construction diversions, pipeline repairs, emergency road closures).
-7. **Civic Media CDN & Direct Storage Pipeline**: Secure image upload endpoint (`/api/media/upload`) with SHA-256 deduplication hashing, MIME sanitization, and automatic delegation to Cloudinary CDN when configured.
-8. **Citizen Reputation & Gamification Tiers**: Dynamic civic karma scoring with recognition badges (`Bengaluru Scout`, `Ward Sentinel`, and `City Guardian`) rewarding active contributors.
-9. **Conversational AI Transit Assistant**: Intelligent contextual assistant querying active incidents, flood risks, and emergency helplines with fast server-side and client-side fail-safe fallbacks.
-10. **Real-Time Doppler Rain Radar**: Live 5-minute automated updates from RainViewer radar frames projected directly over Bengaluru's municipal wards.
-11. **Open-Meteo Precision Weather & Flood Telemetry**: Hourly precipitation intensity, relative humidity, wind vectors, and dynamic flood risk indexing with fail-safe offline state reporting.
-12. **Chronic Underpass Inundation Watch**: Pre-calibrated spatial catalog of Bengaluru's most critical waterlogging bottlenecks (K.R. Circle, Panathur Railway Underpass, Windsor Manor, Okalipuram, Benniganahalli, Marathahalli) with real-time precipitation trigger thresholds.
-13. **Safe Navigation Corridor Routing**: OSRM-powered route calculation augmented with perpendicular point-to-segment distance spatial algorithms (`distanceToSegmentKm`) that flag hazards located along road segments between navigation waypoints.
-14. **2.5 km Proximity Geofencing & Web Audio Alerts**: Browser-based geolocation alerts paired with a gentle dual-tone Web Audio chime that warns drivers when approaching active flooded roads or accidents.
-15. **Trilingual Localization**: Full native UI support for **Kannada (ಕನ್ನಡ)**, **Hindi (हिंदी)**, and **English**.
-16. **Monsoon-Resilient Offline PWA**: Service Worker caching of App Shell assets ensuring uninterrupted access during severe weather-induced mobile packet loss and cell tower degradation.
+4. **Anti-Sybil Clearance & Authoritative Sanitization**: Prevents duplicate voting from the same client fingerprint on incident verification and clearance. Strips unauthorized claims of official titles (BTP, BBMP) on citizen-submitted incidents.
+5. **Time-To-Live (TTL) Dynamic Hazard Decay**: Category-based half-life decay worker (Accidents: 2h, Waterlogging: 4h, Traffic: 3h, Infrastructure: 72h) that automatically retires stale hazards.
+6. **Sliding-Window IP Rate Limiting**: In-memory rate limiting across incident reporting, verification votes, media uploads, and AI chat queries to prevent bot spam and denial of service.
+7. **BTP & BBMP Official Advisory Ingestion**: Background integration worker ingesting authoritative alerts from Bengaluru Traffic Police and BBMP Disaster Management (metro construction diversions, pipeline repairs, emergency road closures).
+8. **Civic Media CDN & Direct Storage Pipeline**: Secure image upload endpoint (`/api/media/upload`) with SHA-256 deduplication hashing, MIME sanitization, and automatic delegation to Cloudinary CDN when configured.
+9. **Citizen Reputation & Gamification Tiers**: Dynamic civic karma scoring with recognition badges (`Bengaluru Scout`, `Ward Sentinel`, and `City Guardian`) rewarding active contributors.
+10. **Conversational AI Transit Assistant**: Intelligent contextual assistant querying active incidents, flood risks, and emergency helplines with fast server-side and client-side fail-safe fallbacks.
+11. **Real-Time Doppler Rain Radar**: Live 5-minute automated updates from RainViewer radar frames projected directly over Bengaluru's municipal wards.
+12. **Open-Meteo Precision Weather & Flood Telemetry**: Hourly precipitation intensity, relative humidity, wind vectors, and dynamic flood risk indexing with fail-safe offline state reporting.
+13. **Chronic Underpass Inundation Watch**: Pre-calibrated spatial catalog of Bengaluru's most critical waterlogging bottlenecks (K.R. Circle, Panathur Railway Underpass, Windsor Manor, Okalipuram, Benniganahalli, Marathahalli) with real-time precipitation trigger thresholds.
+14. **Safe Navigation Corridor Routing**: OSRM-powered route calculation augmented with perpendicular point-to-segment distance spatial algorithms (`distanceToSegmentKm`) that flag hazards located along road segments between navigation waypoints.
+15. **2.5 km Proximity Geofencing & Web Audio Alerts**: Browser-based geolocation alerts paired with a gentle dual-tone Web Audio chime that warns drivers when approaching active flooded roads or accidents.
+16. **Trilingual Localization**: Full native UI support for **Kannada (ಕನ್ನಡ)**, **Hindi (हिंदी)**, and **English**.
+17. **Production Single-Container Deployment**: Built-in production SPA static file serving in Express with wildcard client routing and customizable persistent storage (`DATA_FILE`).
+18. **Monsoon-Resilient Offline PWA**: Service Worker caching of App Shell assets ensuring uninterrupted access during severe weather-induced mobile packet loss and cell tower degradation.
 
 ---
 
@@ -56,7 +58,7 @@ graph TD
     Client -->|Safe Driving Routes| OSRM
     Client -->|Doppler Radar Tiles| RainViewer
     Client -->|Precipitation Telemetry| OpenMeteo
-    API -->|Atomic JSON Storage| LocalDisk[(server/incidents.json)]
+    API -->|Atomic JSON Storage| LocalDisk[(DATA_FILE / Persistent Volume)]
 ```
 
 ---
@@ -84,6 +86,7 @@ graph TD
 ### Prerequisites
 - **Node.js**: v18.0.0 or higher
 - **npm**: v9.0.0 or higher
+- **Docker & Docker Compose** (optional, for containerized run)
 
 ### Local Development
 
@@ -123,13 +126,13 @@ NammaPulse includes a unified multi-tier test suite with zero external mocks req
 # Run complete test suite (Frontend + Backend + Commuter E2E Simulation)
 npm run test:all
 
-# Run frontend tests only (React Testing Library)
+# Run frontend tests only (React Testing Library - 7 test suites)
 npm run test:ci
 
-# Run backend API, clustering, proximity, and TTL tests (12 test cases)
+# Run backend API, clustering, proximity, and TTL tests (13 test cases)
 npm run test:backend
 
-# Run heavy user commuter journey simulation (14 workflows)
+# Run heavy user commuter journey simulation (11 workflows)
 npm run test:e2e
 ```
 
@@ -148,7 +151,7 @@ Run the complete multi-stage containerized stack with a single command:
 ```bash
 docker-compose up --build
 ```
-The application will be live at `http://localhost:5001`.
+The application will be live at `http://localhost:5001`, serving both the static React SPA and real-time backend API from a unified container with persistent data storage in `nammapulse_data`.
 
 ---
 

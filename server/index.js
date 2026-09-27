@@ -8,7 +8,7 @@ const path = require('path');
 
 const { getHexIndex, getHexRing } = require('./services/spatialHex.js');
 const { createRateLimiter } = require('./services/rateLimiter.js');
-const { syncBtpAdvisories, getBtpAdvisories } = require('./services/btpIngestion.js');
+const { syncBtpAdvisories, getBtpAdvisories, markAdvisoryDismissed } = require('./services/btpIngestion.js');
 const { processMediaUpload } = require('./services/mediaService.js');
 
 const app = express();
@@ -29,7 +29,7 @@ const io = new Server(server, {
   },
 });
 
-const DATA_FILE = path.join(__dirname, 'incidents.json');
+const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'incidents.json');
 
 // In-Memory Incident Store initialized from disk
 let incidents = [];
@@ -49,22 +49,43 @@ try {
         }
         createdAt = new Date(now - minsAgo * 60 * 1000).toISOString();
       }
-      const hexIndex = inc.hexIndex || getHexIndex(inc.position?.lat, inc.position?.lng, 8);
+      const lat = inc.position?.lat || 12.9716;
+      const lng = inc.position?.lng || 77.5946;
+      const hexIndex = inc.hexIndex || getHexIndex(lat, lng, 8);
       return {
         ...inc,
         createdAt,
         hexIndex,
+        verificationScore: inc.verificationScore || inc.verificationCount || 1.0,
       };
     });
   }
 } catch (err) {
-  console.error('Error loading incidents file, initializing empty dataset:', err.message);
+  console.warn('[Storage] Failed to read initial incidents file:', err.message);
   incidents = [];
 }
 
-// Haversine formula for calculating distance between coordinates in kilometers
+// Persist active incidents to disk atomically with swap backup
+function persistIncidents() {
+  try {
+    const dir = path.dirname(DATA_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const jsonStr = JSON.stringify(incidents, null, 2);
+    const tempFile = `${DATA_FILE}.tmp`;
+    fs.writeFileSync(tempFile, jsonStr, 'utf-8');
+    fs.renameSync(tempFile, DATA_FILE);
+    return true;
+  } catch (err) {
+    console.error('[Storage] Error persisting incidents to disk:', err.message);
+    return false;
+  }
+}
+
+// Great-circle Haversine formula to calculate distance in km between two GPS coordinates
 function getDistanceKm(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Earth radius in km
+  const R = 6371; // Radius of the Earth in km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -77,117 +98,113 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Category-based dynamic half-life TTL policies (in hours)
+// Category-specific TTL policies (in hours)
 const TTL_HOURS_BY_TYPE = {
-  Accident: 2,         // Cleared faster once police / cranes assist
-  Traffic: 3,          // Peak hours dissipate
-  Waterlogging: 4,     // Drains / pumping stations clear water
-  Infrastructure: 72,  // Potholes / sinkholes require longer civic repair
-};
-const DEFAULT_TTL_HOURS = 4;
-
-const persistIncidents = () => {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(incidents, null, 2));
-    return true;
-  } catch (err) {
-    console.error('Failed to persist incidents to disk:', err.message);
-    return false;
-  }
+  Traffic: 3,          // Rapidly shifting urban congestion
+  Waterlogging: 8,     // Monsoon flooding and underpass inundation
+  Accident: 4,         // Roadway collisions and clearance
+  Infrastructure: 24,  // Potholes, open drains, electrical hazards
 };
 
-// Background TTL decay cleanup ticker
-const cleanupExpiredIncidents = () => {
+// Periodic Background Worker: Purge Stale Incidents based on TTL & Consensus
+function cleanupExpiredIncidents() {
   const now = Date.now();
   const initialCount = incidents.length;
-  const expiredIds = [];
+  const expiredIncidents = [];
 
-  const remaining = incidents.filter((incident) => {
-    if (!incident.createdAt) return true;
-    const createdAtMs = new Date(incident.createdAt).getTime();
-    if (Number.isNaN(createdAtMs)) return true;
+  incidents = incidents.filter((incident) => {
+    // Determine category TTL (default 6 hours if type unknown)
+    const ttlHours = TTL_HOURS_BY_TYPE[incident.type] || 6;
+    const ttlMs = ttlHours * 60 * 60 * 1000;
 
-    const ageHours = (now - createdAtMs) / (1000 * 60 * 60);
-    const maxAgeHours = TTL_HOURS_BY_TYPE[incident.type] || DEFAULT_TTL_HOURS;
+    let createdMs = new Date(incident.createdAt).getTime();
+    if (Number.isNaN(createdMs)) {
+      createdMs = now;
+    }
 
-    if (ageHours > maxAgeHours) {
-      expiredIds.push(incident.id);
+    const ageMs = now - createdMs;
+
+    // High consensus hazards receive a 50% TTL grace window
+    const consensusMultiplier = (incident.verificationScore >= 3 || incident.verificationCount >= 4) ? 1.5 : 1.0;
+    const effectiveTtlMs = ttlMs * consensusMultiplier;
+
+    const isExpired = ageMs > effectiveTtlMs;
+
+    if (isExpired) {
+      if (incident.isAuthoritative) {
+        markAdvisoryDismissed(incident.id);
+      }
+      expiredIncidents.push(incident);
+      io.emit('incident:expired', {
+        id: incident.id,
+        reason: `Expired after ${Math.round(ageMs / (1000 * 60 * 60))} hours (TTL exceeded).`,
+      });
       return false;
     }
     return true;
   });
 
-  if (remaining.length !== initialCount) {
-    const backup = incidents;
-    incidents = remaining;
-    const saved = persistIncidents();
-    if (!saved) {
-      // Rollback if persistence failed
-      incidents = backup;
-      return [];
-    }
-    expiredIds.forEach((id) => {
-      io.emit('incident:expired', { id, reason: 'TTL elapsed' });
-    });
-    console.log(`[NammaPulse TTL] Cleaned up ${expiredIds.length} expired incident(s).`);
+  if (incidents.length !== initialCount) {
+    persistIncidents();
+    console.log(`[Lifecycle Worker] Cleaned up ${initialCount - incidents.length} expired incidents.`);
   }
-  return expiredIds;
-};
 
-// Periodic background check every 60s without blocking process exit
-const ttlInterval = setInterval(cleanupExpiredIncidents, 60000);
-if (ttlInterval.unref) ttlInterval.unref();
+  return expiredIncidents;
+}
 
-// Periodic background sync of BTP civic advisories every 15 minutes
-const btpInterval = setInterval(() => {
+// Run cleanup every 5 minutes
+const cleanupInterval = setInterval(cleanupExpiredIncidents, 5 * 60 * 1000);
+if (cleanupInterval.unref) cleanupInterval.unref();
+
+// Periodically ingest official BTP and BBMP civic advisories every 15 minutes
+const btpSyncInterval = setInterval(() => {
   const result = syncBtpAdvisories(incidents);
   if (result.addedCount > 0) {
     persistIncidents();
     io.emit('advisories:updated', { addedCount: result.addedCount });
-    console.log(`[BTP Ingestion] Ingested ${result.addedCount} new authoritative advisory.`);
   }
-}, 900000);
-if (btpInterval.unref) btpInterval.unref();
+}, 15 * 60 * 1000);
+if (btpSyncInterval.unref) btpSyncInterval.unref();
 
-// Rate Limiters
+// RATE LIMITERS
 const reportLimiter = createRateLimiter({
-  windowMs: 60000,
-  maxRequests: 20,
-  message: 'Too many incident submissions from this IP. Please wait a minute before reporting again.',
+  windowMs: 60 * 1000,
+  maxRequests: 10,
+  message: 'Too many incident reports created from this IP. Please wait a minute before submitting again.',
 });
 
 const verifyLimiter = createRateLimiter({
-  windowMs: 60000,
-  maxRequests: 40,
-  message: 'Verification rate limit exceeded. Please wait a moment.',
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  message: 'Too many verification votes recorded. Please wait a minute before voting again.',
 });
 
 const aiLimiter = createRateLimiter({
-  windowMs: 60000,
-  maxRequests: 30,
-  message: 'AI Assistant query limit reached. Please wait a moment before sending another query.',
+  windowMs: 60 * 1000,
+  maxRequests: 20,
+  message: 'NammaPulse AI assistant rate limit reached. Please wait a moment before sending another prompt.',
 });
 
 const mediaLimiter = createRateLimiter({
-  windowMs: 60000,
+  windowMs: 60 * 1000,
   maxRequests: 15,
-  message: 'Media upload rate limit exceeded. Please wait a minute before uploading additional photos.',
+  message: 'Media upload rate limit reached. Please wait before uploading more photos.',
 });
 
-// REST API Endpoints
+// REST ENDPOINTS
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
-    service: 'NammaPulse Intelligence API',
-    uptime: process.uptime(),
-    activeIncidents: incidents.length,
+    platform: 'NammaPulse Bengaluru Civic Intelligence',
+    version: '1.2.0',
     timestamp: new Date().toISOString(),
+    activeIncidents: incidents.length,
+    ttlPolicies: TTL_HOURS_BY_TYPE,
     features: {
       spatialClustering: true,
       h3HexPartitioning: true,
       rateLimiting: true,
-      btpIngestion: true,
-      ttlDecayWorker: true,
     },
   });
 });
@@ -206,7 +223,7 @@ app.get('/api/incidents', (req, res) => {
   res.json(filtered);
 });
 
-// Hexagonal spatial partition endpoint (queries hex cell and its 6 neighbor rings)
+// Hexagonal spatial partition endpoint (queries hex cell and its 8 neighbor rings)
 app.get('/api/incidents/hex/:hexId', (req, res) => {
   const { hexId } = req.params;
   const targetHexes = new Set(getHexRing(hexId));
@@ -238,10 +255,10 @@ app.post('/api/advisories/sync', (req, res) => {
 });
 
 // Civic Media Upload Endpoint (Cloudinary CDN or direct storage)
-app.post('/api/media/upload', mediaLimiter, (req, res) => {
+app.post('/api/media/upload', mediaLimiter, async (req, res) => {
   try {
     const { imageBase64, filename, mimeType } = req.body || {};
-    const mediaResult = processMediaUpload({ imageBase64, filename, mimeType });
+    const mediaResult = await processMediaUpload({ imageBase64, filename, mimeType });
     res.status(201).json(mediaResult);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -280,6 +297,12 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
 
   const category = type || 'Infrastructure';
   const hexIndex = getHexIndex(lat, lng, 8);
+  const reporterKey = req.body.voterId || req.ip || 'anon_reporter';
+
+  // Sanitize authoritative flags - citizen submissions cannot claim official titles
+  const sanitizedReportedBy = String(req.body.reportedBy || 'Citizen Contributor')
+    .replace(/(bengaluru traffic police|btp|bbmp|official)/gi, 'Citizen')
+    .trim() || 'Citizen Contributor';
 
   // 1. SPATIAL CLUSTERING & AUTO-MERGE (200m / 60 min threshold)
   const now = Date.now();
@@ -296,6 +319,15 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
   });
 
   if (clusterMatch) {
+    // Auto-clustering Sybil check: verify reporter has not already contributed to this cluster
+    if (!Array.isArray(clusterMatch.reporters)) {
+      clusterMatch.reporters = [clusterMatch.reportedBy || 'initial_reporter'];
+    }
+    const isNewReporter = !clusterMatch.reporters.includes(reporterKey);
+    if (isNewReporter) {
+      clusterMatch.reporters.push(reporterKey);
+    }
+
     // Save previous values for atomic rollback
     const prevCount = clusterMatch.verificationCount || 1;
     const prevScore = clusterMatch.verificationScore || prevCount;
@@ -303,11 +335,13 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     const prevIsVerified = !!clusterMatch.isVerified;
     const prevUpdates = clusterMatch.updates ? [...clusterMatch.updates] : [];
 
-    clusterMatch.verificationCount = prevCount + 1;
-    clusterMatch.verificationScore = Number((prevScore + 1.0).toFixed(2));
-    clusterMatch.clusterCount = prevClusterCount + 1;
-    if (clusterMatch.verificationCount >= 3 || clusterMatch.verificationScore >= 2.5) {
-      clusterMatch.isVerified = true;
+    if (isNewReporter) {
+      clusterMatch.verificationCount = prevCount + 1;
+      clusterMatch.verificationScore = Number((prevScore + 1.0).toFixed(2));
+      clusterMatch.clusterCount = prevClusterCount + 1;
+      if (clusterMatch.verificationScore >= 2.5) {
+        clusterMatch.isVerified = true;
+      }
     }
 
     if (!Array.isArray(clusterMatch.updates)) {
@@ -316,7 +350,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     clusterMatch.updates.unshift({
       timestamp: 'Just now',
       description: String(description).trim(),
-      reportedBy: 'Citizen Scout (Auto-Cluster)',
+      reportedBy: sanitizedReportedBy,
       mediaUrl: mediaUrl || null,
     });
 
@@ -328,6 +362,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
       clusterMatch.clusterCount = prevClusterCount;
       clusterMatch.isVerified = prevIsVerified;
       clusterMatch.updates = prevUpdates;
+      if (isNewReporter) clusterMatch.reporters.pop();
       return res.status(500).json({ error: 'Failed to write clustered incident to persistent storage.' });
     }
 
@@ -364,9 +399,12 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     verificationScore: 1.0,
     clusterCount: 1,
     isVerified: false,
-    reportedBy: req.body.reportedBy || 'Citizen Contributor',
+    isAuthoritative: false,
+    reportedBy: sanitizedReportedBy,
+    reporters: [reporterKey],
     mediaUrl: mediaUrl || null,
     clearanceVotes: 0,
+    resolutionVoterKeys: [],
     updates: [],
   };
 
@@ -388,7 +426,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
 // 3. PROXIMITY-WEIGHTED VERIFICATION ENDPOINT
 app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
   const { id } = req.params;
-  const { voterPosition } = req.body || {};
+  const { voterPosition, voterId } = req.body || {};
   const incident = incidents.find((i) => i.id === id);
 
   if (!incident) {
@@ -397,7 +435,7 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
 
   // Calculate proximity weight: On-ground commuters (<= 1.5km) receive full weight (1.0)
   // Remote commuters receive weighted verification (0.25)
-  let weight = 0.5;
+  let weight = 0.25;
   let isGroundVerified = false;
   let distKm = 0;
 
@@ -419,7 +457,7 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
   incident.verificationCount = prevCount + 1;
   incident.verificationScore = Number((prevScore + weight).toFixed(2));
 
-  if (incident.verificationScore >= 2.5 || incident.verificationCount >= 3) {
+  if (incident.verificationScore >= 2.5) {
     incident.isVerified = true;
   }
 
@@ -460,7 +498,19 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
   }
 
   const incident = incidents[index];
-  incident.clearanceVotes = (incident.clearanceVotes || 0) + 1;
+  const voterKey = req.body?.voterId || req.ip || 'anon_voter';
+
+  if (!Array.isArray(incident.resolutionVoterKeys)) {
+    incident.resolutionVoterKeys = [];
+  }
+
+  // Multi-citizen consensus: prevent duplicate clearance votes from the same citizen/device
+  if (incident.resolutionVoterKeys.includes(voterKey)) {
+    return res.status(400).json({ error: 'You have already voted to clear this incident.' });
+  }
+
+  incident.resolutionVoterKeys.push(voterKey);
+  incident.clearanceVotes = incident.resolutionVoterKeys.length;
 
   if (incident.clearanceVotes >= 2) {
     const [cleared] = incidents.splice(index, 1);
@@ -472,7 +522,7 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
 
     io.emit('incident:resolved', {
       id: cleared.id,
-      clearedBy: 'Citizen Consensus (2 verifications)',
+      clearedBy: 'Citizen Consensus (2 unique verifications)',
       timestamp: new Date().toISOString(),
     });
 
@@ -483,12 +533,24 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
     });
   }
 
-  persistIncidents();
+  const saved = persistIncidents();
+  if (!saved) {
+    incident.resolutionVoterKeys.pop();
+    incident.clearanceVotes = incident.resolutionVoterKeys.length;
+    return res.status(500).json({ error: 'Failed to persist clearance vote.' });
+  }
 
+  // Emit both clearance_vote and resolution_voted for seamless backwards-compatible client synchronization
   io.emit('incident:clearance_vote', {
     id: incident.id,
     clearanceVotes: incident.clearanceVotes,
+    resolutionVotes: incident.clearanceVotes,
     votesNeeded: 2 - incident.clearanceVotes,
+  });
+  io.emit('incident:resolution_voted', {
+    id: incident.id,
+    resolutionVotes: incident.clearanceVotes,
+    clearanceVotes: incident.clearanceVotes,
   });
 
   res.json({
@@ -514,13 +576,18 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
   let reply = '';
   const sources = [];
 
-  if (query.includes('silk board') || query.includes('silkboard')) {
-    const silk = activeHazards.find((i) => i.title.toLowerCase().includes('silk board'));
+  if (query.includes('silk board') || query.includes('silkboard') || query.includes('btm')) {
+    const silk = activeHazards.find(
+      (i) =>
+        i.title.toLowerCase().includes('silk board') ||
+        i.title.toLowerCase().includes('btm') ||
+        (i.ward && i.ward.toLowerCase().includes('btm'))
+    );
     if (silk) {
-      reply = `🚨 Silk Board Junction Alert: Heavy congestion flagged (${silk.verificationCount} citizen confirmations). ${silk.description} Estimated delay +28 mins. Commuters heading to Electronic City are advised to use the elevated tollway.`;
+      reply = `🚨 Silk Board / BTM Alert: Heavy congestion flagged (${silk.verificationCount} citizen confirmations). ${silk.description} Estimated delay +28 mins. Commuters heading to Electronic City are advised to use the elevated tollway.`;
       sources.push(silk.title);
     } else {
-      reply = `Silk Board Junction is currently experiencing routine moderate traffic flow with normal signal cycles.`;
+      reply = `Silk Board Junction and BTM Layout are currently experiencing routine traffic flow with standard signal cycles.`;
     }
   } else if (query.includes('flood') || query.includes('waterlog') || query.includes('underpass') || query.includes('panathur')) {
     const panathur = activeHazards.find((i) => i.title.toLowerCase().includes('panathur'));
@@ -563,6 +630,21 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
     activeIncidentCount: activeHazards.length,
   });
 });
+
+// Production SPA Static File Serving
+const buildPath = path.join(__dirname, '../build');
+const publicPath = path.join(__dirname, '../public');
+const staticDir = fs.existsSync(buildPath) ? buildPath : (fs.existsSync(publicPath) ? publicPath : null);
+
+if (staticDir) {
+  app.use(express.static(staticDir));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+      return next();
+    }
+    res.sendFile(path.join(staticDir, 'index.html'));
+  });
+}
 
 // Socket.io connection lifecycle
 io.on('connection', (socket) => {

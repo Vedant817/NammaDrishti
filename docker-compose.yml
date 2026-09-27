@@ -12,8 +12,9 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=5001
+      - DATA_FILE=/app/data/incidents.json
     volumes:
-      - nammapulse_data:/app/server
+      - nammapulse_data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/health"]
       interval: 30s

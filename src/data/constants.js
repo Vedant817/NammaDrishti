@@ -25,3 +25,15 @@ export const EMERGENCY_CONTACTS = [
   { name: "BWSSB Water / Sewage Breakdown", number: "1916", desc: "Burst water mains & contamination" },
   { name: "State Emergency Services", number: "112", desc: "Police, Fire, and Ambulance" },
 ];
+
+export const BENGALURU_HUBS = [
+  { id: "silk-board", name: "Silk Board Junction", zone: "South", lat: 12.9171, lng: 77.6238 },
+  { id: "koramangala", name: "Koramangala Sony World", zone: "South-East", lat: 12.9345, lng: 77.6258 },
+  { id: "indiranagar", name: "Indiranagar 100ft Road", zone: "East", lat: 12.9719, lng: 77.6412 },
+  { id: "marathahalli", name: "Marathahalli Bridge", zone: "East", lat: 12.9592, lng: 77.6974 },
+  { id: "bellandur", name: "Bellandur EcoSpace (ORR)", zone: "South-East", lat: 12.9260, lng: 77.6744 },
+  { id: "whitefield", name: "Whitefield ITPL", zone: "East", lat: 12.9868, lng: 77.7378 },
+  { id: "hebbal", name: "Hebbal Flyover Junction", zone: "North", lat: 13.0358, lng: 77.5970 },
+  { id: "mg-road", name: "MG Road Metro Station", zone: "Central", lat: 12.9754, lng: 77.6068 },
+  { id: "electronic-city", name: "Electronic City Toll", zone: "South", lat: 12.8452, lng: 77.6602 },
+];

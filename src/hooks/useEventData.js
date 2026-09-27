@@ -73,9 +73,30 @@ const recordUserVote = (id, type) => {
   } catch (e) {}
 };
 
+const removeUserVote = (id, type) => {
+  try {
+    const votes = getUserVotes();
+    delete votes[`${type}_${id}`];
+    localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(votes));
+  } catch (e) {}
+};
+
 const hasUserVoted = (id, type) => {
   const votes = getUserVotes();
   return Boolean(votes[`${type}_${id}`]);
+};
+
+const getOrCreateDeviceId = () => {
+  try {
+    let id = localStorage.getItem("nammapulse_device_id_v1");
+    if (!id) {
+      id = `dev_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
+      localStorage.setItem("nammapulse_device_id_v1", id);
+    }
+    return id;
+  } catch {
+    return `dev_anon_${Date.now()}`;
+  }
 };
 
 export const useEventData = () => {
@@ -97,15 +118,11 @@ export const useEventData = () => {
           const remoteEvents = await res.json();
           if (isMounted && Array.isArray(remoteEvents)) {
             setEvents((prev) => {
-              // Reconcile and merge safely without overwriting live socket updates
-              const merged = [...remoteEvents];
-              for (const p of prev) {
-                if (!merged.some((m) => m.id === p.id)) {
-                  merged.unshift(p);
-                }
-              }
-              safeSaveStorage(merged);
-              return merged;
+              // Reconcile: Remote server snapshot is authoritative; keep local un-synced offline drafts
+              const pendingDrafts = prev.filter((p) => p._isLocalPending && !remoteEvents.some((r) => r.id === p.id));
+              const synced = [...remoteEvents, ...pendingDrafts];
+              safeSaveStorage(synced);
+              return synced;
             });
             setLoading(false);
             return;
@@ -140,12 +157,13 @@ export const useEventData = () => {
       if (isMounted) setLoading(false);
     });
 
-    // Establish WebSocket Connection
+    // Establish WebSocket Connection with automatic reconnection
     try {
       const socket = io(SOCKET_URL, {
         transports: ["websocket", "polling"],
-        timeout: 3000,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+        timeout: 5000,
       });
 
       socketRef.current = socket;
@@ -162,14 +180,11 @@ export const useEventData = () => {
       socket.on("initial:data", (remoteIncidents) => {
         if (!isMounted || !Array.isArray(remoteIncidents)) return;
         setEvents((prev) => {
-          const merged = [...remoteIncidents];
-          for (const localEvt of prev) {
-            if (!merged.some((r) => r.id === localEvt.id)) {
-              merged.push(localEvt);
-            }
-          }
-          safeSaveStorage(merged);
-          return merged;
+          // Authoritative sync: Do not resurrect incidents cleared on the server
+          const pendingDrafts = prev.filter((p) => p._isLocalPending && !remoteIncidents.some((r) => r.id === p.id));
+          const synced = [...remoteIncidents, ...pendingDrafts];
+          safeSaveStorage(synced);
+          return synced;
         });
       });
 
@@ -232,16 +247,21 @@ export const useEventData = () => {
         });
       });
 
-      socket.on("incident:resolution_voted", ({ id, resolutionVotes }) => {
+      // Support both resolution_voted and clearance_vote events from server
+      const handleResolutionUpdate = ({ id, clearanceVotes, resolutionVotes }) => {
         if (!isMounted) return;
+        const votes = resolutionVotes !== undefined ? resolutionVotes : (clearanceVotes !== undefined ? clearanceVotes : 1);
         setEvents((prev) => {
           const next = prev.map((e) =>
-            e.id === id ? { ...e, resolutionVotes } : e
+            e.id === id ? { ...e, resolutionVotes: votes, clearanceVotes: votes } : e
           );
           safeSaveStorage(next);
           return next;
         });
-      });
+      };
+
+      socket.on("incident:resolution_voted", handleResolutionUpdate);
+      socket.on("incident:clearance_vote", handleResolutionUpdate);
 
       socket.on("incident:resolved", ({ id }) => {
         if (!isMounted) return;
@@ -288,6 +308,7 @@ export const useEventData = () => {
       resolutionVotes: 0,
       reportedBy: "You (Citizen)",
       mediaUrl: newEvent.mediaUrl || null,
+      _isLocalPending: true,
       ...newEvent,
     };
 
@@ -307,7 +328,10 @@ export const useEventData = () => {
       const res = await fetch(`${API_BASE}/incidents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formatted),
+        body: JSON.stringify({
+          ...formatted,
+          voterId: getOrCreateDeviceId(),
+        }),
         signal: AbortSignal.timeout(3000),
       });
       if (res.ok) {
@@ -316,7 +340,7 @@ export const useEventData = () => {
           const index = prev.findIndex((e) => e.id === formatted.id);
           if (index !== -1) {
             const copy = [...prev];
-            copy[index] = created;
+            copy[index] = { ...created, _isLocalPending: false };
             safeSaveStorage(copy);
             return copy;
           }
@@ -328,7 +352,7 @@ export const useEventData = () => {
         return created;
       }
     } catch (err) {
-      // Backend unavailable; local optimistic report is preserved
+      // Backend unavailable; local optimistic report is preserved with _isLocalPending
     }
 
     return formatted;
@@ -344,16 +368,7 @@ export const useEventData = () => {
       recordUserVote(id, "verify");
       recordReputationEvent('HAZARD_VERIFIED');
 
-      // Attempt remote verification with proximity weighting
-      try {
-        fetch(`${API_BASE}/incidents/${id}/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ voterPosition }),
-          signal: AbortSignal.timeout(2000),
-        }).catch(() => {});
-      } catch {}
-
+      // Optimistic increment
       setEvents((prev) => {
         const next = prev.map((evt) => {
           if (evt.id === id) {
@@ -370,7 +385,61 @@ export const useEventData = () => {
         return next;
       });
 
-      return { success: true };
+      // Synchronize with server
+      try {
+        const res = await fetch(`${API_BASE}/incidents/${id}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            voterPosition,
+            voterId: getOrCreateDeviceId(),
+          }),
+          signal: AbortSignal.timeout(3000),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          // Rollback local vote status
+          removeUserVote(id, "verify");
+          setEvents((prev) => {
+            const next = prev.map((evt) => {
+              if (evt.id === id) {
+                const prevCount = Math.max(1, (evt.verificationCount || 1) - 1);
+                return {
+                  ...evt,
+                  verificationCount: prevCount,
+                  isVerified: prevCount >= 3,
+                };
+              }
+              return evt;
+            });
+            persistLocally(next);
+            return next;
+          });
+          return { error: errData.error || "Verification rejected by server." };
+        }
+
+        const data = await res.json();
+        setEvents((prev) => {
+          const next = prev.map((evt) =>
+            evt.id === id
+              ? {
+                  ...evt,
+                  verificationCount: data.verificationCount,
+                  verificationScore: data.verificationScore,
+                  isVerified: data.isVerified,
+                  groundVerified: data.groundVerified,
+                }
+              : evt
+          );
+          persistLocally(next);
+          return next;
+        });
+        return { success: true };
+      } catch (err) {
+        // Server unreachable; keep optimistic vote for offline resiliency
+        return { success: true };
+      }
     },
     [persistLocally]
   );
@@ -385,36 +454,66 @@ export const useEventData = () => {
       recordUserVote(id, "clear");
       recordReputationEvent('HAZARD_CLEARED');
 
-      // Attempt remote resolution
       try {
-        fetch(`${API_BASE}/incidents/${id}/resolve`, {
+        const res = await fetch(`${API_BASE}/incidents/${id}/resolve`, {
           method: "POST",
-          signal: AbortSignal.timeout(2000),
-        }).catch(() => {});
-      } catch {}
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voterId: getOrCreateDeviceId() }),
+          signal: AbortSignal.timeout(3000),
+        });
 
-      setEvents((prev) => {
-        const target = prev.find((e) => e.id === id);
-        if (!target) return prev;
-
-        const currentVotes = (target.resolutionVotes || 0) + 1;
-
-        if (currentVotes >= 2) {
-          // Permanently clear
-          const next = prev.filter((e) => e.id !== id);
-          persistLocally(next);
-          return next;
-        } else {
-          // Record resolution vote
-          const next = prev.map((e) =>
-            e.id === id ? { ...e, resolutionVotes: currentVotes } : e
-          );
-          persistLocally(next);
-          return next;
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          removeUserVote(id, "clear");
+          return { error: errData.error || "Clearance rejected by server." };
         }
-      });
 
-      return { success: true };
+        const data = await res.json();
+        if (data.cleared) {
+          setEvents((prev) => {
+            const next = prev.filter((e) => e.id !== id);
+            persistLocally(next);
+            return next;
+          });
+        } else {
+          setEvents((prev) => {
+            const next = prev.map((e) =>
+              e.id === id
+                ? {
+                    ...e,
+                    resolutionVotes: data.clearanceVotes,
+                    clearanceVotes: data.clearanceVotes,
+                  }
+                : e
+            );
+            persistLocally(next);
+            return next;
+          });
+        }
+        return { success: true };
+      } catch (err) {
+        // Server offline; apply optimistic clearance
+        setEvents((prev) => {
+          const target = prev.find((e) => e.id === id);
+          if (!target) return prev;
+
+          const currentVotes = (target.resolutionVotes || 0) + 1;
+          if (currentVotes >= 2) {
+            const next = prev.filter((e) => e.id !== id);
+            persistLocally(next);
+            return next;
+          } else {
+            const next = prev.map((e) =>
+              e.id === id
+                ? { ...e, resolutionVotes: currentVotes, clearanceVotes: currentVotes }
+                : e
+            );
+            persistLocally(next);
+            return next;
+          }
+        });
+        return { success: true };
+      }
     },
     [persistLocally]
   );
