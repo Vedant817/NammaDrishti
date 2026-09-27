@@ -1,6 +1,7 @@
 // src/components/Header/Header.jsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
+import { getCitizenReputation, getCitizenTier } from '../../utils/reputationService';
 import './Header.css';
 
 const Header = ({
@@ -10,6 +11,16 @@ const Header = ({
   isLiveConnected = false,
 }) => {
   const { lang, setLang, t } = useLanguage();
+  const [reputation, setReputation] = useState(() => getCitizenReputation());
+
+  useEffect(() => {
+    // Refresh reputation on storage changes or user actions
+    const updateRep = () => setReputation(getCitizenReputation());
+    window.addEventListener('storage', updateRep);
+    return () => window.removeEventListener('storage', updateRep);
+  }, []);
+
+  const tier = getCitizenTier(reputation.points);
 
   return (
     <header className="dashboard-header">
@@ -52,6 +63,16 @@ const Header = ({
         </div>
 
         <div className="header-stats">
+          <div
+            className="stat-card citizen-tier-badge"
+            title={`${tier.description} (${reputation.points} Civic Karma Points)`}
+          >
+            <span className="stat-value tier-value">
+              {tier.icon} {tier.label}
+            </span>
+            <span className="stat-label">{reputation.points} Karma Pts</span>
+          </div>
+
           <div className="stat-card">
             <span className="stat-value">{activeEventCount}</span>
             <span className="stat-label">{t.activeHazards}</span>

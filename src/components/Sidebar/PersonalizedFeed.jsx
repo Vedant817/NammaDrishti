@@ -118,6 +118,16 @@ const PersonalizedFeed = ({
                   <span className="card-trust-pill" title="Citizen & sensor consensus score">
                     🛡️ {trustScore}% Trust
                   </span>
+                  {item.clusterCount > 1 && (
+                    <span className="card-cluster-pill" title="Multiple citizen reports merged within 200m">
+                      🔗 {item.clusterCount} merged
+                    </span>
+                  )}
+                  {item.groundVerified && (
+                    <span className="card-ground-pill" title="Verified within 1.5km of incident location">
+                      📍 On-Ground
+                    </span>
+                  )}
                   <span className="card-time">{item.timestamp}</span>
                 </div>
 

@@ -1,24 +1,24 @@
 /* src/components/Header/Header.css */
 .dashboard-header {
-  background-color: var(--bg-surface);
+  background: var(--bg-surface);
   border-bottom: 1px solid var(--border-subtle);
   padding: 10px 20px;
   position: relative;
   z-index: 1000;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  max-width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
 }
 
 .brand-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .brand-title {
@@ -38,15 +38,17 @@
 .live-pulse-dot {
   width: 8px;
   height: 8px;
-  background-color: #10B981;
   border-radius: 50%;
-  box-shadow: 0 0 8px #10B981;
-  animation: pulse-ring 2s infinite ease-in-out;
+  display: inline-block;
 }
 
-@keyframes pulse-ring {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.85); }
+.live-pulse-dot.connected {
+  background-color: #10B981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.live-pulse-dot.standalone {
+  background-color: #38BDF8;
 }
 
 .city-pill {
@@ -146,12 +148,28 @@
   min-width: 80px;
 }
 
+.stat-card.citizen-tier-badge {
+  align-items: flex-start;
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.05);
+}
+
 .stat-value {
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.1;
   font-family: var(--font-mono);
+}
+
+.stat-value.tier-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #38BDF8;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .stat-label {
@@ -177,15 +195,4 @@
 .language-selector select:focus {
   border-color: var(--border-focus);
   color: var(--text-primary);
-}
-
-.language-selector option {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-@media (max-width: 900px) {
-  .header-center-info {
-    display: none;
-  }
 }

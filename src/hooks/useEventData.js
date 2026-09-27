@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 import { initialBengaluruEvents } from "../data/sampleEvents";
+import { recordReputationEvent } from "../utils/reputationService";
 
 const STORAGE_KEY = "nammapulse_events_v1";
 const VOTES_STORAGE_KEY = "nammapulse_user_votes_v1";
@@ -182,12 +183,50 @@ export const useEventData = () => {
         });
       });
 
-      socket.on("incident:verified", ({ id, verificationCount, isVerified }) => {
+      socket.on("incident:clustered", (clusterUpdate) => {
         if (!isMounted) return;
         setEvents((prev) => {
           const next = prev.map((e) =>
-            e.id === id ? { ...e, verificationCount, isVerified } : e
+            e.id === clusterUpdate.id
+              ? {
+                  ...e,
+                  verificationCount: clusterUpdate.verificationCount,
+                  clusterCount: clusterUpdate.clusterCount,
+                  isVerified: clusterUpdate.isVerified,
+                  updates: clusterUpdate.latestUpdate
+                    ? [clusterUpdate.latestUpdate, ...(e.updates || [])]
+                    : e.updates,
+                }
+              : e
           );
+          safeSaveStorage(next);
+          return next;
+        });
+      });
+
+      socket.on("incident:verified", ({ id, verificationCount, verificationScore, isVerified, groundVerified }) => {
+        if (!isMounted) return;
+        setEvents((prev) => {
+          const next = prev.map((e) =>
+            e.id === id
+              ? {
+                  ...e,
+                  verificationCount,
+                  verificationScore: verificationScore || verificationCount,
+                  isVerified,
+                  groundVerified: groundVerified !== undefined ? groundVerified : e.groundVerified,
+                }
+              : e
+          );
+          safeSaveStorage(next);
+          return next;
+        });
+      });
+
+      socket.on("incident:expired", ({ id }) => {
+        if (!isMounted) return;
+        setEvents((prev) => {
+          const next = prev.filter((e) => e.id !== id);
           safeSaveStorage(next);
           return next;
         });
@@ -244,6 +283,7 @@ export const useEventData = () => {
       ward: newEvent.ward || "Bengaluru Urban",
       timestamp: "Just now",
       verificationCount: 1,
+      clusterCount: 1,
       isVerified: false,
       resolutionVotes: 0,
       reportedBy: "You (Citizen)",
@@ -258,6 +298,9 @@ export const useEventData = () => {
       safeSaveStorage(next);
       return next;
     });
+
+    // Record citizen reputation gain
+    recordReputationEvent('REPORT_SUBMITTED');
 
     // Post to server preserving the client ID
     try {
@@ -291,19 +334,22 @@ export const useEventData = () => {
     return formatted;
   }, []);
 
-  // Upvote / Verify an incident with single-vote per device protection
+  // Upvote / Verify an incident with proximity weighting & single-vote per device protection
   const verifyEvent = useCallback(
-    async (id) => {
+    async (id, voterPosition) => {
       if (hasUserVoted(id, "verify")) {
         return { alreadyVoted: true };
       }
 
       recordUserVote(id, "verify");
+      recordReputationEvent('HAZARD_VERIFIED');
 
-      // Attempt remote verification
+      // Attempt remote verification with proximity weighting
       try {
         fetch(`${API_BASE}/incidents/${id}/verify`, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voterPosition }),
           signal: AbortSignal.timeout(2000),
         }).catch(() => {});
       } catch {}
@@ -337,6 +383,7 @@ export const useEventData = () => {
       }
 
       recordUserVote(id, "clear");
+      recordReputationEvent('HAZARD_CLEARED');
 
       // Attempt remote resolution
       try {

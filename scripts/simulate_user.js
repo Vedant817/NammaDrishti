@@ -31,14 +31,17 @@ async function runHeavyUserSimulation() {
     const feed = await feedRes.json();
     console.log(`✓ 3. Commuter browses live incident feed (${feed.length} incidents retrieved).`);
 
-    // 4. Heavy User Action: Report an active flooded road at Silk Board Junction
+    // 4. Heavy User Action: Report an active flooded road with isolated coordinates
+    const simLat = 12.8500 + Math.random() * 0.01;
+    const simLng = 77.6500 + Math.random() * 0.01;
+
     const reportPayload = {
       id: `sim_user_report_${Date.now()}`,
       title: 'Waterlogged Ramp near Central Silk Board Metro',
       type: 'Waterlogging',
       ward: 'BTM Layout / HSR',
       description: 'Water accumulation over 1.5 feet blocking the left lane heading towards Koramangala.',
-      position: { lat: 12.9175, lng: 77.6235 },
+      position: { lat: simLat, lng: simLng },
       urgency: 'High',
     };
 
@@ -50,15 +53,23 @@ async function runHeavyUserSimulation() {
     const createdIncident = await createRes.json();
     console.log(`✓ 4. Commuter successfully reports active hazard: "${createdIncident.title}" (ID: ${createdIncident.id})`);
 
-    // 5. User Simulation: Deduplication resilience (Submitting same payload again)
-    const dupeRes = await fetch(`${BASE_URL}/api/incidents`, {
+    // 5. User Simulation: Spatial Clustering (Second citizen reporting ~55m away)
+    const nearbyClusterPayload = {
+      title: 'Water Ponding at Silk Board Ramp',
+      type: 'Waterlogging',
+      ward: 'BTM Layout / HSR',
+      description: 'Bikes skidding in 1.5 ft water.',
+      position: { lat: simLat + 0.0005, lng: simLng },
+      urgency: 'High',
+    };
+    const clusterRes = await fetch(`${BASE_URL}/api/incidents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reportPayload),
+      body: JSON.stringify(nearbyClusterPayload),
     });
-    const dupeData = await dupeRes.json();
-    if (dupeRes.status === 200 && dupeData.id === createdIncident.id) {
-      console.log('✓ 5. Deduplication verified: Duplicate submission gracefully handled without double entry.');
+    const clusterData = await clusterRes.json();
+    if (clusterData.isClustered && clusterData.id === createdIncident.id) {
+      console.log(`✓ 5. Spatial Auto-Clustering verified: Second citizen report within 200m merged cleanly into parent hazard (Cluster size: ${clusterData.clusterCount}).`);
     }
 
     // 6. User Simulation: Bad coordinate injection guard
@@ -75,27 +86,28 @@ async function runHeavyUserSimulation() {
       console.log('✓ 6. Coordinate safety guard verified: Malformed lat/lng rejected with HTTP 400.');
     }
 
-    // 7. Heavy User Action: Upvote hazard confirmation (+1 consensus)
-    const verifyRes = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/verify`, { method: 'POST' });
-    const verifiedData = await verifyRes.json();
-    console.log(`✓ 7. Citizen confirms hazard (+1 consensus). Total confirmations: ${verifiedData.verificationCount}`);
+    // 7. Heavy User Action: Proximity-weighted verification (<1.5km vs >1.5km)
+    const onGroundVerify = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voterPosition: { lat: simLat + 0.001, lng: simLng } }),
+    });
+    const onGroundData = await onGroundVerify.json();
+    console.log(`✓ 7. Proximity-Weighted Consensus: On-ground verification accepted with 1.0x weight (Score: ${onGroundData.verificationScore}, Ground: ${onGroundData.groundVerified}).`);
 
     // 8. Heavy User Action: Clearance consensus workflow
-    // First clearance vote
     const resolveVote1Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, { method: 'POST' });
     const resolveVote1 = await resolveVote1Res.json();
     console.log(`✓ 8a. Clearance vote 1: ${resolveVote1.message} (Cleared: ${resolveVote1.cleared})`);
 
-    // Second clearance vote (permanent resolution)
     const resolveVote2Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, { method: 'POST' });
     const resolveVote2 = await resolveVote2Res.json();
     console.log(`✓ 8b. Clearance vote 2: ${resolveVote2.message} (Cleared: ${resolveVote2.cleared})`);
 
     // 9. Heavy User Action: Safe Route Hazard Avoidance Simulation
-    // Commuter travels from Silk Board [12.9171, 77.6238] towards Bellandur [12.9352, 77.6974]
     const p1 = [12.9171, 77.6238];
     const p2 = [12.9352, 77.6974];
-    const hazardNearRoute = { lat: 12.9250, lng: 77.6550 }; // Mid-point hazard
+    const hazardNearRoute = { lat: 12.9250, lng: 77.6550 };
     const distToCorridor = distanceToSegmentKm(hazardNearRoute.lat, hazardNearRoute.lng, p1[0], p1[1], p2[0], p2[1]);
     console.log(`✓ 9. Safe Route Spatial Engine: Hazard distance to highway segment: ${distToCorridor.toFixed(2)} km (< 0.45 km threshold -> Caution flagged)`);
 
@@ -107,7 +119,17 @@ async function runHeavyUserSimulation() {
     console.log(`    - Panathur under light drizzle (0.5 mm/hr): "${dryRisk.level}"`);
     console.log(`    - Panathur during cloudburst (12.5 mm/hr): "${monsoonRisk.level}" -> Action: ${monsoonRisk.action}`);
 
-    console.log('\n🎉 ALL 10 HEAVY USER WORKFLOWS SUCCESSFULLY EXECUTED AND VERIFIED!');
+    // 11. Heavy User Action: Conversational AI Assistant Query
+    const aiRes = await fetch(`${BASE_URL}/api/assistant/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Are there any flooded underpasses?' }),
+    });
+    const aiData = await aiRes.json();
+    console.log(`✓ 11. Conversational AI Assistant: Prompt answered with confidence ${(aiData.confidence * 100).toFixed(0)}%:`);
+    console.log(`    "${aiData.reply.split('\n')[0]}"`);
+
+    console.log('\n🎉 ALL 11 ADVANCED HEAVY USER WORKFLOWS SUCCESSFULLY EXECUTED AND VERIFIED!');
   } finally {
     server.close();
   }

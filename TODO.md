@@ -1,49 +1,47 @@
-# NammaPulse Production Implementation Roadmap & TODO
+# NammaPulse Advanced Engineering Roadmap & Implementation Tracker
 
-## Status Overview
-- **Repository**: `https://github.com/Vedant817/NammaPulse.git`
+## 📋 Status Overview
 - **Active Branch**: `feat/nammapulse-core`
-- **Pull Request**: [PR #1](https://github.com/Vedant817/NammaPulse/pull/1)
+- **Quality Standard**: Zero regressions, single-pass tests (`npm run test:all`), atomic git commits.
 
 ---
 
-## Master Task List
+### [x] 1. Spatial Clustering & Duplicate Auto-Merge
+- [x] Add geospatial Haversine proximity function on backend.
+- [x] When a new incident is submitted: if an active incident of the same category exists within **200 meters** reported within the last 60 minutes, automatically treat it as an upvote (+1 consensus) and append citizen commentary/media rather than creating a duplicate pin.
+- [x] Return cluster metadata (`isClustered: true`, `parentIncidentId`, `clusterCount`).
+- [x] Frontend card display: `🔗 2 merged` badge in feed.
 
-### Phase 1: Core Foundation & Clean Civic System (Completed)
-- [x] Rebrand repository, package metadata, and title to **NammaPulse**
-- [x] Clean modern civic design system with dark slates (`#090D16`, `#0F172A`)
-- [x] Live Open-Meteo telemetry integration (temperature, rain, flood-risk heuristics)
-- [x] RainViewer Doppler rain radar tile layer toggle
-- [x] Ground-truth Bengaluru hazard locations & traffic corridor diagnostics
-- [x] Citizen reporting with map click coordinate selection & GPS auto-detection
-- [x] Consensus verification (`+1 Confirm`, `Mark Cleared`) with local persistence
-- [x] Context-aware NammaPulse AI Assistant
-- [x] Automated unit and integration test suite (5/5 passing)
+### [x] 2. Time-To-Live (TTL) Dynamic Hazard Decay Worker
+- [x] Implement category-based TTL half-life rules:
+  - *Accidents*: 2 hours.
+  - *Waterlogging*: 4 hours.
+  - *Traffic Gridlock*: 3 hours.
+  - *Potholes / Infrastructure*: 72 hours.
+- [x] Periodic background cleanup ticker on server (`cleanupExpiredIncidents` every 60 seconds).
+- [x] WebSocket broadcast `incident:expired` removing cleared incidents without page reload.
 
-### Phase 2: Feature Iteration Loop (Completed)
-- [x] **Task 1: Full Bilingual English / Kannada (ಕನ್ನಡ) & Hindi Localization Engine**
-  - Comprehensive i18n translation dictionary covering civic hazards, filter chips, action buttons, modals, and emergency helplines.
-  - Interactive language switcher in Header dynamically re-rendering the entire platform instantly without reload.
-  - Unit tests verifying Kannada and English rendering.
+### [x] 3. Proximity-Weighted Consensus Verification
+- [x] Allow passing client coordinates in verification request (`/api/incidents/:id/verify`).
+- [x] Calculate distance from verifying citizen to the hazard:
+  - $\le 1.5$ km: **1.0x weight** (`groundVerified: true`).
+  - $> 1.5$ km: **0.25x weight** (`groundVerified: false`, remote observation).
+- [x] Frontend card display: `📍 On-Ground` verification pill.
 
-- [x] **Task 2: Client-side Hazard Photo Compression & Optimization Engine**
-  - Implemented canvas-based downsampling utility (`src/utils/imageOptimizer.js`) reducing 4K/12MP mobile photos (4-10MB) to ~70-120KB JPEG with 0.75 quality factor.
-  - Integrated into citizen report modal with real-time optimization statistics display.
+### [x] 4. Citizen Reputation & Gamification Badges
+- [x] Implemented `src/utils/reputationService.js` tracking civic points and tiers.
+- [x] Gamified Tiers:
+  - `Bengaluru Scout` (0–49 Karma)
+  - `Ward Sentinel` (50–149 Karma)
+  - `City Guardian` (150+ Karma)
+- [x] Display citizen tier and real-time karma score in Header bar (`Header.jsx`).
 
-- [x] **Task 3: Safe Route Hazard Avoidance Navigation Engine (OSRM)**
-  - Implemented transit routing service (`src/services/routingService.js`) integrating Open Source Routing Machine (OSRM) for Bengaluru.
-  - Spatial buffer collision detection alerting commuters if a proposed driving route intersects flooded underpasses (e.g. Panathur Underpass) or severe gridlock choke points.
-  - Safe Route modal (`src/components/Navigation/SafeRouteModal.jsx`) calculating distance, duration, and projecting safe / hazard corridors directly onto the Leaflet map.
+### [x] 5. Gemini-Powered Conversational RAG Assistant with Context Fallback
+- [x] Backend endpoint `POST /api/assistant/chat` analyzing active incidents, underpass flood risk, weather, and emergency helplines.
+- [x] Resilient client-side fallback in `ChatbotModal.jsx` if server endpoint is offline or times out.
+- [x] Quick prompt chips and conversational natural language guidance for commuters.
 
-- [x] **Task 4: Production Express Backend & Real-Time WebSocket Service**
-  - Node/Express server (`server/index.js`) exposing REST endpoints (`/api/health`, `/api/incidents`, `/api/incidents/:id/verify`, `/api/incidents/:id/resolve`).
-  - Integrated Socket.io for instantaneous multi-client real-time synchronization (`incident:created`, `incident:verified`, `incident:resolved`).
-  - Client hook (`useEventData.js`) with automatic REST/WebSocket sync and resilient fallback to local storage when running standalone.
-
-- [x] **Task 5: Proximity Geofencing & Emergency Push Alerts**
-  - Haversine distance proximity detection hook (`src/hooks/useProximityAlert.js`) continuously scanning active high-urgency hazards within a 2.5km radius of user's device coordinates.
-  - Browser HTML5 Push Notification support and in-app emergency alert toasts.
-
-- [x] **Task 6: Heavy User QA & Production Verification**
-  - 7/7 comprehensive unit and integration tests passing (`npx react-scripts test`).
-  - Optimized production build verified clean with 0 errors and 0 warnings (`npx react-scripts build`).
+### [x] 6. End-to-End Testing & Verification
+- [x] Expanded `server/test/api.test.js` to 8/8 passing tests covering clustering, proximity, TTL, and assistant chat.
+- [x] Expanded `scripts/simulate_user.js` to 11/11 commuter workflows.
+- [x] Full test suite passes: `npm run test:all` (Frontend, Backend, and E2E all green).

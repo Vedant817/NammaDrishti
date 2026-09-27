@@ -10,6 +10,20 @@ const QUICK_PROMPTS = [
   "Emergency helplines",
 ];
 
+const getApiBase = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname !== "localhost" &&
+    window.location.hostname !== "127.0.0.1"
+  ) {
+    return `${window.location.origin}/api`;
+  }
+  return "http://localhost:5001/api";
+};
+
+const API_BASE = getApiBase();
+
 const ChatbotModal = ({ onClose, events = [], weather }) => {
   const [messages, setMessages] = useState([
     {
@@ -20,8 +34,8 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  // Dynamic context-aware query responder
-  const processQuery = (userQuery) => {
+  // Dynamic context-aware query responder fallback
+  const processQueryLocally = (userQuery) => {
     const q = userQuery.toLowerCase();
 
     // Check Traffic & Silk Board
@@ -74,7 +88,7 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
     return `Currently tracking ${events.length} live incidents across Bengaluru. You can ask me about Silk Board, Hebbal, waterlogging, weather radar, or emergency helplines!`;
   };
 
-  const handleSendMessage = (textToSend) => {
+  const handleSendMessage = async (textToSend) => {
     const text = textToSend || input;
     if (!text.trim()) return;
 
@@ -83,17 +97,35 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
     setInput("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      const responseText = processQuery(text);
-      setMessages((prev) => [...prev, { type: "bot", text: responseText }]);
-      setIsTyping(false);
-    }, 450);
+    try {
+      const res = await fetch(`${API_BASE}/assistant/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          context: { weather, rainIntensity: weather?.precipitation },
+        }),
+        signal: AbortSignal.timeout(2500),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) => [...prev, { type: "bot", text: data.reply }]);
+        setIsTyping(false);
+        return;
+      }
+    } catch (err) {
+      // Backend assistant timed out or offline, proceed with local context responder
+    }
+
+    const fallbackResponse = processQueryLocally(text);
+    setMessages((prev) => [...prev, { type: "bot", text: fallbackResponse }]);
+    setIsTyping(false);
   };
 
   return (
     <div className="chatbot-modal-overlay" onClick={onClose}>
-      <div className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="chatbot-modal-header">
+      <div className="chatbot-modal" onClick={(e) => e.stopPropagation()}>\n        <div className="chatbot-modal-header">
           <div className="bot-header-info">
             <span className="bot-avatar">🤖</span>
             <div>
@@ -149,8 +181,9 @@ const ChatbotModal = ({ onClose, events = [], weather }) => {
             />
             <button
               type="button"
-              className="send-btn"
+              className="send-button"
               onClick={() => handleSendMessage()}
+              disabled={!input.trim()}
             >
               Send
             </button>
