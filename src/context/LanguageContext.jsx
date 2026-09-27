@@ -6,11 +6,11 @@ const LanguageContext = createContext();
 
 export const LanguageProvider = ({ children }) => {
   const [lang, setLang] = useState(() => {
-    return localStorage.getItem("nammapulse_lang") || "en";
+    return localStorage.getItem("nammadrishti_lang") || localStorage.getItem("nammapulse_lang") || "en";
   });
 
   useEffect(() => {
-    localStorage.setItem("nammapulse_lang", lang);
+    localStorage.setItem("nammadrishti_lang", lang);
   }, [lang]);
 
   const t = translations[lang] || translations.en;

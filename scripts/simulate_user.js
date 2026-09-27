@@ -1,6 +1,6 @@
 // scripts/simulate_user.js
 /**
- * End-to-End User Journey Simulation for NammaPulse
+ * End-to-End User Journey Simulation for NammaDrishti
  * Simulates an actual commuter using the civic intelligence platform.
  */
 
@@ -65,7 +65,7 @@ function evaluateUnderpassRisk(underpass, currentRainIntensityMm) {
 }
 
 async function runHeavyUserSimulation() {
-  console.log('🚀 Starting NammaPulse Heavy User Journey Simulation...\n');
+  console.log('🚀 Starting NammaDrishti Heavy User Journey Simulation...\n');
 
   // 1. Start Server on test port
   await new Promise((resolve) => server.listen(PORT, resolve));
@@ -189,7 +189,7 @@ async function runHeavyUserSimulation() {
       body: JSON.stringify({ message: 'What is the traffic situation at Silk Board and how is the weather radar?' }),
     });
     const aiData = await aiRes.json();
-    console.log(`✓ 11. NammaPulse AI Assistant Query processed (${aiData.reply.substring(0, 90)}...)`);
+    console.log(`✓ 11. NammaDrishti AI Assistant Query processed (${aiData.reply.substring(0, 90)}...)`);
 
     console.log('\n🎉 ALL 11 HEAVY USER JOURNEYS COMPLETED AND VERIFIED 100% SUCCESSFUL!\n');
   } finally {

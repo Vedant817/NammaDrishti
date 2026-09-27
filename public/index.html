@@ -7,15 +7,15 @@
   <meta name="theme-color" content="#090D16" />
   
   <!-- SEO Meta Tags -->
-  <meta name="description" content="NammaPulse - Real-time civic intelligence, live traffic, Doppler rain radar, and urban monitoring for Bengaluru" />
-  <meta name="keywords" content="NammaPulse, Bengaluru, civic intelligence, live traffic, rain radar, incident reporting, smart city" />
+  <meta name="description" content="NammaDrishti - Real-time civic intelligence, live transit radar, Doppler rain radar, and urban monitoring for Bengaluru" />
+  <meta name="keywords" content="NammaDrishti, Bengaluru, civic radar, live traffic, rain radar, incident reporting, smart city" />
   <meta name="author" content="Vedant817" />
   
   <!-- Open Graph Meta Tags for Social Sharing -->
-  <meta property="og:title" content="NammaPulse - Bengaluru Real-Time Civic Intelligence" />
-  <meta property="og:description" content="Live, crowdsourced, and sensor-backed civic and traffic monitoring for Bengaluru" />
+  <meta property="og:title" content="NammaDrishti - Bengaluru Real-Time Civic & Transit Radar" />
+  <meta property="og:description" content="Live, crowdsourced, and sensor-backed civic and transit monitoring radar for Bengaluru" />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://nammapulse.app" />
+  <meta property="og:url" content="https://nammadrishti.app" />
   
   <!-- Apple Touch Icon -->
   <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
@@ -157,39 +157,27 @@
     }
   </style>
   
-  <title>NammaPulse | Real-Time Bengaluru Civic & Traffic Intelligence</title>
+  <title>NammaDrishti | Real-Time Bengaluru Civic & Transit Radar</title>
 </head>
 <body>
   <noscript>
     <div style="padding: 2rem; text-align: center; color: #fff; background: #090D16;">
-      <h1>NammaPulse</h1>
-      <p>Please enable JavaScript to view real-time Bengaluru civic intelligence.</p>
+      <h1>NammaDrishti</h1>
+      <p>Please enable JavaScript to view real-time Bengaluru civic radar and transit intelligence.</p>
     </div>
   </noscript>
   
   <div class="loading-screen" id="loading-screen">
     <div class="loading-brand">
       <span class="loading-pulse-dot"></span>
-      <span>NammaPulse</span>
+      <span>NammaDrishti</span>
     </div>
-    <div class="loading-subtitle">Bengaluru Live Intelligence</div>
+    <div class="loading-subtitle">Bengaluru Live Civic Radar</div>
     <div class="loading-bar-wrap">
       <div class="loading-bar"></div>
     </div>
   </div>
   
   <div id="root"></div>
-  
-  <script>
-    window.addEventListener('load', function() {
-      setTimeout(function() {
-        document.body.classList.add('app-loaded');
-        setTimeout(function() {
-          const el = document.getElementById('loading-screen');
-          if (el) el.remove();
-        }, 300);
-      }, 400);
-    });
-  </script>
 </body>
 </html>

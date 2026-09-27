@@ -1,6 +1,6 @@
 // src/serviceWorkerRegistration.js
 /**
- * Registers NammaPulse service worker for offline resilience and PWA support.
+ * Registers NammaDrishti service worker for offline resilience and PWA support.
  */
 
 export function register() {
@@ -10,10 +10,10 @@ export function register() {
       navigator.serviceWorker
         .register(swUrl)
         .then((registration) => {
-          console.log('[NammaPulse PWA] ServiceWorker registered:', registration.scope);
+          console.log('[NammaDrishti PWA] ServiceWorker registered:', registration.scope);
         })
         .catch((error) => {
-          console.warn('[NammaPulse PWA] ServiceWorker registration failed:', error);
+          console.warn('[NammaDrishti PWA] ServiceWorker registration failed:', error);
         });
     });
   }

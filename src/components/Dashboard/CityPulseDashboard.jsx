@@ -13,7 +13,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import "./CityPulseDashboard.css";
 
 const CityPulseDashboard = () => {
-  const { events, isLiveConnected, addEvent, verifyEvent, resolveEvent } = useEventData();
+  const { events, isLiveConnected, offlineQueueCount, addEvent, verifyEvent, resolveEvent } = useEventData();
   const { weather } = useWeatherTelemetry();
   const { t } = useLanguage();
 
@@ -64,7 +64,7 @@ const CityPulseDashboard = () => {
     const created = await addEvent(newReport);
     setSelectedEvent(created);
     setReportPin(null);
-    showToast("✓ Hazard incident broadcast to NammaPulse live stream!");
+    showToast("✓ Hazard incident broadcast to NammaDrishti live stream!");
   };
 
   const handleVerifyEvent = async (id) => {
@@ -114,6 +114,7 @@ const CityPulseDashboard = () => {
         verifiedPercent={verifiedPercent}
         weather={weather}
         isLiveConnected={isLiveConnected}
+        offlineQueueCount={offlineQueueCount}
       />
 
       {/* Real-time Category Filter Panel */}
@@ -163,10 +164,10 @@ const CityPulseDashboard = () => {
               type="button"
               className="chatbot-trigger-btn"
               onClick={() => setShowChatbotModal(true)}
-              title="Open NammaPulse AI Assistant"
+              title="Open NammaDrishti AI Assistant"
             >
               <span>🤖</span>
-              <span>{t.actions?.aiAssistant}</span>
+              <span>{t.actions?.aiAssistant || "NammaDrishti AI"}</span>
             </button>
           </div>
         </main>
@@ -182,6 +183,7 @@ const CityPulseDashboard = () => {
           onTabChange={setSidebarTab}
           rainIntensity={weather?.precipitation || 0}
           isWeatherOffline={weather?.isOffline || false}
+          userLocation={userLocation}
         />
       </div>
 
@@ -198,7 +200,7 @@ const CityPulseDashboard = () => {
         />
       )}
 
-      {/* NammaPulse Context-Aware AI Chatbot */}
+      {/* NammaDrishti Context-Aware AI Chatbot */}
       {showChatbotModal && (
         <ChatbotModal
           isOpen={showChatbotModal}

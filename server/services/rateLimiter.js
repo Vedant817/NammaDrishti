@@ -4,8 +4,9 @@
  * Prevents spamming, bot scraping, and automated consensus hijacking.
  */
 
-function createRateLimiter({ windowMs = 60000, maxRequests = 30, message = 'Too many requests. Please slow down.' } = {}) {
+function createRateLimiter({ windowMs = 60000, maxRequests, max = 30, message = 'Too many requests. Please slow down.' } = {}) {
   const requestLog = new Map();
+  const effectiveMax = typeof maxRequests === 'number' ? maxRequests : max;
 
   // Periodically clean up stale IPs every 5 minutes
   const cleanupTimer = setInterval(() => {
@@ -34,11 +35,11 @@ function createRateLimiter({ windowMs = 60000, maxRequests = 30, message = 'Too 
 
     const validTimestamps = timestamps.filter((ts) => now - ts < windowMs);
 
-    if (validTimestamps.length >= maxRequests) {
+    if (validTimestamps.length >= effectiveMax) {
       const oldest = validTimestamps[0];
       const retryAfterSec = Math.max(1, Math.ceil((windowMs - (now - oldest)) / 1000));
       res.setHeader('Retry-After', retryAfterSec);
-      res.setHeader('X-RateLimit-Limit', maxRequests);
+      res.setHeader('X-RateLimit-Limit', effectiveMax);
       res.setHeader('X-RateLimit-Remaining', 0);
       return res.status(429).json({
         error: message,
@@ -48,10 +49,8 @@ function createRateLimiter({ windowMs = 60000, maxRequests = 30, message = 'Too 
 
     validTimestamps.push(now);
     requestLog.set(ip, validTimestamps);
-
-    res.setHeader('X-RateLimit-Limit', maxRequests);
-    res.setHeader('X-RateLimit-Remaining', maxRequests - validTimestamps.length);
-
+    res.setHeader('X-RateLimit-Limit', effectiveMax);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, effectiveMax - validTimestamps.length));
     next();
   };
 }

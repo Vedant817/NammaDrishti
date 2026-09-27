@@ -1,12 +1,12 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import App from './App';
 
-describe('NammaPulse Core Platform Tests', () => {
-  test('renders NammaPulse header, branding, and city badge', () => {
+describe('NammaDrishti Core Platform Tests', () => {
+  test('renders NammaDrishti header, branding, and city badge', () => {
     render(<App />);
-    expect(screen.getByText('NammaPulse')).toBeInTheDocument();
+    expect(screen.getByText('NammaDrishti')).toBeInTheDocument();
     expect(screen.getByText('Bengaluru')).toBeInTheDocument();
-    expect(screen.getByText('Real-Time Civic & Traffic Intelligence')).toBeInTheDocument();
+    expect(screen.getByText('Real-Time Civic & Traffic Radar')).toBeInTheDocument();
   });
 
   test('renders hazard filter chips and calculates active incidents', () => {
@@ -21,15 +21,16 @@ describe('NammaPulse Core Platform Tests', () => {
   test('renders floating action buttons for reporting, AI, and Safe Route', () => {
     render(<App />);
     expect(screen.getByText(/Report Hazard/i)).toBeInTheDocument();
-    expect(screen.getByText(/NammaPulse AI/i)).toBeInTheDocument();
+    expect(screen.getByText(/NammaDrishti AI/i)).toBeInTheDocument();
     expect(screen.getByText(/Safe Route/i)).toBeInTheDocument();
   });
 
-  test('switches sidebar tabs between Feed, Diagnostic, and Helplines', () => {
+  test('switches sidebar tabs between Feed, Diagnostic, and Helplines with Emergency SOS', () => {
     render(<App />);
     const helplineTab = screen.getByText(/Helplines/i);
     fireEvent.click(helplineTab);
     expect(screen.getByText(/Bengaluru Emergency Helplines/i)).toBeInTheDocument();
+    expect(screen.getByText(/Broadcast 1-Tap Emergency SOS/i)).toBeInTheDocument();
 
     const diagnosticTab = screen.getByText(/Diagnostic/i);
     fireEvent.click(diagnosticTab);
@@ -48,12 +49,13 @@ describe('NammaPulse Core Platform Tests', () => {
     expect(screen.queryByText('Report Civic or Traffic Incident')).not.toBeInTheDocument();
   });
 
-  test('opens and closes Safe Route transit navigation modal', () => {
+  test('opens and closes Safe Route transit navigation modal with Auto-Detour', () => {
     render(<App />);
     const routeBtn = screen.getByText(/Safe Route/i);
     fireEvent.click(routeBtn);
 
     expect(screen.getByText('Safe Transit & Hazard Avoidance')).toBeInTheDocument();
+    expect(screen.getByText(/Auto-Detour around Flooded Underpasses/i)).toBeInTheDocument();
     const closeBtn = screen.getByText('✕');
     fireEvent.click(closeBtn);
 

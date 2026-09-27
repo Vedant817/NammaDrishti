@@ -67,6 +67,7 @@ const CustomMapContainer = ({
   const { t } = useLanguage();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [radarTimestamp, setRadarTimestamp] = useState(null);
 
   // Fetch latest RainViewer radar layer timestamp with auto-refresh every 5 minutes
@@ -149,7 +150,6 @@ const CustomMapContainer = ({
 
   // Synthesize monitored corridors with active nearby hazard density
   const dynamicCorridors = baseCorridors.map((corridor) => {
-    // Check active incidents within 1.2km of corridor positions
     const nearbyHazards = events.filter((evt) => {
       if (!evt.position || !Number.isFinite(evt.position.lat) || !Number.isFinite(evt.position.lng)) {
         return false;
@@ -254,6 +254,15 @@ const CustomMapContainer = ({
           🚗 {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
         </button>
 
+        <button
+          type="button"
+          className={`toolbar-btn ${showHeatmap ? "active-rose" : ""}`}
+          onClick={() => setShowHeatmap(!showHeatmap)}
+          title="Toggle spatial hazard risk density heatmap"
+        >
+          🔥 {showHeatmap ? (t.actions?.hideHeatmap || "Hide Heatmap") : (t.actions?.heatmap || "Risk Heatmap")}
+        </button>
+
         {navigationRoute && (
           <button
             type="button"
@@ -302,6 +311,37 @@ const CustomMapContainer = ({
             zIndex={200}
           />
         )}
+
+        {/* Spatial Risk Heatmap / Density Layer */}
+        {showHeatmap &&
+          events.map((evt) => {
+            if (!evt.position || !Number.isFinite(evt.position.lat) || !Number.isFinite(evt.position.lng)) {
+              return null;
+            }
+            const isHigh = evt.urgency === "High" || evt.type === "Waterlogging";
+            const radius = Math.min(65, 30 + (evt.verificationCount || 1) * 6);
+            return (
+              <CircleMarker
+                key={`heatmap_${evt.id}`}
+                center={[evt.position.lat, evt.position.lng]}
+                radius={radius}
+                color={isHigh ? "#EF4444" : "#F59E0B"}
+                fillColor={isHigh ? "#EF4444" : "#F59E0B"}
+                fillOpacity={0.35}
+                weight={0}
+              >
+                <Popup className="clean-popup">
+                  <div className="popup-body">
+                    <span className="popup-type-tag" style={{ background: isHigh ? "#EF4444" : "#F59E0B", color: "#fff" }}>
+                      🔥 High Risk Density Zone
+                    </span>
+                    <h4 className="popup-title">{evt.title}</h4>
+                    <p className="popup-desc">Concentration index: {evt.verificationCount || 1} verified alerts.</p>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          })}
 
         {/* Navigation Route Display */}
         {navigationRoute && navigationRoute.coordinates && (

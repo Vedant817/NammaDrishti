@@ -1,6 +1,6 @@
 // src/components/Navigation/SafeRouteModal.jsx
 import React, { useState } from "react";
-import { fetchDrivingRoute, detectRouteHazards } from "../../services/routingService";
+import { fetchDrivingRoute, fetchDetourRoute, detectRouteHazards } from "../../services/routingService";
 import { BENGALURU_HUBS } from "../../data/constants";
 import "./SafeRouteModal.css";
 
@@ -13,6 +13,7 @@ const SafeRouteModal = ({
   const [startId, setStartId] = useState("silk-board");
   const [destId, setDestId] = useState("marathahalli");
   const [useCurrentGps, setUseCurrentGps] = useState(false);
+  const [autoDetour, setAutoDetour] = useState(true);
   const [loading, setLoading] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
   const [routingError, setRoutingError] = useState(null);
@@ -32,12 +33,17 @@ const SafeRouteModal = ({
     setLoading(true);
     setRoutingError(null);
     try {
-      const routeData = await fetchDrivingRoute(startCoords, endCoords);
-      const conflicts = detectRouteHazards(routeData.coordinates, activeHazards, 0.45);
+      let routeData;
+      if (autoDetour) {
+        routeData = await fetchDetourRoute(startCoords, endCoords, activeHazards);
+      } else {
+        const base = await fetchDrivingRoute(startCoords, endCoords);
+        const conflicts = detectRouteHazards(base.coordinates, activeHazards, 0.45);
+        routeData = { ...base, conflicts, isDetour: false };
+      }
 
       setRouteResult({
         ...routeData,
-        conflicts,
         startCoords,
         endCoords,
       });
@@ -45,7 +51,7 @@ const SafeRouteModal = ({
       if (onApplyRouteToMap) {
         onApplyRouteToMap({
           coordinates: routeData.coordinates,
-          hasConflicts: conflicts.length > 0,
+          hasConflicts: (routeData.conflicts || []).length > 0,
         });
       }
     } catch (err) {
@@ -69,7 +75,7 @@ const SafeRouteModal = ({
             <span className="route-icon">🧭</span>
             <div>
               <h3>Safe Transit & Hazard Avoidance</h3>
-              <span className="route-subtitle">Bengaluru Smart Commute Engine</span>
+              <span className="route-subtitle">NammaDrishti Smart Commute Radar</span>
             </div>
           </div>
           <button type="button" className="close-btn" onClick={onClose}>
@@ -122,6 +128,17 @@ const SafeRouteModal = ({
               </select>
             </div>
 
+            <div className="auto-detour-toggle">
+              <label className="checkbox-container">
+                <input
+                  type="checkbox"
+                  checked={autoDetour}
+                  onChange={(e) => setAutoDetour(e.target.checked)}
+                />
+                <span className="checkbox-text">⚡ Auto-Detour around Flooded Underpasses & Chokepoints</span>
+              </label>
+            </div>
+
             <button
               type="button"
               className="calculate-route-btn"
@@ -147,7 +164,7 @@ const SafeRouteModal = ({
                   <span className="metric-lbl">Total Distance</span>
                 </div>
                 <div className="route-metric">
-                  <span className="metric-val">{routeResult.durationMins} mins</span>
+                  <span className="metric-val">{routeResult.durationMin} mins</span>
                   <span className="metric-lbl">Estimated Transit</span>
                 </div>
                 <div className="route-metric">
@@ -155,18 +172,30 @@ const SafeRouteModal = ({
                     className="metric-val"
                     style={{
                       color:
-                        routeResult.conflicts.length === 0
+                        (routeResult.conflicts || []).length === 0
                           ? "var(--status-verified)"
                           : "var(--status-traffic)",
                     }}
                   >
-                    {routeResult.conflicts.length === 0 ? "CLEAR" : `${routeResult.conflicts.length} HAZARD(S)`}
+                    {(routeResult.conflicts || []).length === 0 ? "CLEAR" : `${routeResult.conflicts.length} HAZARD(S)`}
                   </span>
                   <span className="metric-lbl">Corridor Safety</span>
                 </div>
               </div>
 
-              {routeResult.conflicts.length === 0 ? (
+              {routeResult.isDetour && (
+                <div className="route-detour-banner">
+                  <span className="detour-icon">🛡️</span>
+                  <div>
+                    <strong>Dynamic Flood / Hazard Detour Activated</strong>
+                    <p>
+                      Corridor automatically rerouted around {routeResult.bypassedHazard?.title || "active road hazard"} (+{routeResult.addedMinutes || 2} min).
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {(routeResult.conflicts || []).length === 0 ? (
                 <div className="route-safe-banner">
                   <span>✓</span>
                   <div>

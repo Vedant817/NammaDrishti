@@ -1,7 +1,7 @@
 {
-  "name": "nammapulse-server",
-  "version": "1.0.0",
-  "description": "NammaPulse Real-Time Civic & Traffic Intelligence Backend API",
+  "name": "nammadrishti-server",
+  "version": "1.1.0",
+  "description": "NammaDrishti Real-Time Civic & Transit Radar Backend API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

@@ -1,10 +1,11 @@
 // src/utils/reputationService.js
 /**
- * Citizen Reputation & Gamification Engine for NammaPulse
+ * Citizen Reputation & Gamification Engine for NammaDrishti
  * Evaluates citizen contributions, verified reports, and civic consensus participation.
  */
 
-const REPUTATION_STORAGE_KEY = 'nammapulse_citizen_reputation_v1';
+const REPUTATION_STORAGE_KEY = 'nammadrishti_citizen_reputation_v1';
+const LEGACY_STORAGE_KEY = 'nammapulse_citizen_reputation_v1';
 
 export const REPUTATION_TIERS = {
   SCOUT: {
@@ -48,7 +49,7 @@ export const getCitizenTier = (points = 0) => {
 
 export const getCitizenReputation = () => {
   try {
-    const raw = localStorage.getItem(REPUTATION_STORAGE_KEY);
+    const raw = localStorage.getItem(REPUTATION_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) {
       const data = JSON.parse(raw);
       return data;
@@ -70,6 +71,9 @@ export const saveCitizenReputation = (profile) => {
   try {
     localStorage.setItem(REPUTATION_STORAGE_KEY, JSON.stringify(profile));
     if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('nammadrishti:reputation_updated', { detail: profile })
+      );
       window.dispatchEvent(
         new CustomEvent('nammapulse:reputation_updated', { detail: profile })
       );

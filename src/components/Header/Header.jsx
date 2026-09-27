@@ -15,6 +15,7 @@ const Header = ({
   verifiedPercent = 0,
   weather,
   isLiveConnected = false,
+  offlineQueueCount = 0,
 }) => {
   const { lang, setLang, t } = useLanguage();
   const [reputation, setReputation] = useState(() => getCitizenReputation());
@@ -23,9 +24,11 @@ const Header = ({
     // Refresh reputation on storage changes or user actions within same or other tabs
     const updateRep = () => setReputation(getCitizenReputation());
     window.addEventListener('storage', updateRep);
+    window.addEventListener('nammadrishti:reputation_updated', updateRep);
     window.addEventListener('nammapulse:reputation_updated', updateRep);
     return () => {
       window.removeEventListener('storage', updateRep);
+      window.removeEventListener('nammadrishti:reputation_updated', updateRep);
       window.removeEventListener('nammapulse:reputation_updated', updateRep);
     };
   }, []);
@@ -43,10 +46,10 @@ const Header = ({
             ></span>
             <div className="brand-text-block">
               <div className="brand-heading-row">
-                <h1>NammaPulse</h1>
+                <h1>{t?.brandName || 'NammaDrishti'}</h1>
                 <span className="city-pill">{t?.city || 'Bengaluru'}</span>
               </div>
-              <p className="brand-subtitle">{t?.brandTagline || 'Real-Time Civic & Traffic Intelligence'}</p>
+              <p className="brand-subtitle">{t?.brandTagline || 'Real-Time Civic & Traffic Radar'}</p>
             </div>
           </div>
 
@@ -59,6 +62,13 @@ const Header = ({
               <span className="karma-pts">{reputation.points} pts</span>
             </div>
           </div>
+
+          {offlineQueueCount > 0 && (
+            <div className="offline-sync-chip" title="Reports waiting to sync when online">
+              <span className="sync-pulse">⚡</span>
+              <span>{offlineQueueCount} offline report{offlineQueueCount > 1 ? 's' : ''} queued</span>
+            </div>
+          )}
         </div>
 
         <div className="header-meta-group">

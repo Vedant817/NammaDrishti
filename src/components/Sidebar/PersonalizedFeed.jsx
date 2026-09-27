@@ -59,8 +59,8 @@ const PersonalizedFeed = ({
     e.stopPropagation();
     const mapLink = item.position
       ? `https://maps.google.com/?q=${item.position.lat},${item.position.lng}`
-      : "https://nammapulse.app";
-    const text = `🚨 *NammaPulse Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n_Stay safe & take alternate routes._`;
+      : "https://nammadrishti.app";
+    const text = `🚨 *NammaDrishti Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n_Stay safe & take alternate routes._`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 

@@ -1,7 +1,7 @@
 {
-  "short_name": "NammaPulse",
-  "name": "NammaPulse - Bengaluru Real-Time Civic Intelligence",
-  "description": "Real-time civic intelligence, flood detection, Doppler rain radar, and urban monitoring for Bengaluru",
+  "short_name": "NammaDrishti",
+  "name": "NammaDrishti - Bengaluru Real-Time Civic & Transit Radar",
+  "description": "Real-time civic intelligence, flood detection, Doppler rain radar, and urban transit monitoring for Bengaluru",
   "icons": [
     {
       "src": "favicon.ico",
@@ -27,6 +27,5 @@
   "categories": ["productivity", "utilities", "navigation"],
   "lang": "en-US",
   "dir": "ltr",
-  "scope": "/",
-  "prefer_related_applications": false
+  "scope": "/"
 }
