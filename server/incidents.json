@@ -1,13 +1,13 @@
 [
   {
-    "id": "namma_1790495602427_h48wq",
+    "id": "namma_1790496368067_5vk87",
     "type": "Waterlogging",
     "title": "Waterlogging at Sony World Junction",
     "ward": "Koramangala",
     "description": "Water ponding near signal.",
     "position": {
-      "lat": 12.800201794387094,
-      "lng": 77.60754488302628
+      "lat": 15.464381857485828,
+      "lng": 75.04009719948522
     },
     "timestamp": "Just now",
     "urgency": "High",
@@ -18,7 +18,7 @@
     "resolutionVotes": 0,
     "reportedBy": "You (Citizen)",
     "mediaUrl": null,
-    "createdAt": "2026-09-27T07:53:22.427Z",
+    "createdAt": "2026-09-27T08:06:08.067Z",
     "updates": [
       {
         "timestamp": "Just now",
@@ -29,14 +29,14 @@
     ]
   },
   {
-    "id": "namma_1790495523819_w5dia",
+    "id": "namma_1790496346438_pjyt2",
     "type": "Waterlogging",
     "title": "Waterlogging at Sony World Junction",
     "ward": "Koramangala",
     "description": "Water ponding near signal.",
     "position": {
-      "lat": 12.809809025604656,
-      "lng": 77.60532784076364
+      "lat": 15.243446357914578,
+      "lng": 75.16517320297078
     },
     "timestamp": "Just now",
     "urgency": "High",
@@ -47,72 +47,8 @@
     "resolutionVotes": 0,
     "reportedBy": "You (Citizen)",
     "mediaUrl": null,
-    "createdAt": "2026-09-27T07:52:03.819Z",
+    "createdAt": "2026-09-27T08:05:46.438Z",
     "updates": [
-      {
-        "timestamp": "Just now",
-        "description": "Vehicles struggling in water.",
-        "reportedBy": "Citizen Scout (Auto-Cluster)",
-        "mediaUrl": null
-      }
-    ]
-  },
-  {
-    "id": "namma_1790495477656_8j4hd",
-    "type": "Waterlogging",
-    "title": "Waterlogging at Sony World Junction",
-    "ward": "Koramangala",
-    "description": "Water ponding near signal.",
-    "position": {
-      "lat": 12.806726778576474,
-      "lng": 77.60813774416216
-    },
-    "timestamp": "Just now",
-    "urgency": "High",
-    "verificationCount": 2,
-    "verificationScore": 2,
-    "clusterCount": 2,
-    "isVerified": false,
-    "resolutionVotes": 0,
-    "reportedBy": "You (Citizen)",
-    "mediaUrl": null,
-    "createdAt": "2026-09-27T07:51:17.656Z",
-    "updates": [
-      {
-        "timestamp": "Just now",
-        "description": "Vehicles struggling in water.",
-        "reportedBy": "Citizen Scout (Auto-Cluster)",
-        "mediaUrl": null
-      }
-    ]
-  },
-  {
-    "id": "namma_1790495303557_jyj0x",
-    "type": "Waterlogging",
-    "title": "Waterlogging at Sony World Junction",
-    "ward": "Koramangala",
-    "description": "Water ponding near signal.",
-    "position": {
-      "lat": 12.9345,
-      "lng": 77.6265
-    },
-    "timestamp": "Just now",
-    "urgency": "High",
-    "verificationCount": 3,
-    "verificationScore": 3,
-    "clusterCount": 3,
-    "isVerified": true,
-    "resolutionVotes": 0,
-    "reportedBy": "You (Citizen)",
-    "mediaUrl": null,
-    "createdAt": "2026-09-27T07:48:23.557Z",
-    "updates": [
-      {
-        "timestamp": "Just now",
-        "description": "Water ponding near signal.",
-        "reportedBy": "Citizen Scout (Auto-Cluster)",
-        "mediaUrl": null
-      },
       {
         "timestamp": "Just now",
         "description": "Vehicles struggling in water.",
@@ -133,10 +69,11 @@
     },
     "timestamp": "10 mins ago",
     "urgency": "High",
-    "verificationCount": 44,
+    "verificationCount": 38,
+    "verificationScore": 36.5,
+    "clusterCount": 1,
     "isVerified": true,
-    "reportedBy": "BTP Traffic Monitor",
-    "verificationScore": 40.25
+    "reportedBy": "BTP Traffic Monitor"
   },
   {
     "id": "bengaluru_evt_2",
@@ -151,6 +88,8 @@
     "timestamp": "15 mins ago",
     "urgency": "High",
     "verificationCount": 48,
+    "verificationScore": 48,
+    "clusterCount": 1,
     "isVerified": true,
     "reportedBy": "Local Commuter"
   },
@@ -167,6 +106,8 @@
     "timestamp": "42 mins ago",
     "urgency": "Medium",
     "verificationCount": 16,
+    "verificationScore": 16,
+    "clusterCount": 1,
     "isVerified": true,
     "reportedBy": "Citizen Scout"
   },
@@ -183,6 +124,8 @@
     "timestamp": "25 mins ago",
     "urgency": "High",
     "verificationCount": 29,
+    "verificationScore": 29,
+    "clusterCount": 1,
     "isVerified": true,
     "reportedBy": "ORRCA Commuter"
   },
@@ -199,6 +142,8 @@
     "timestamp": "32 mins ago",
     "urgency": "High",
     "verificationCount": 22,
+    "verificationScore": 22,
+    "clusterCount": 1,
     "isVerified": true,
     "reportedBy": "Highway Patrol"
   }

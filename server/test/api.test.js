@@ -54,9 +54,9 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
   });
 
   await t.test('4. Spatial Clustering: Reports within 200m auto-merge into existing incident', async () => {
-    // Unique test coordinates to ensure isolation across repeated test runs
-    const testLat = 12.8000 + Math.random() * 0.01;
-    const testLng = 77.6000 + Math.random() * 0.01;
+    // Completely isolated test coordinates far from urban clusters
+    const testLat = 15.0000 + Math.random() * 0.5;
+    const testLng = 75.0000 + Math.random() * 0.5;
 
     // 1. Create a parent incident
     const parentPayload = {
@@ -76,7 +76,7 @@ test('NammaPulse Backend API Comprehensive Test Suite', async (t) => {
     const parent = await res1.json();
     assert.equal(parent.clusterCount, 1);
 
-    // 2. Submit second report ~60 meters away (lat + 0.0005 is ~55 meters)
+    // 2. Submit second report ~55 meters away (lat + 0.0005 is ~55 meters)
     const nearbyPayload = {
       title: 'Deep Water Accumulation near Sony World',
       type: 'Waterlogging',
