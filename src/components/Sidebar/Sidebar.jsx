@@ -6,6 +6,8 @@ import { EMERGENCY_CONTACTS } from "../../data/constants";
 import { useLanguage } from "../../context/LanguageContext";
 import "./Sidebar.css";
 
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+
 const Sidebar = ({
   activeTab = "feed",
   onTabChange,
@@ -26,30 +28,67 @@ const Sidebar = ({
 
   const handleTriggerSos = () => {
     setAcquiringGps(true);
-    const triggerWithCoords = (lat, lng) => {
+    setSosStatus(null);
+
+    const onCoordsAcquired = async (lat, lng) => {
       setAcquiringGps(false);
       const googleMapsUrl = `https://maps.google.com/?q=${lat.toFixed(5)},${lng.toFixed(5)}`;
       const message = `🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n📍 Location: ${googleMapsUrl}\n🆘 Immediate road/civic assistance required in Bengaluru!`;
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-      
+
+      // Post dispatch event to backend
+      try {
+        await fetch(`${API_BASE}/sos/dispatch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
+        });
+      } catch (err) {
+        // Continue even if network is restricted
+      }
+
       setSosStatus({
         lat,
         lng,
         whatsappUrl,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isVerifiedGps: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       });
+
+      // Automatically launch WhatsApp dispatch link
+      try {
+        if (typeof window !== "undefined") {
+          window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+        }
+      } catch (openErr) {}
     };
 
-    if (userLocation && Number.isFinite(userLocation.lat)) {
-      triggerWithCoords(userLocation.lat, userLocation.lng);
-    } else if (navigator.geolocation) {
+    if (userLocation && Number.isFinite(userLocation.lat) && Number.isFinite(userLocation.lng)) {
+      onCoordsAcquired(userLocation.lat, userLocation.lng);
+    } else if (navigator && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => triggerWithCoords(pos.coords.latitude, pos.coords.longitude),
-        () => triggerWithCoords(12.9716, 77.5946), // Bengaluru center fallback
-        { timeout: 5000 }
+        (pos) => onCoordsAcquired(pos.coords.latitude, pos.coords.longitude),
+        (err) => {
+          setAcquiringGps(false);
+          setSosStatus({
+            isVerifiedGps: false,
+            error: "GPS Location unavailable or permission denied. Please call 112 directly.",
+            whatsappUrl: `https://wa.me/?text=${encodeURIComponent(
+              "🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n🆘 Immediate road/civic assistance required in Bengaluru! (GPS coordinates unavailable - calling 112)"
+            )}`,
+          });
+        },
+        { timeout: 7000, enableHighAccuracy: true }
       );
     } else {
-      triggerWithCoords(12.9716, 77.5946);
+      setAcquiringGps(false);
+      setSosStatus({
+        isVerifiedGps: false,
+        error: "Geolocation is not supported on this device. Please call 112 directly.",
+        whatsappUrl: `https://wa.me/?text=${encodeURIComponent(
+          "🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n🆘 Immediate road/civic assistance required in Bengaluru! (GPS coordinates unavailable - calling 112)"
+        )}`,
+      });
     }
   };
 
@@ -126,10 +165,16 @@ const Sidebar = ({
 
               {sosStatus && (
                 <div className="sos-active-panel">
-                  <div className="sos-coords-row">
-                    <span>GPS Acquired:</span>
-                    <strong>{sosStatus.lat.toFixed(4)}, {sosStatus.lng.toFixed(4)}</strong>
-                  </div>
+                  {sosStatus.isVerifiedGps ? (
+                    <div className="sos-coords-row">
+                      <span>✓ GPS Acquired:</span>
+                      <strong>{sosStatus.lat.toFixed(4)}, {sosStatus.lng.toFixed(4)}</strong>
+                    </div>
+                  ) : (
+                    <div className="sos-coords-row sos-error-coords" style={{ color: "#EF4444" }}>
+                      <span>⚠️ {sosStatus.error}</span>
+                    </div>
+                  )}
                   <div className="sos-actions-row">
                     <a
                       href={sosStatus.whatsappUrl}

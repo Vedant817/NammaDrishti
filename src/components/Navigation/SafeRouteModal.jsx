@@ -7,9 +7,11 @@ import "./SafeRouteModal.css";
 const SafeRouteModal = ({
   onClose,
   activeHazards = [],
+  hazards = [],
   onApplyRouteToMap,
   userLocation,
 }) => {
+  const resolvedHazards = (activeHazards && activeHazards.length > 0) ? activeHazards : (hazards || []);
   const [startId, setStartId] = useState("silk-board");
   const [destId, setDestId] = useState("marathahalli");
   const [useCurrentGps, setUseCurrentGps] = useState(false);
@@ -44,10 +46,10 @@ const SafeRouteModal = ({
     try {
       let routeData;
       if (autoDetour) {
-        routeData = await fetchDetourRoute(startCoords, endCoords, activeHazards);
+        routeData = await fetchDetourRoute(startCoords, endCoords, resolvedHazards);
       } else {
         const base = await fetchDrivingRoute(startCoords, endCoords);
-        const conflicts = detectRouteHazards(base.coordinates, activeHazards, 0.45);
+        const conflicts = detectRouteHazards(base.coordinates, resolvedHazards, 0.45);
         routeData = { ...base, conflicts, isDetour: false };
       }
 

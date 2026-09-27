@@ -72,9 +72,13 @@ const CityPulseDashboard = () => {
 
   const handleSubmitReport = async (newReport) => {
     const created = await addEvent(newReport);
+    if (created && created.error) {
+      return { error: created.error };
+    }
     setSelectedEvent(created);
     setReportPin(null);
     showToast("✓ Hazard incident broadcast to NammaDrishti live stream!");
+    return { success: true };
   };
 
   const handleVerifyEvent = async (id) => {
@@ -111,7 +115,7 @@ const CityPulseDashboard = () => {
       setNavigationRoute(null);
       return;
     }
-    setNavigationRoute(routeData.coordinates || null);
+    setNavigationRoute(routeData);
     if (routeData.hasConflicts) {
       showToast("⚠️ Caution: Navigation corridor intersects active civic hazards. Rerouted.");
     } else {
@@ -131,24 +135,21 @@ const CityPulseDashboard = () => {
             events.length) *
             100
         )
-      : 0;
+      : 100;
 
   return (
-    <div className="dashboard-container">
-      {/* Platform Header with Live Sync Status & Monsoon Offline Indicator */}
+    <div className="citypulse-app">
       <Header
-        activeEventCount={events.length}
-        verifiedPercent={verifiedPercent}
-        weather={weather}
+        activeAlertsCount={events.length}
+        verifiedPercentage={verifiedPercent}
         isLiveConnected={isLiveConnected}
         offlineQueueCount={offlineQueueCount}
       />
 
-      {/* Global Interactive Filter Panel */}
       <FilterPanel
         activeFilter={activeFilter}
         onFilterChange={handleFilterChange}
-        counts={{
+        incidentCounts={{
           All: events.length,
           Traffic: events.filter((e) => e.type === "Traffic").length,
           Waterlogging: events.filter((e) => e.type === "Waterlogging").length,
@@ -167,6 +168,7 @@ const CityPulseDashboard = () => {
             onMapClick={handleMapPinSelected}
             onOpenReportModal={handleOpenReportModal}
             navigationRoute={navigationRoute}
+            onClearNavigationRoute={() => setNavigationRoute(null)}
             userLocation={userLocation}
           />
 
@@ -247,6 +249,7 @@ const CityPulseDashboard = () => {
           isOpen={showRouteModal}
           onClose={() => setShowRouteModal(false)}
           hazards={events}
+          activeHazards={events}
           userLocation={userLocation}
           onApplyRouteToMap={handleApplyRoute}
         />

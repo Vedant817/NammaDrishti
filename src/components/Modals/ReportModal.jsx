@@ -145,7 +145,7 @@ const ReportModal = ({
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (submitting) return; // Prevent double-submit race condition
     setErrorMsg("");
@@ -172,11 +172,17 @@ const ReportModal = ({
 
     setSubmitting(true);
     try {
-      onSubmitReport({
+      const res = await onSubmitReport({
         ...formData,
         position: resolvedCoords,
       });
+      if (res && res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
       onClose();
+    } catch (err) {
+      setErrorMsg(err?.message || "Failed to submit hazard report. Please check connection and try again.");
     } finally {
       setSubmitting(false);
     }

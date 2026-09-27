@@ -30,10 +30,14 @@ function createRateLimiter({ windowMs = 60000, maxRequests, max = 30, message = 
       return next();
     }
 
-    // Resolve client IP with reverse-proxy X-Forwarded-For support
-    const forwardedHeader = req.headers['x-forwarded-for'];
-    const forwardedIp = typeof forwardedHeader === 'string' ? forwardedHeader.split(',')[0].trim() : null;
-    const ip = forwardedIp || req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
+    // Resolve client IP securely: only trust X-Forwarded-For if behind a configured reverse proxy or in non-strict dev
+    const isTrustProxy = Boolean(req.app?.get?.('trust proxy') || process.env.TRUST_PROXY === 'true');
+    let ip = req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
+    if (isTrustProxy) {
+      const forwardedHeader = req.headers['x-forwarded-for'];
+      const forwardedIp = typeof forwardedHeader === 'string' ? forwardedHeader.split(',')[0].trim() : null;
+      ip = forwardedIp || req.ip || ip;
+    }
 
     const now = Date.now();
     const timestamps = requestLog.get(ip) || [];

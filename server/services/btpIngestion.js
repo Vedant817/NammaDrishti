@@ -5,7 +5,25 @@
  * metro construction diversions, and emergency monsoon road closures.
  */
 
+const fs = require('fs');
+const path = require('path');
 const { getHexIndex } = require('./spatialHex');
+
+const DISMISSED_FILE = path.join(__dirname, '../dismissed_advisories.json');
+
+// Set of advisories that have been dismissed, resolved, or expired by the system (persisted on disk)
+let dismissedAdvisoryIds = new Set();
+
+try {
+  if (fs.existsSync(DISMISSED_FILE)) {
+    const data = JSON.parse(fs.readFileSync(DISMISSED_FILE, 'utf8'));
+    if (Array.isArray(data)) {
+      dismissedAdvisoryIds = new Set(data);
+    }
+  }
+} catch (e) {
+  console.warn('[BTP Ingestion] Could not load dismissed advisories file:', e.message);
+}
 
 const BTP_OFFICIAL_ADVISORIES = [
   {
@@ -21,6 +39,8 @@ const BTP_OFFICIAL_ADVISORIES = [
     clusterCount: 1,
     isVerified: true,
     isAuthoritative: true,
+    isSimulatedFeed: true,
+    feedSourceStatus: 'Official Bulletin Archive (Sample Ingestion Feed)',
     reportedBy: 'Bengaluru Traffic Police (BTP Control Room)',
     officialSource: 'BTP Traffic Bulletin (Feed Ingestion)',
   },
@@ -37,6 +57,8 @@ const BTP_OFFICIAL_ADVISORIES = [
     clusterCount: 1,
     isVerified: true,
     isAuthoritative: true,
+    isSimulatedFeed: true,
+    feedSourceStatus: 'Official Bulletin Archive (Sample Ingestion Feed)',
     reportedBy: 'Bengaluru Traffic Police (BTP Control Room)',
     officialSource: 'BBMP Disaster Management Cell (Feed Ingestion)',
   },
@@ -53,16 +75,20 @@ const BTP_OFFICIAL_ADVISORIES = [
     clusterCount: 1,
     isVerified: true,
     isAuthoritative: true,
+    isSimulatedFeed: true,
+    feedSourceStatus: 'Official Bulletin Archive (Sample Ingestion Feed)',
     reportedBy: 'BWSSB & Traffic Police Central',
     officialSource: 'BWSSB Civic Advisory (Feed Ingestion)',
   }
 ];
 
-// Set of advisories that have been dismissed, resolved, or expired by the system
-const dismissedAdvisoryIds = new Set();
-
 function markAdvisoryDismissed(id) {
   dismissedAdvisoryIds.add(id);
+  try {
+    fs.writeFileSync(DISMISSED_FILE, JSON.stringify(Array.from(dismissedAdvisoryIds), null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[BTP Ingestion] Failed to persist dismissed advisory to disk:', e.message);
+  }
 }
 
 function getBtpAdvisories() {

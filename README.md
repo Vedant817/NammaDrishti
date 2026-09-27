@@ -14,7 +14,7 @@
 
 ---
 
-## 🌆 About NammaDrishti
+## 🏙️ About NammaDrishti
 
 **NammaDrishti** (*ನಮ್ಮ ದೃಷ್ಟಿ - "Our Vision"*) is a hyper-localized civic awareness and flood warning platform engineered for the complex urban topology of Bengaluru. When torrential monsoons strike corridors like Bellandur, Silk Board, Outer Ring Road, and Panathur, commuters face waterlogged railway underpasses, tree falls, severe gridlocks, and unmapped hazards.
 
@@ -25,14 +25,14 @@ NammaDrishti empowers citizens and traffic wardens to crowd-source ground-truth 
 ## ✨ Key Capabilities
 
 - **🗺️ Interactive Hyper-Local Map**: Live rendering of active traffic jams, flash floods, accidents, and potholes across BBMP wards and major IT corridors.
-- **🛡️ Proximity-Weighted Verification**: On-ground commuters (<1.5 km) carry higher verification weight ($1.0\times$) than remote observers ($0.25\times$), defeating false alarms while remaining tamper-resistant.
+- **🛡️ Proximity-Weighted Verification**: On-ground commuters (<1.5 km) carry higher verification weight ($1.0\times$) than remote observers ($0.25\times$), defeating false alarms while remaining tamper-resistant. Requires at least 2 distinct voters and score $\ge 2.5$ for verified status.
 - **📍 Dynamic Spatial Auto-Clustering**: Nearby hazard reports within 200m auto-merge into unified clusters, preventing visual clutter and consolidating confirmation scores.
-- **🧭 Safe Navigation & Hazard Detour Radar**: Interactive origin-to-destination routing that samples road corridors, alerts commuters of intersecting hazards, and calculates safe bypasses.
+- **🧭 Safe Navigation & Hazard Detour Radar**: Interactive origin-to-destination routing that samples road corridors, alerts commuters of intersecting hazards, and calculates safe bypasses. Supports both GeoJSON routes and raw coordinate arrays.
 - **🌊 Monsoon Diagnostic Engine**: Dedicated telemetry analyzing 12 high-risk Bengaluru underpasses (Panathur, Hebbal, Okalipuram, Le Méridien, etc.) alongside real-time Doppler precipitation data.
-- **🆘 One-Tap Emergency SOS Dispatcher**: Generates pre-formatted WhatsApp SOS broadcasts with exact GPS coordinates and direct dialing to Bengaluru Police (112) and Traffic Helplines (1095).
+- **🆘 One-Tap Emergency SOS Dispatcher**: Generates pre-formatted WhatsApp SOS broadcasts with exact GPS coordinates, triggers an emergency beacon via `POST /api/sos/dispatch`, and offers direct dialing to Bengaluru Police (112) and Traffic Helplines (1095).
 - **🗣️ Tri-Lingual Support**: Complete native localisation in **ಕನ್ನಡ (Kannada)**, **हिंदी (Hindi)**, and **English**, with dynamic locale switching and fallback deep-merging.
 - **🤖 Context-Aware AI Commute Assistant**: Powered by heuristic city knowledge and live weather telemetry to answer commuter questions on underpasses, gridlocks, and alternate routes.
-- **📡 Resilient Offline Queue**: Commuters in low-connectivity areas or waterlogged underpasses can draft reports that auto-sync upon signal restoration.
+- **📡 Resilient Offline Queue & Vote Replay**: Commuters in low-connectivity areas or waterlogged underpasses can draft reports and votes that auto-sync upon signal restoration with race-condition protection.
 - **🎮 Citizen Karma & Gamification**: Tiered civic badges (*Bengaluru Scout*, *Ward Sentinel*, *City Guardian*) rewarding constructive crowd contributions.
 
 ---
@@ -43,15 +43,15 @@ NammaDrishti empowers citizens and traffic wardens to crowd-source ground-truth 
    ┌────────────────────────────────────────────────────────┐
    │             NammaDrishti Frontend (React 19)           │
    │  Leaflet Map  •  Routing Modal  •  Diagnostic Sidebar  │
-   └───────────────▲────────────────────────▲───────────────┘
+   └───────────────────────────▲────────────────────────────┘
                    │ WebSocket (Socket.io)  │ REST API
-   ┌───────────────▼────────────────────────▼───────────────┐
+   ┌───────────────────────────▼────────────────────────────┐
    │              Express 4 Backend Service                 │
    │  Hexagonal Spatial Index  •  Sliding Window Limiter    │
    │  Proximity Consensus Engine  •  TTL Half-Life Decay    │
-   └───────────────────────▲────────────────────────────────┘
+   └───────────────────────────▲────────────────────────────┘
                            │ Atomic JSON / Cloud Persistence
-   ┌───────────────────────▼────────────────────────────────┐
+   ┌───────────────────────────▼────────────────────────────┐
    │              Bengaluru Civic Data Store                │
    └────────────────────────────────────────────────────────┘
 ```
@@ -60,6 +60,27 @@ NammaDrishti empowers citizens and traffic wardens to crowd-source ground-truth 
 - **Backend**: Node.js, Express, Socket.io (real-time broadcast rooms), Open-Meteo API.
 - **Geospatial Engine**: In-memory Resolution-8 Axial Hexagonal Partitioning (`server/services/spatialHex.js`), Haversine distance, and 2D Segment Corridor Projection.
 - **Resilience**: Sliding-Window IP Rate Limiter (`server/services/rateLimiter.js`), Atomic Disk Persistence (`incidents.json`), and Dynamic TTL Lifecycle Sweeper.
+
+---
+
+## 🛡️ Robustness & Anti-Sybil Consensus Safeguards
+
+NammaDrishti incorporates robust production and concurrency safeguards:
+
+1. **Two-Voter Minimum for Verified Status**:
+   A single commuter cannot elevate an incident to verified status alone. Even with high initial weight, an incident requires `verificationScore >= 2.5` **and** at least `2` distinct verified voters before attaining verified status.
+
+2. **Authoritative Bulletin Protection**:
+   Official advisories ingested from Bengaluru Traffic Police (BTP) or BBMP cannot be cleared by citizen resolution votes. Citizen clearance requests on official bulletins receive `HTTP 403 Forbidden`.
+
+3. **Atomic Anti-Sybil Single Vote Guard**:
+   Verification and clearance endpoints enforce strict single-vote-per-device rules. Concurrent duplicate votes are atomically rejected with `HTTP 409 Conflict`.
+
+4. **Zero-Loss Offline Synchronization**:
+   Offline queues prevent loss of queued items during asynchronous draining. Offline verifications and clearance votes are tracked in `nammadrishti_offline_votes_v1` and replayed cleanly upon reconnection.
+
+5. **Reverse Proxy Trust Isolation**:
+   `X-Forwarded-For` header spoofing is prevented by only evaluating forwarded IPs when reverse proxy trust is explicitly configured (`app.set('trust proxy', 1)`).
 
 ---
 

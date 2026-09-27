@@ -11,6 +11,9 @@ server/node_modules
 # production
 /build
 
+# runtime dynamic data
+server/dismissed_advisories.json
+
 # misc
 .DS_Store
 .env.local

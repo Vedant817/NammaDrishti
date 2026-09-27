@@ -62,7 +62,7 @@ const CustomMapContainer = ({
   onResolveEvent = null,
   reportPin = null,
   navigationRoute = null,
-  onClearNavigationRoute = null,
+  onClearNavigationRoute = () => {},
 }) => {
   const { t } = useLanguage();
   const [showRadar, setShowRadar] = useState(false);
@@ -267,7 +267,11 @@ const CustomMapContainer = ({
           <button
             type="button"
             className="toolbar-btn active-cyan"
-            onClick={onClearNavigationRoute}
+            onClick={() => {
+              if (typeof onClearNavigationRoute === "function") {
+                onClearNavigationRoute();
+              }
+            }}
             title="Clear active navigation route from map"
           >
             ✕ Clear Route
@@ -344,9 +348,9 @@ const CustomMapContainer = ({
           })}
 
         {/* Navigation Route Display */}
-        {navigationRoute && navigationRoute.coordinates && (
+        {navigationRoute && (navigationRoute.coordinates || Array.isArray(navigationRoute)) && (
           <Polyline
-            positions={navigationRoute.coordinates}
+            positions={navigationRoute.coordinates || navigationRoute}
             color={navigationRoute.hasConflicts ? "#EF4444" : "#10B981"}
             weight={7}
             opacity={0.9}

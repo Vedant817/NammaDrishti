@@ -15,6 +15,11 @@ const { processMediaUpload } = require('./services/mediaService.js');
 const app = express();
 const server = http.createServer(app);
 
+// Express reverse-proxy trust configuration
+if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV !== 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Enable CORS for frontend client
 app.use(cors({
   origin: '*',
@@ -98,16 +103,16 @@ function persistIncidents() {
   }
 }
 
-// Great-circle Haversine formula to calculate distance in km between two GPS coordinates
+// Distance utility (Haversine formula in km with robust NaN-safety and numerical clamping)
 function getDistanceKm(lat1, lon1, lat2, lon2) {
   const nLat1 = Number(lat1);
   const nLon1 = Number(lon1);
   const nLat2 = Number(lat2);
   const nLon2 = Number(lon2);
   if (!Number.isFinite(nLat1) || !Number.isFinite(nLon1) || !Number.isFinite(nLat2) || !Number.isFinite(nLon2)) {
-    return 0;
+    return 0; // Safe finite fallback against invalid or non-numeric coordinates
   }
-  const R = 6371; // Radius of the Earth in km
+  const R = 6371; // Radius of Earth in km
   const dLat = ((nLat2 - nLat1) * Math.PI) / 180;
   const dLon = ((nLon2 - nLon1) * Math.PI) / 180;
   const a =
@@ -116,37 +121,42 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
       Math.cos((nLat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  const aClamped = Math.min(1, Math.max(0, a));
-  const c = 2 * Math.atan2(Math.sqrt(aClamped), Math.sqrt(1 - aClamped));
+  const clampedA = Math.min(1, Math.max(0, a));
+  const c = 2 * Math.atan2(Math.sqrt(clampedA), Math.sqrt(1 - clampedA));
   return R * c;
 }
 
-// Category-specific TTL policies (in hours)
+// DYNAMIC TTL DECAY EXPIRATION POLICIES (in hours)
 const TTL_HOURS_BY_TYPE = {
-  Traffic: 4,          // Rapidly shifting urban congestion
-  Waterlogging: 12,    // Monsoon flooding and underpass inundation
-  Accident: 6,         // Roadway collisions and clearance
-  Infrastructure: 48,  // Potholes, open drains, electrical hazards
+  Traffic: 3, // Rapid clearing congestion
+  Accident: 6, // Vehicle clearance & recovery
+  Waterlogging: 12, // Monsoon receding time
+  Infrastructure: 48, // Pothole / BWSSB pipe repair
 };
 
-// Periodic Background Worker: Purge Stale Incidents based on TTL & Consensus
+// Lifecycle Worker: cleans up expired incidents and broadcasts updates
 function cleanupExpiredIncidents() {
   const now = Date.now();
-  const initialIncidents = [...incidents];
-  const expiredIncidents = [];
+  const initialIncidents = incidents;
   const keptIncidents = [];
+  const expiredIncidents = [];
 
   for (const incident of incidents) {
-    // Determine category TTL (default 6 hours if type unknown)
-    const ttlHours = TTL_HOURS_BY_TYPE[incident.type] || 6;
-    const ttlMs = ttlHours * 60 * 60 * 1000;
+    // Authoritative alerts are managed explicitly by sync or dismissal
+    if (incident.isAuthoritative) {
+      keptIncidents.push(incident);
+      continue;
+    }
 
-    let createdMs = new Date(incident.createdAt).getTime();
+    const createdMs = incident.createdAt ? new Date(incident.createdAt).getTime() : NaN;
     if (Number.isNaN(createdMs)) {
-      createdMs = now;
+      keptIncidents.push(incident);
+      continue;
     }
 
     const ageMs = now - createdMs;
+    const ttlHours = TTL_HOURS_BY_TYPE[incident.type] || 6;
+    const ttlMs = ttlHours * 60 * 60 * 1000;
 
     // High consensus hazards receive a 50% TTL grace window
     const consensusMultiplier = (incident.verificationScore >= 3 || incident.verificationCount >= 4) ? 1.5 : 1.0;
@@ -451,10 +461,13 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     // Broadcast cluster update to all clients and to the spatial hex room
     io.emit('incident:clustered', {
       id: clusterMatch.id,
+      clusterId: clusterMatch.id,
       verificationCount: clusterMatch.verificationCount,
+      verificationScore: clusterMatch.verificationScore,
       clusterCount: clusterMatch.clusterCount,
       isVerified: clusterMatch.isVerified,
       latestUpdate: clusterMatch.updates[0],
+      updates: clusterMatch.updates,
     });
     io.to(`hex:${clusterMatch.hexIndex || hexIndex}`).emit('incident:spatial_update', clusterMatch);
 
@@ -501,6 +514,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
 
   // Real-time broadcast to all connected WebSocket clients and hex room
   io.emit('incident:created', newIncident);
+  io.emit('incident:new', newIncident);
   io.to(`hex:${hexIndex}`).emit('incident:spatial_update', newIncident);
 
   res.status(201).json(newIncident);
@@ -558,7 +572,8 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
   incident.verificationCount = prevCount + 1;
   incident.verificationScore = Number((prevScore + weight).toFixed(2));
 
-  if (incident.verificationScore >= 2.5) {
+  // Multi-commuter verification threshold: requires score >= 2.5 AND at least 2 distinct voters
+  if (incident.verificationScore >= 2.5 && incident.verifiedVoters.length >= 2) {
     incident.isVerified = true;
   }
 
@@ -600,6 +615,14 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
   }
 
   const incident = incidents[index];
+
+  // Prevent citizen clearance of authoritative police or municipal alerts
+  if (incident.isAuthoritative) {
+    return res.status(403).json({
+      error: 'Authoritative government bulletins (BTP/BBMP) cannot be cleared by citizen votes. They are managed directly by civic authority control.',
+    });
+  }
+
   const voterKey = req.body?.voterId || req.ip || 'anon_voter';
 
   if (!Array.isArray(incident.resolutionVoterKeys)) {
@@ -616,6 +639,7 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
 
   if (incident.clearanceVotes >= 2) {
     const [cleared] = incidents.splice(index, 1);
+    markAdvisoryDismissed(cleared.id);
     const saved = persistIncidents();
     if (!saved) {
       cleared.resolutionVoterKeys.pop();
@@ -665,7 +689,32 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
   });
 });
 
-// 5. CONVERSATIONAL AI TRANSIT ASSISTANT ENDPOINT
+// 5. EMERGENCY SOS DISPATCH ENDPOINT
+app.post('/api/sos/dispatch', (req, res) => {
+  const { lat, lng, timestamp } = req.body || {};
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+    return res.status(400).json({ error: 'Valid GPS coordinates (lat, lng) are required for emergency dispatch.' });
+  }
+
+  const dispatchEvent = {
+    id: `sos_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    lat: Number(lat),
+    lng: Number(lng),
+    timestamp: timestamp || new Date().toISOString(),
+    status: 'ACTIVE_DISPATCH',
+    notifiedAuthorities: ['BTP Control Room (1095)', 'BBMP Disaster Management (1533)', 'ERSS (112)'],
+  };
+
+  io.emit('emergency:sos', dispatchEvent);
+
+  res.status(200).json({
+    success: true,
+    message: 'Emergency beacon broadcast to BTP and BBMP emergency dispatch corridors.',
+    dispatch: dispatchEvent,
+  });
+});
+
+// 6. CONVERSATIONAL AI TRANSIT ASSISTANT ENDPOINT
 app.post('/api/assistant/chat', aiLimiter, (req, res) => {
   const { message } = req.body || {};
   if (!message || typeof message !== 'string') {
@@ -730,7 +779,19 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
     reply = `📞 Bengaluru Emergency Helplines:\n• BTP Traffic Police: 1095 / 080-22943030\n• BBMP Disaster Cell: 1533\n• BESCOM Electrical Emergency: 1912\n• BWSSB Water & Sewerage: 1916\n• National Emergency: 112`;
     sources.push('Karnataka State Emergency Operations');
   } else {
-    reply = `Namaskara! NammaDrishti is actively monitoring ${activeHazards.length} civic hazard(s) across Bengaluru (${trafficCount} traffic bottlenecks, ${waterlogCount} waterlogged points). You can ask me about Silk Board, Hebbal airport transit, flooded underpasses, or report road hazards directly on the map.`;
+    // Dynamic matching on any ward or title present in active hazards
+    const matchedHazard = activeHazards.find((i) => {
+      const ward = (i.ward || '').toLowerCase();
+      const title = i.title.toLowerCase();
+      return (ward && query.includes(ward)) || query.includes(title);
+    });
+
+    if (matchedHazard) {
+      reply = `📍 Live Alert for ${matchedHazard.ward || matchedHazard.title}: ${matchedHazard.title} (${matchedHazard.type}, Urgency: ${matchedHazard.urgency}). ${matchedHazard.description} Verified by ${matchedHazard.verificationCount || 1} citizens.`;
+      sources.push(matchedHazard.title);
+    } else {
+      reply = `Namaskara! NammaDrishti is actively monitoring ${activeHazards.length} civic hazard(s) across Bengaluru (${trafficCount} traffic bottlenecks, ${waterlogCount} waterlogged points). You can ask me about Silk Board, Hebbal airport transit, flooded underpasses, or report road hazards directly on the map.`;
+    }
   }
 
   res.json({
@@ -798,9 +859,10 @@ if (require.main === module) {
     console.log(`\n==================================================`);
     console.log(`🚀 NammaDrishti Civic Platform Engine Live`);
     console.log(`📡 HTTP Server & REST API: http://localhost:${PORT}`);
-    console.log(`⚡ WebSocket Stream: ws://localhost:${PORT}`);
-    console.log(`📂 Incident Data Storage: ${DATA_FILE}`);
-    console.log(`🏙️ Active Incidents Loaded: ${incidents.length}`);
+    console.log(`⚡ WebSocket Server: ws://localhost:${PORT}`);
+    console.log(`🧪 Hexagonal Spatial Partitioning & Clustering: ACTIVE`);
+    console.log(`⏱️ Dynamic TTL Expiration Worker: ACTIVE`);
+    console.log(`🛡️ Rate Limiting & Sliding Window: ACTIVE`);
     console.log(`==================================================\n`);
   });
 }

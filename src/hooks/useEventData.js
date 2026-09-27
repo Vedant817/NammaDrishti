@@ -9,6 +9,7 @@ const LEGACY_STORAGE_KEY = "nammapulse_events_v1";
 const VOTES_STORAGE_KEY = "nammadrishti_user_votes_v1";
 const LEGACY_VOTES_KEY = "nammapulse_user_votes_v1";
 const OFFLINE_QUEUE_KEY = "nammadrishti_offline_queue_v1";
+const OFFLINE_VOTES_KEY = "nammadrishti_offline_votes_v1";
 
 const getApiBase = () => {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
@@ -72,8 +73,38 @@ const getOfflineQueue = () => {
 const saveOfflineQueue = (queue) => {
   try {
     localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-  } catch (e) {
-    console.warn("[OfflineQueue] Failed to save queue:", e);
+    return true;
+  } catch (err) {
+    if (err.name === "QuotaExceededError" || err.code === 22) {
+      try {
+        const leanQueue = queue.map(({ mediaUrl, ...rest }) => rest);
+        localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(leanQueue));
+        return true;
+      } catch (retryErr) {
+        console.warn("[OfflineQueue] Failed to save lean queue:", retryErr);
+      }
+    }
+    console.warn("[OfflineQueue] Failed to save queue:", err);
+    return false;
+  }
+};
+
+const getOfflineVotes = () => {
+  try {
+    const raw = localStorage.getItem(OFFLINE_VOTES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveOfflineVotes = (votes) => {
+  try {
+    localStorage.setItem(OFFLINE_VOTES_KEY, JSON.stringify(votes));
+    return true;
+  } catch (err) {
+    console.warn("[OfflineVotes] Failed to save votes queue:", err);
+    return false;
   }
 };
 
@@ -126,54 +157,99 @@ export const useEventData = () => {
   const [offlineQueueCount, setOfflineQueueCount] = useState(() => getOfflineQueue().length);
   const socketRef = useRef(null);
 
-  // Sync queued offline submissions to server
+  // Sync queued offline submissions & votes to server safely without race condition
   const syncOfflineQueue = useCallback(async () => {
+    // 1. Sync pending hazard reports
     const queue = getOfflineQueue();
-    if (!queue || queue.length === 0) {
+    if (queue && queue.length > 0) {
+      const successfulIds = new Set();
+      for (const item of queue) {
+        try {
+          const res = await fetch(`${API_BASE}/incidents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...item,
+              voterId: getOrCreateDeviceId(),
+            }),
+            signal: AbortSignal.timeout(3000),
+          });
+          if (res.ok) {
+            successfulIds.add(item.id);
+            const created = await res.json();
+            setEvents((prev) => {
+              const idx = prev.findIndex((e) => e.id === item.id);
+              if (idx !== -1) {
+                const copy = [...prev];
+                copy[idx] = { ...created, _isLocalPending: false };
+                safeSaveStorage(copy);
+                return copy;
+              }
+              if (!prev.some((e) => e.id === created.id)) {
+                const next = [created, ...prev];
+                safeSaveStorage(next);
+                return next;
+              }
+              return prev;
+            });
+          }
+        } catch (err) {
+          // Keep in queue for subsequent sync
+        }
+      }
+
+      if (successfulIds.size > 0) {
+        // Re-read fresh queue from localStorage so items queued during await are not lost
+        const freshQueue = getOfflineQueue();
+        const remaining = freshQueue.filter((item) => !successfulIds.has(item.id));
+        saveOfflineQueue(remaining);
+        setOfflineQueueCount(remaining.length);
+      }
+    } else {
       setOfflineQueueCount(0);
-      return;
     }
 
-    const remaining = [];
-    for (const item of queue) {
-      try {
-        const res = await fetch(`${API_BASE}/incidents`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...item,
-            voterId: getOrCreateDeviceId(),
-          }),
-          signal: AbortSignal.timeout(3000),
-        });
-        if (res.ok) {
-          const created = await res.json();
-          // Update in-memory state
-          setEvents((prev) => {
-            const idx = prev.findIndex((e) => e.id === item.id);
-            if (idx !== -1) {
-              const copy = [...prev];
-              copy[idx] = { ...created, _isLocalPending: false };
-              safeSaveStorage(copy);
-              return copy;
+    // 2. Sync pending offline votes (verifications and clearances)
+    const votesQueue = getOfflineVotes();
+    if (votesQueue && votesQueue.length > 0) {
+      const syncedVoteTimestamps = new Set();
+      for (const vote of votesQueue) {
+        try {
+          if (vote.type === "verify") {
+            const res = await fetch(`${API_BASE}/incidents/${vote.incidentId}/verify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                voterPosition: vote.voterPosition,
+                voterId: getOrCreateDeviceId(),
+              }),
+              signal: AbortSignal.timeout(3000),
+            });
+            if (res.ok || res.status === 409) {
+              syncedVoteTimestamps.add(vote.timestamp);
             }
-            if (!prev.some((e) => e.id === created.id)) {
-              const next = [created, ...prev];
-              safeSaveStorage(next);
-              return next;
+          } else if (vote.type === "clear") {
+            const res = await fetch(`${API_BASE}/incidents/${vote.incidentId}/resolve`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ voterId: getOrCreateDeviceId() }),
+              signal: AbortSignal.timeout(3000),
+            });
+            if (res.ok || res.status === 409 || res.status === 403) {
+              syncedVoteTimestamps.add(vote.timestamp);
             }
-            return prev;
-          });
-        } else {
-          remaining.push(item);
+          }
+        } catch (voteErr) {
+          // Will retry on next sync
         }
-      } catch (err) {
-        remaining.push(item);
+      }
+
+      if (syncedVoteTimestamps.size > 0) {
+        const freshVotes = getOfflineVotes();
+        const remainingVotes = freshVotes.filter((v) => !syncedVoteTimestamps.has(v.timestamp));
+        saveOfflineVotes(remainingVotes);
       }
     }
-
-    saveOfflineQueue(remaining);
-    setOfflineQueueCount(remaining.length);
   }, []);
 
   // Listen to network status changes to drain offline queue
@@ -274,8 +350,8 @@ export const useEventData = () => {
         }
       });
 
-      // Handle live incoming incidents
-      socket.on("incident:new", (newIncident) => {
+      // Handle live incoming incidents (support both incident:created and incident:new)
+      const handleNewIncident = (newIncident) => {
         if (!newIncident || !isMounted) return;
         setEvents((prev) => {
           if (prev.some((e) => e.id === newIncident.id)) return prev;
@@ -283,21 +359,23 @@ export const useEventData = () => {
           safeSaveStorage(next);
           return next;
         });
-      });
+      };
+      socket.on("incident:created", handleNewIncident);
+      socket.on("incident:new", handleNewIncident);
 
       // Handle spatial cluster merge updates
       socket.on("incident:clustered", (data) => {
         if (!data || !isMounted) return;
         setEvents((prev) => {
           const next = prev.map((e) =>
-            e.id === data.clusterId
+            e.id === (data.id || data.clusterId)
               ? {
                   ...e,
                   verificationCount: data.verificationCount,
                   verificationScore: data.verificationScore,
                   clusterCount: data.clusterCount,
                   isVerified: data.isVerified,
-                  updates: data.updates || e.updates,
+                  updates: data.latestUpdate ? [data.latestUpdate, ...(e.updates || [])] : (data.updates || e.updates),
                 }
               : e
           );
@@ -398,7 +476,7 @@ export const useEventData = () => {
     safeSaveStorage(updatedEvents);
   }, []);
 
-  // Report a new civic incident with offline queue resilience
+  // Report a new civic incident with offline queue resilience and rejection handling
   const addEvent = useCallback(async (newEvent) => {
     const deterministicId = `namma_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const formatted = {
@@ -441,6 +519,7 @@ export const useEventData = () => {
         }),
         signal: AbortSignal.timeout(3000),
       });
+
       if (res.ok) {
         const created = await res.json();
         setEvents((prev) => {
@@ -457,19 +536,28 @@ export const useEventData = () => {
           return next;
         });
         return created;
+      } else if (res.status >= 400 && res.status < 500) {
+        // Validation / client error from server - rollback optimistic state
+        const errData = await res.json().catch(() => ({}));
+        setEvents((prev) => {
+          const filtered = prev.filter((e) => e.id !== formatted.id);
+          safeSaveStorage(filtered);
+          return filtered;
+        });
+        return { error: errData.error || "Report rejected by server." };
       } else {
         // Enqueue for background sync
         const queue = getOfflineQueue();
         queue.push(formatted);
-        saveOfflineQueue(queue);
-        setOfflineQueueCount(queue.length);
+        const saved = saveOfflineQueue(queue);
+        if (saved) setOfflineQueueCount(queue.length);
       }
     } catch (err) {
       // Backend unavailable; enqueue for background sync
       const queue = getOfflineQueue();
       queue.push(formatted);
-      saveOfflineQueue(queue);
-      setOfflineQueueCount(queue.length);
+      const saved = saveOfflineQueue(queue);
+      if (saved) setOfflineQueueCount(queue.length);
     }
 
     return formatted;
@@ -572,6 +660,10 @@ export const useEventData = () => {
           });
           return { error: "Network timeout or server unavailable. Please retry." };
         }
+        // Enqueue offline verification vote for recovery sync
+        const votes = getOfflineVotes();
+        votes.push({ type: "verify", incidentId: id, voterPosition, timestamp: Date.now() });
+        saveOfflineVotes(votes);
         return { success: true, offlineOptimistic: true };
       }
     },
@@ -630,6 +722,11 @@ export const useEventData = () => {
           removeUserVote(id, "clear");
           return { error: "Network timeout or server unavailable. Please retry." };
         }
+        // Enqueue offline resolution vote for recovery sync
+        const votes = getOfflineVotes();
+        votes.push({ type: "clear", incidentId: id, timestamp: Date.now() });
+        saveOfflineVotes(votes);
+
         // Server offline; apply optimistic clearance
         setEvents((prev) => {
           const target = prev.find((e) => e.id === id);
