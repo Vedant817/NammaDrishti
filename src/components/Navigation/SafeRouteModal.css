@@ -1,0 +1,329 @@
+/* src/components/Navigation/SafeRouteModal.css */
+.safe-route-modal-content {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  max-width: 500px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-modal);
+  padding: 22px;
+  color: var(--text-primary);
+}
+
+.safe-route-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+}
+
+.safe-route-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-icon {
+  font-size: 1.4rem;
+}
+
+.safe-route-title h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.route-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.close-btn:hover {
+  color: var(--text-primary);
+}
+
+.safe-route-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.route-selectors,
+.safe-route-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+.route-field,
+.route-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.route-field label,
+.route-input-group label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.origin-toggle-row {
+  display: flex;
+  gap: 8px;
+}
+
+.origin-toggle-row .route-select {
+  flex: 1;
+}
+
+.gps-toggle-btn {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.gps-toggle-btn:hover,
+.gps-toggle-btn.active {
+  border-color: #3B82F6;
+  color: #3B82F6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.route-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.route-select:focus {
+  border-color: var(--border-focus);
+}
+
+.auto-detour-toggle {
+  margin: 2px 0;
+}
+
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-container input {
+  accent-color: #10B981;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.checkbox-text {
+  font-size: 0.76rem;
+  color: #10B981;
+  font-weight: 500;
+}
+
+.calculate-route-btn {
+  background: #2563EB;
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.calculate-route-btn:hover:not(:disabled) {
+  background: #1D4ED8;
+}
+
+.calculate-route-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.routing-error-box {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  gap: 10px;
+  color: #F87171;
+  font-size: 0.82rem;
+}
+
+/* Results Card */
+.route-results-card,
+.route-summary-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.results-summary-row,
+.route-metrics-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.metric-box,
+.route-metric {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.metric-val {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.metric-lbl {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.route-detour-banner {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.detour-icon {
+  font-size: 1.2rem;
+}
+
+.route-detour-banner strong {
+  display: block;
+  font-size: 0.82rem;
+  color: #10B981;
+}
+
+.route-detour-banner p {
+  margin: 2px 0 0 0;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.route-safe-banner {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: #10B981;
+}
+
+.route-safe-banner strong {
+  display: block;
+  font-size: 0.84rem;
+}
+
+.route-safe-banner p {
+  margin: 2px 0 0 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.route-conflicts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.route-conflicts-list h5 {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #EF4444;
+}
+
+.route-conflict-item {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid #EF4444;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  gap: 10px;
+  font-size: 0.78rem;
+}
+
+.conflict-type {
+  font-size: 0.7rem;
+  background: rgba(239, 68, 68, 0.15);
+  color: #EF4444;
+  padding: 2px 6px;
+  border-radius: 4px;
+  height: fit-content;
+  white-space: nowrap;
+}
+
+.conflict-info strong {
+  display: block;
+  color: var(--text-primary);
+}
+
+.conflict-info p {
+  margin: 2px 0 4px 0;
+  color: var(--text-muted);
+}
+
+.conflict-dist {
+  font-size: 0.7rem;
+  color: #F59E0B;
+}

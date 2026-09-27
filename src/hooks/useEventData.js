@@ -1,19 +1,795 @@
 // src/hooks/useEventData.js
-import { useState, useEffect } from "react";
-import { sampleEvents } from "../data/sampleEvents";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { io } from "socket.io-client";
+import { initialBengaluruEvents } from "../data/sampleEvents";
+import { recordReputationEvent } from "../utils/reputationService";
+
+const STORAGE_KEY = "nammadrishti_events_v1";
+const LEGACY_STORAGE_KEY = "nammapulse_events_v1";
+const VOTES_STORAGE_KEY = "nammadrishti_user_votes_v1";
+const LEGACY_VOTES_KEY = "nammapulse_user_votes_v1";
+const OFFLINE_QUEUE_KEY = "nammadrishti_offline_queue_v1";
+const OFFLINE_VOTES_KEY = "nammadrishti_offline_votes_v1";
+
+const getApiBase = () => {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname !== "localhost" &&
+    window.location.hostname !== "127.0.0.1"
+  ) {
+    return `${window.location.origin}/api`;
+  }
+  return "http://localhost:5001/api";
+};
+
+const getSocketUrl = () => {
+  if (process.env.REACT_APP_SOCKET_URL) return process.env.REACT_APP_SOCKET_URL;
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname !== "localhost" &&
+    window.location.hostname !== "127.0.0.1"
+  ) {
+    return window.location.origin;
+  }
+  return "http://localhost:5001";
+};
+
+const API_BASE = getApiBase();
+const SOCKET_URL = getSocketUrl();
+
+// Safe storage persistence with quota fallback (strips base64 image if quota exceeded)
+const safeSaveStorage = (eventsList) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(eventsList));
+  } catch (err) {
+    if (err.name === "QuotaExceededError" || err.code === 22) {
+      try {
+        const leanEvents = eventsList.map((evt, idx) => {
+          if (idx < 2) return evt;
+          const { mediaUrl, ...rest } = evt;
+          return rest;
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(leanEvents));
+      } catch (retryErr) {
+        const noMediaEvents = eventsList.map(({ mediaUrl, ...rest }) => rest);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(noMediaEvents));
+        } catch {}
+      }
+    }
+  }
+};
+
+const getOfflineQueue = () => {
+  try {
+    const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveOfflineQueue = (queue) => {
+  try {
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    return { success: true, photoDropped: false };
+  } catch (err) {
+    if (err.name === "QuotaExceededError" || err.code === 22) {
+      try {
+        const leanQueue = queue.map(({ mediaUrl, ...rest }) => rest);
+        localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(leanQueue));
+        return {
+          success: true,
+          photoDropped: true,
+          warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
+        };
+      } catch (retryErr) {
+        console.warn("[OfflineQueue] Failed to save lean queue:", retryErr);
+      }
+    }
+    console.warn("[OfflineQueue] Failed to save queue:", err);
+    return { success: false, photoDropped: false, error: err.message };
+  }
+};
+
+const getOfflineVotes = () => {
+  try {
+    const raw = localStorage.getItem(OFFLINE_VOTES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveOfflineVotes = (votes) => {
+  try {
+    localStorage.setItem(OFFLINE_VOTES_KEY, JSON.stringify(votes));
+    return true;
+  } catch (err) {
+    console.warn("[OfflineVotes] Failed to save votes queue:", err);
+    return false;
+  }
+};
+
+const getUserVotes = () => {
+  try {
+    return JSON.parse(localStorage.getItem(VOTES_STORAGE_KEY) || localStorage.getItem(LEGACY_VOTES_KEY) || "{}");
+  } catch {
+    return {};
+  }
+};
+
+const recordUserVote = (id, type) => {
+  try {
+    const votes = getUserVotes();
+    votes[`${type}_${id}`] = true;
+    localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(votes));
+  } catch (e) {}
+};
+
+const removeUserVote = (id, type) => {
+  try {
+    const votes = getUserVotes();
+    delete votes[`${type}_${id}`];
+    localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(votes));
+  } catch (e) {}
+};
+
+const hasUserVoted = (id, type) => {
+  const votes = getUserVotes();
+  return Boolean(votes[`${type}_${id}`]);
+};
+
+const getOrCreateDeviceId = () => {
+  try {
+    let id = localStorage.getItem("nammadrishti_device_id_v1") || localStorage.getItem("nammapulse_device_id_v1");
+    if (!id) {
+      id = `dev_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
+      localStorage.setItem("nammadrishti_device_id_v1", id);
+    }
+    return id;
+  } catch {
+    return `dev_anon_${Date.now()}`;
+  }
+};
 
 export const useEventData = () => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(() => getOfflineQueue().length);
+  const socketRef = useRef(null);
 
-  useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setEvents(sampleEvents);
-      setLoading(false);
-    }, 1000);
+  // Sync queued offline submissions & votes to server safely without race condition
+  const syncOfflineQueue = useCallback(async () => {
+    // 1. Sync pending hazard reports
+    const queue = getOfflineQueue();
+    if (queue && queue.length > 0) {
+      const successfulIds = new Set();
+      for (const item of queue) {
+        try {
+          const res = await fetch(`${API_BASE}/incidents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...item,
+              voterId: getOrCreateDeviceId(),
+            }),
+            signal: AbortSignal.timeout(3000),
+          });
+          if (res.ok) {
+            successfulIds.add(item.id);
+            const created = await res.json();
+            setEvents((prev) => {
+              const idx = prev.findIndex((e) => e.id === item.id);
+              if (idx !== -1) {
+                const copy = [...prev];
+                copy[idx] = { ...created, _isLocalPending: false };
+                safeSaveStorage(copy);
+                return copy;
+              }
+              if (!prev.some((e) => e.id === created.id)) {
+                const next = [created, ...prev];
+                safeSaveStorage(next);
+                return next;
+              }
+              return prev;
+            });
+          }
+        } catch (err) {
+          // Keep in queue for subsequent sync
+        }
+      }
+
+      if (successfulIds.size > 0) {
+        // Re-read fresh queue from localStorage so items queued during await are not lost
+        const freshQueue = getOfflineQueue();
+        const remaining = freshQueue.filter((item) => !successfulIds.has(item.id));
+        saveOfflineQueue(remaining);
+        setOfflineQueueCount(remaining.length);
+      }
+    } else {
+      setOfflineQueueCount(0);
+    }
+
+    // 2. Sync pending offline votes (verifications and clearances)
+    const votesQueue = getOfflineVotes();
+    if (votesQueue && votesQueue.length > 0) {
+      const syncedVoteTimestamps = new Set();
+      for (const vote of votesQueue) {
+        try {
+          if (vote.type === "verify") {
+            const res = await fetch(`${API_BASE}/incidents/${vote.incidentId}/verify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                voterPosition: vote.voterPosition,
+                voterId: getOrCreateDeviceId(),
+              }),
+              signal: AbortSignal.timeout(3000),
+            });
+            if (res.ok || res.status === 409) {
+              syncedVoteTimestamps.add(vote.timestamp);
+            }
+          } else if (vote.type === "clear") {
+            const res = await fetch(`${API_BASE}/incidents/${vote.incidentId}/resolve`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ voterId: getOrCreateDeviceId() }),
+              signal: AbortSignal.timeout(3000),
+            });
+            if (res.ok || res.status === 409) {
+              syncedVoteTimestamps.add(vote.timestamp);
+            } else if (res.status === 403) {
+              syncedVoteTimestamps.add(vote.timestamp);
+              removeUserVote(vote.incidentId, "clear");
+              fetch(`${API_BASE}/incidents`)
+                .then((r) => r.json())
+                .then((fresh) => {
+                  if (Array.isArray(fresh) && fresh.length > 0) {
+                    setEvents(fresh);
+                    safeSaveStorage(fresh);
+                  }
+                })
+                .catch(() => {});
+            }
+          }
+        } catch (voteErr) {
+          // Will retry on next sync
+        }
+      }
+
+      if (syncedVoteTimestamps.size > 0) {
+        const freshVotes = getOfflineVotes();
+        const remainingVotes = freshVotes.filter((v) => !syncedVoteTimestamps.has(v.timestamp));
+        saveOfflineVotes(remainingVotes);
+      }
+    }
   }, []);
 
-  return { events, loading, error };
+  // Listen to network status changes to drain offline queue
+  useEffect(() => {
+    const handleOnline = () => {
+      syncOfflineQueue();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [syncOfflineQueue]);
+
+  // Initialize from backend API or localStorage fallback
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadInitialData = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/incidents`, {
+          signal: AbortSignal.timeout(2500),
+        });
+        if (res.ok) {
+          const remoteEvents = await res.json();
+          if (isMounted && Array.isArray(remoteEvents)) {
+            setEvents((prev) => {
+              // Reconcile: Remote server snapshot is authoritative; keep local un-synced offline drafts
+              const pendingDrafts = prev.filter((p) => p._isLocalPending && !remoteEvents.some((r) => r.id === p.id));
+              const synced = [...remoteEvents, ...pendingDrafts];
+              safeSaveStorage(synced);
+              return synced;
+            });
+            setLoading(false);
+            // Also attempt to sync any offline queue items
+            syncOfflineQueue();
+            return;
+          }
+        }
+      } catch (err) {
+        // Backend offline or unreachable
+      }
+
+      // Local storage fallback (respect empty array if user cleared incidents)
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (saved !== null) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            if (isMounted) setEvents(parsed);
+            return;
+          }
+        }
+      } catch (e) {
+        // Ignore parse error
+      }
+
+      // First run default seed
+      if (isMounted) {
+        setEvents(initialBengaluruEvents);
+        safeSaveStorage(initialBengaluruEvents);
+      }
+    };
+
+    loadInitialData().finally(() => {
+      if (isMounted) setLoading(false);
+    });
+
+    // Establish WebSocket Connection with automatic reconnection
+    try {
+      const socket = io(SOCKET_URL, {
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 10000,
+        transports: ["websocket", "polling"],
+      });
+      socketRef.current = socket;
+
+      socket.on("connect", () => {
+        if (isMounted) {
+          setIsLiveConnected(true);
+          syncOfflineQueue();
+        }
+      });
+
+      socket.on("disconnect", () => {
+        if (isMounted) setIsLiveConnected(false);
+      });
+
+      // Handle full initial snapshot emitted by server on connection
+      socket.on("initial:data", (serverIncidents) => {
+        if (isMounted && Array.isArray(serverIncidents)) {
+          setEvents((prev) => {
+            const pendingDrafts = prev.filter((p) => p._isLocalPending && !serverIncidents.some((r) => r.id === p.id));
+            const synced = [...serverIncidents, ...pendingDrafts];
+            safeSaveStorage(synced);
+            return synced;
+          });
+        }
+      });
+
+      // Handle live incoming incidents (support both incident:created and incident:new)
+      const handleNewIncident = (newIncident) => {
+        if (!newIncident || !isMounted) return;
+        setEvents((prev) => {
+          if (prev.some((e) => e.id === newIncident.id)) return prev;
+          const next = [newIncident, ...prev];
+          safeSaveStorage(next);
+          return next;
+        });
+      };
+      socket.on("incident:created", handleNewIncident);
+      socket.on("incident:new", handleNewIncident);
+
+      // Handle spatial cluster merge updates
+      socket.on("incident:clustered", (data) => {
+        if (!data || !isMounted) return;
+        setEvents((prev) => {
+          const next = prev.map((e) =>
+            e.id === (data.id || data.clusterId)
+              ? {
+                  ...e,
+                  verificationCount: data.verificationCount,
+                  verificationScore: data.verificationScore,
+                  clusterCount: data.clusterCount,
+                  isVerified: data.isVerified,
+                  updates: data.latestUpdate ? [data.latestUpdate, ...(e.updates || [])] : (data.updates || e.updates),
+                }
+              : e
+          );
+          safeSaveStorage(next);
+          return next;
+        });
+      });
+
+      // Handle proximity-weighted verification score updates
+      socket.on("incident:verified", (data) => {
+        if (!data || !isMounted) return;
+        setEvents((prev) => {
+          const next = prev.map((e) =>
+            e.id === data.id
+              ? {
+                  ...e,
+                  verificationCount: data.verificationCount,
+                  verificationScore: data.verificationScore,
+                  isVerified: data.isVerified,
+                }
+              : e
+          );
+          safeSaveStorage(next);
+          return next;
+        });
+      });
+
+      // Handle multi-citizen consensus clearance votes
+      socket.on("incident:clearance_vote", (data) => {
+        if (!data || !isMounted) return;
+        setEvents((prev) => {
+          const next = prev.map((e) =>
+            e.id === data.id
+              ? {
+                  ...e,
+                  resolutionVotes: data.clearanceVotes,
+                  clearanceVotes: data.clearanceVotes,
+                }
+              : e
+          );
+          safeSaveStorage(next);
+          return next;
+        });
+      });
+
+      // Backward compatible listener for resolution_voted
+      socket.on("incident:resolution_voted", (data) => {
+        if (!data || !isMounted) return;
+        setEvents((prev) => {
+          const votes = data.clearanceVotes !== undefined ? data.clearanceVotes : data.resolutionVotes;
+          const next = prev.map((e) =>
+            e.id === data.id
+              ? {
+                  ...e,
+                  resolutionVotes: votes,
+                  clearanceVotes: votes,
+                }
+              : e
+          );
+          safeSaveStorage(next);
+          return next;
+        });
+      });
+
+      // Handle authoritative hazard resolution / removal
+      socket.on("incident:resolved", ({ id }) => {
+        if (!isMounted) return;
+        setEvents((prev) => {
+          const next = prev.filter((e) => e.id !== id);
+          safeSaveStorage(next);
+          return next;
+        });
+      });
+
+      // Handle dynamic TTL decay expiration
+      socket.on("incident:expired", ({ id }) => {
+        if (!isMounted) return;
+        setEvents((prev) => {
+          const next = prev.filter((e) => e.id !== id);
+          safeSaveStorage(next);
+          return next;
+        });
+      });
+    } catch (e) {
+      console.warn("WebSocket initialization fallback:", e);
+    }
+
+    return () => {
+      isMounted = false;
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [syncOfflineQueue]);
+
+  // Synchronize state changes to localStorage
+  const persistLocally = useCallback((updatedEvents) => {
+    safeSaveStorage(updatedEvents);
+  }, []);
+
+  // Report a new civic incident with offline queue resilience and rejection handling
+  const addEvent = useCallback(async (newEvent) => {
+    const deterministicId = `namma_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const formatted = {
+      id: deterministicId,
+      type: newEvent.type || "Traffic",
+      title: newEvent.title || "Citizen Reported Incident",
+      urgency: newEvent.urgency || "Medium",
+      description: newEvent.description || "Reported via NammaDrishti Web App",
+      ward: newEvent.ward || "Bengaluru Urban",
+      timestamp: "Just now",
+      verificationCount: 1,
+      clusterCount: 1,
+      isVerified: false,
+      resolutionVotes: 0,
+      reportedBy: "You (Citizen)",
+      mediaUrl: newEvent.mediaUrl || null,
+      _isLocalPending: true,
+      ...newEvent,
+    };
+
+    // Optimistically insert locally without duplication
+    setEvents((prev) => {
+      if (prev.some((e) => e.id === formatted.id)) return prev;
+      const next = [formatted, ...prev];
+      safeSaveStorage(next);
+      return next;
+    });
+
+    // Record citizen reputation gain
+    recordReputationEvent('REPORT_SUBMITTED');
+
+    // Post to server preserving the client ID
+    try {
+      const res = await fetch(`${API_BASE}/incidents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formatted,
+          voterId: getOrCreateDeviceId(),
+        }),
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (res.ok) {
+        const created = await res.json();
+        setEvents((prev) => {
+          const index = prev.findIndex((e) => e.id === formatted.id);
+          if (index !== -1) {
+            const copy = [...prev];
+            copy[index] = { ...created, _isLocalPending: false };
+            safeSaveStorage(copy);
+            return copy;
+          }
+          if (prev.some((e) => e.id === created.id)) return prev;
+          const next = [created, ...prev];
+          safeSaveStorage(next);
+          return next;
+        });
+        return created;
+      } else if (res.status >= 400 && res.status < 500) {
+        // Validation / client error from server - rollback optimistic state
+        const errData = await res.json().catch(() => ({}));
+        setEvents((prev) => {
+          const filtered = prev.filter((e) => e.id !== formatted.id);
+          safeSaveStorage(filtered);
+          return filtered;
+        });
+        return { error: errData.error || "Report rejected by server." };
+      } else {
+        // Enqueue for background sync
+        const queue = getOfflineQueue();
+        queue.push(formatted);
+        const saveRes = saveOfflineQueue(queue);
+        if (saveRes?.success) setOfflineQueueCount(queue.length);
+        if (saveRes?.photoDropped) {
+          return {
+            ...formatted,
+            warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
+          };
+        }
+      }
+    } catch (err) {
+      // Backend unavailable; enqueue for background sync
+      const queue = getOfflineQueue();
+      queue.push(formatted);
+      const saveRes = saveOfflineQueue(queue);
+      if (saveRes?.success) setOfflineQueueCount(queue.length);
+      if (saveRes?.photoDropped) {
+        return {
+          ...formatted,
+          warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
+        };
+      }
+    }
+
+    return formatted;
+  }, []);
+
+  // Upvote / Verify an incident with proximity weighting & single-vote per device protection
+  const verifyEvent = useCallback(
+    async (id, voterPosition) => {
+      if (hasUserVoted(id, "verify")) {
+        return { alreadyVoted: true };
+      }
+
+      recordUserVote(id, "verify");
+      recordReputationEvent('HAZARD_VERIFIED');
+
+      // Optimistic increment
+      setEvents((prev) => {
+        const next = prev.map((evt) => {
+          if (evt.id === id) {
+            const nextCount = (evt.verificationCount || 0) + 1;
+            return {
+              ...evt,
+              verificationCount: nextCount,
+              isVerified: nextCount >= 3,
+            };
+          }
+          return evt;
+        });
+        persistLocally(next);
+        return next;
+      });
+
+      // Synchronize with server
+      try {
+        const res = await fetch(`${API_BASE}/incidents/${id}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            voterPosition,
+            voterId: getOrCreateDeviceId(),
+          }),
+          signal: AbortSignal.timeout(3000),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          // Rollback local vote status
+          removeUserVote(id, "verify");
+          setEvents((prev) => {
+            const next = prev.map((evt) => {
+              if (evt.id === id) {
+                const prevCount = Math.max(1, (evt.verificationCount || 1) - 1);
+                return {
+                  ...evt,
+                  verificationCount: prevCount,
+                  isVerified: prevCount >= 3,
+                };
+              }
+              return evt;
+            });
+            persistLocally(next);
+            return next;
+          });
+          return { error: errData.error || "Verification failed on server." };
+        }
+
+        const data = await res.json();
+        setEvents((prev) => {
+          const next = prev.map((evt) =>
+            evt.id === id
+              ? {
+                  ...evt,
+                  verificationCount: data.verificationCount,
+                  verificationScore: data.verificationScore,
+                  isVerified: data.isVerified,
+                }
+              : evt
+          );
+          persistLocally(next);
+          return next;
+        });
+        return { success: true };
+      } catch (err) {
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          removeUserVote(id, "verify");
+          setEvents((prev) => {
+            const next = prev.map((evt) => {
+              if (evt.id === id) {
+                const prevCount = Math.max(1, (evt.verificationCount || 1) - 1);
+                return {
+                  ...evt,
+                  verificationCount: prevCount,
+                  isVerified: prevCount >= 3,
+                };
+              }
+              return evt;
+            });
+            persistLocally(next);
+            return next;
+          });
+          return { error: "Network timeout or server unavailable. Please retry." };
+        }
+        // Enqueue offline verification vote for recovery sync
+        const votes = getOfflineVotes();
+        votes.push({ type: "verify", incidentId: id, voterPosition, timestamp: Date.now() });
+        saveOfflineVotes(votes);
+        return { success: true, offlineOptimistic: true };
+      }
+    },
+    [persistLocally]
+  );
+
+  // Multi-citizen consensus clearance with single-vote per device guard
+  const resolveEvent = useCallback(
+    async (id) => {
+      if (hasUserVoted(id, "clear")) {
+        return { alreadyVoted: true };
+      }
+
+      recordUserVote(id, "clear");
+      recordReputationEvent('HAZARD_CLEARED');
+
+      try {
+        const res = await fetch(`${API_BASE}/incidents/${id}/resolve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voterId: getOrCreateDeviceId() }),
+          signal: AbortSignal.timeout(3000),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          removeUserVote(id, "clear");
+          return { error: errData.error || "Clearance rejected by server." };
+        }
+
+        const data = await res.json();
+        if (data.cleared) {
+          setEvents((prev) => {
+            const next = prev.filter((e) => e.id !== id);
+            persistLocally(next);
+            return next;
+          });
+        } else {
+          setEvents((prev) => {
+            const next = prev.map((e) =>
+              e.id === id
+                ? {
+                    ...e,
+                    resolutionVotes: data.clearanceVotes,
+                    clearanceVotes: data.clearanceVotes,
+                  }
+                : e
+            );
+            persistLocally(next);
+            return next;
+          });
+        }
+        return { success: true };
+      } catch (err) {
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          removeUserVote(id, "clear");
+          return { error: "Network timeout or server unavailable. Please retry." };
+        }
+        // Enqueue offline resolution vote for recovery sync
+        const votes = getOfflineVotes();
+        votes.push({ type: "clear", incidentId: id, timestamp: Date.now() });
+        saveOfflineVotes(votes);
+
+        // Server offline; apply optimistic clearance
+        setEvents((prev) => {
+          const target = prev.find((e) => e.id === id);
+          if (!target) return prev;
+
+          const currentVotes = (target.resolutionVotes || 0) + 1;
+          if (currentVotes >= 2) {
+            const next = prev.filter((e) => e.id !== id);
+            persistLocally(next);
+            return next;
+          } else {
+            const next = prev.map((e) =>
+              e.id === id
+                ? { ...e, resolutionVotes: currentVotes, clearanceVotes: currentVotes }
+                : e
+            );
+            persistLocally(next);
+            return next;
+          }
+        });
+        return { success: true };
+      }
+    },
+    [persistLocally]
+  );
+
+  return {
+    events,
+    loading,
+    isLiveConnected,
+    offlineQueueCount,
+    syncOfflineQueue,
+    addEvent,
+    verifyEvent,
+    resolveEvent,
+    hasUserVoted,
+  };
 };

@@ -1,59 +1,64 @@
 /* src/components/Filters/FilterPanel.css */
-.filter-panel {
-    position: absolute;
-    top: 90px;
-    right: 30px;
-    background: white;
-    padding: 1rem;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    z-index: 1000;
-    max-width: 300px;
-  }
-  
-  .filter-panel h4 {
-    margin: 0 0 1rem 0;
-    color: #333;
-    font-size: 1rem;
-  }
-  
-  .filter-dropdown {
-    position: relative;
-    width: 100%;
-  }
-  
-  .filter-select {
-    width: 100%;
-    padding: 0.75rem 1rem;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    background-color: #fff;
-    font-size: 1rem;
-    color: #333;
-    appearance: none; /* Remove default browser styling */
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    cursor: pointer;
-    outline: none;
-    transition: all 0.3s ease;
-  }
-  
-  .filter-select:hover {
-    border-color: #4285F4;
-  }
-  
-  .filter-select:focus {
-    border-color: #4285F4;
-    box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
-  }
-  
-  /* Custom arrow for dropdown */
-  .filter-dropdown::after {
-    content: '▼';
-    position: absolute;
-    right: 15px;
-    top: 50%;
-    transform: translateY(-50%);
-    pointer-events: none;
-    color: #666;
-  }
+.filter-panel-bar {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 8px 16px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.filter-chips-list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-canvas);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-focus);
+}
+
+.filter-chip.active {
+  background: #1E3A8A;
+  color: #BFDBFE;
+  border-color: #3B82F6;
+}
+
+.filter-chip-icon {
+  font-size: 0.9rem;
+}
+
+.filter-chip-name {
+  line-height: 1;
+}
+
+.filter-chip-count {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  background: var(--bg-surface);
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+}
+
+.filter-chip.active .filter-chip-count {
+  background: #1D4ED8;
+  color: #FFFFFF;
+  border-color: #2563EB;
+}

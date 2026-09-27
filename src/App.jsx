@@ -1,13 +1,16 @@
 // src/App.jsx
 import React from 'react';
 import CityPulseDashboard from './components/Dashboard/CityPulseDashboard';
+import { LanguageProvider } from './context/LanguageContext';
 import './App.css';
 
 function App() {
   return (
-    <div className="App">
-      <CityPulseDashboard />
-    </div>
+    <LanguageProvider>
+      <div className="App">
+        <CityPulseDashboard />
+      </div>
+    </LanguageProvider>
   );
 }
 
