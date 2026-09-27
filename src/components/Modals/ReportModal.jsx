@@ -95,6 +95,7 @@ const ReportModal = ({
     initialCoordinates ? "PIN_SELECTED" : "MANUAL"
   );
   const [compressing, setCompressing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -146,6 +147,7 @@ const ReportModal = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (submitting) return; // Prevent double-submit race condition
     setErrorMsg("");
 
     if (!formData.description || !formData.description.trim()) {
@@ -168,11 +170,16 @@ const ReportModal = ({
       return;
     }
 
-    onSubmitReport({
-      ...formData,
-      position: resolvedCoords,
-    });
-    onClose();
+    setSubmitting(true);
+    try {
+      onSubmitReport({
+        ...formData,
+        position: resolvedCoords,
+      });
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -193,20 +200,17 @@ const ReportModal = ({
           <div className="form-group">
             <label>{reportT.category}</label>
             <div className="category-chips">
-              {[
-                { type: "Traffic", label: categoriesT.traffic, icon: "🚗" },
-                { type: "Waterlogging", label: categoriesT.waterlogging, icon: "🌊" },
-                { type: "Accident", label: categoriesT.accident, icon: "⚠️" },
-                { type: "Infrastructure", label: categoriesT.infrastructure, icon: "🔧" },
-              ].map((cat) => (
+              {["Traffic", "Waterlogging", "Accident", "Infrastructure"].map((cat) => (
                 <button
-                  key={cat.type}
                   type="button"
-                  className={`category-chip ${formData.type === cat.type ? "active" : ""}`}
-                  onClick={() => setFormData({ ...formData, type: cat.type })}
+                  key={cat}
+                  className={`chip ${formData.type === cat ? "active" : ""}`}
+                  onClick={() => setFormData({ ...formData, type: cat })}
                 >
-                  <span>{cat.icon}</span>
-                  <span>{cat.label}</span>
+                  {cat === "Traffic" && categoriesT.traffic}
+                  {cat === "Waterlogging" && categoriesT.waterlogging}
+                  {cat === "Accident" && categoriesT.accident}
+                  {cat === "Infrastructure" && categoriesT.infrastructure}
                 </button>
               ))}
             </div>
@@ -304,9 +308,9 @@ const ReportModal = ({
             <Button
               variant="primary"
               type="submit"
-              disabled={compressing}
+              disabled={compressing || submitting}
             >
-              {compressing ? "Optimizing Photo..." : reportT.broadcastHazard}
+              {compressing ? "Optimizing Photo..." : submitting ? "Submitting..." : reportT.broadcastHazard}
             </Button>
           </div>
         </form>

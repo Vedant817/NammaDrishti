@@ -20,8 +20,14 @@ function getHexIndex(lat, lng, resolution = 8) {
     return 'hex_r8_0_0';
   }
 
-  const q = Math.round((Math.sqrt(3) / 3 * (nLng * 100) - (1 / 3) * (nLat * 100)) / (STEP_LNG * 100));
-  const r = Math.round(((2 / 3) * (nLat * 100)) / (STEP_LAT * 100));
+  const cleanLat = Object.is(nLat, -0) ? 0 : nLat;
+  const cleanLng = Object.is(nLng, -0) ? 0 : nLng;
+
+  let q = Math.round(((Math.sqrt(3) / 3) * (cleanLng * 100) - (1 / 3) * (cleanLat * 100)) / (STEP_LNG * 100));
+  let r = Math.round(((2 / 3) * (cleanLat * 100)) / (STEP_LAT * 100));
+  if (Object.is(q, -0)) q = 0;
+  if (Object.is(r, -0)) r = 0;
+
   return `hex_r${resolution}_${q}_${r}`;
 }
 

@@ -30,6 +30,15 @@ const SafeRouteModal = ({
     const endHub = BENGALURU_HUBS.find((h) => h.id === destId) || BENGALURU_HUBS[3];
     const endCoords = { lat: endHub.lat, lng: endHub.lng };
 
+    if (
+      Math.abs(startCoords.lat - endCoords.lat) < 0.0001 &&
+      Math.abs(startCoords.lng - endCoords.lng) < 0.0001
+    ) {
+      setRoutingError("Origin and destination hubs are identical. Please select different transit locations.");
+      setRouteResult(null);
+      return;
+    }
+
     setLoading(true);
     setRoutingError(null);
     try {

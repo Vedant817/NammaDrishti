@@ -2,6 +2,7 @@
 /**
  * In-Memory Sliding-Window IP Rate Limiter Middleware
  * Prevents spamming, bot scraping, and automated consensus hijacking.
+ * Supports reverse proxy X-Forwarded-For resolution and unit test bypass.
  */
 
 function createRateLimiter({ windowMs = 60000, maxRequests, max = 30, message = 'Too many requests. Please slow down.' } = {}) {
@@ -29,7 +30,11 @@ function createRateLimiter({ windowMs = 60000, maxRequests, max = 30, message = 
       return next();
     }
 
-    const ip = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
+    // Resolve client IP with reverse-proxy X-Forwarded-For support
+    const forwardedHeader = req.headers['x-forwarded-for'];
+    const forwardedIp = typeof forwardedHeader === 'string' ? forwardedHeader.split(',')[0].trim() : null;
+    const ip = forwardedIp || req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
+
     const now = Date.now();
     const timestamps = requestLog.get(ip) || [];
 
@@ -49,8 +54,10 @@ function createRateLimiter({ windowMs = 60000, maxRequests, max = 30, message = 
 
     validTimestamps.push(now);
     requestLog.set(ip, validTimestamps);
+
     res.setHeader('X-RateLimit-Limit', effectiveMax);
     res.setHeader('X-RateLimit-Remaining', Math.max(0, effectiveMax - validTimestamps.length));
+
     next();
   };
 }

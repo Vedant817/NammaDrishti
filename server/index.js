@@ -100,16 +100,24 @@ function persistIncidents() {
 
 // Great-circle Haversine formula to calculate distance in km between two GPS coordinates
 function getDistanceKm(lat1, lon1, lat2, lon2) {
+  const nLat1 = Number(lat1);
+  const nLon1 = Number(lon1);
+  const nLat2 = Number(lat2);
+  const nLon2 = Number(lon2);
+  if (!Number.isFinite(nLat1) || !Number.isFinite(nLon1) || !Number.isFinite(nLat2) || !Number.isFinite(nLon2)) {
+    return 0;
+  }
   const R = 6371; // Radius of the Earth in km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const dLat = ((nLat2 - nLat1) * Math.PI) / 180;
+  const dLon = ((nLon2 - nLon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
+    Math.cos((nLat1 * Math.PI) / 180) *
+      Math.cos((nLat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const aClamped = Math.min(1, Math.max(0, a));
+  const c = 2 * Math.atan2(Math.sqrt(aClamped), Math.sqrt(1 - aClamped));
   return R * c;
 }
 
@@ -331,11 +339,29 @@ app.get('/api/media/status', (req, res) => {
 app.post('/api/incidents', reportLimiter, (req, res) => {
   const { id, type, title, ward, description, position, urgency, mediaUrl } = req.body || {};
 
-  if (!title || !description || !position) {
+  const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+  const trimmedDesc = typeof description === 'string' ? description.trim() : '';
+
+  if (!trimmedTitle || !trimmedDesc || !position || typeof position !== 'object') {
     return res.status(400).json({ error: 'Missing required incident fields (title, description, position).' });
   }
 
+  if (trimmedTitle.length > 200 || trimmedDesc.length > 2000) {
+    return res.status(400).json({ error: 'Title must be <= 200 characters and description <= 2000 characters.' });
+  }
+
   // Strict coordinate validation (lat: -90 to 90, lng: -180 to 180)
+  if (
+    position.lat === null ||
+    position.lng === null ||
+    position.lat === undefined ||
+    position.lng === undefined ||
+    typeof position.lat === 'boolean' ||
+    typeof position.lng === 'boolean'
+  ) {
+    return res.status(400).json({ error: 'Invalid geographic position coordinates (lat, lng must be valid finite numbers).' });
+  }
+
   const lat = Number(position.lat);
   const lng = Number(position.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {

@@ -17,39 +17,63 @@ export const BENGALURU_HUBS = [
   { id: "electronic_city", name: "Electronic City Toll", lat: 12.8452, lng: 77.6602, zone: "South" },
 ];
 
-// Distance calculation using Haversine formula (km)
+// Distance calculation using Haversine formula (km) with numerical bounds clamping
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const nLat1 = Number(lat1);
+  const nLon1 = Number(lon1);
+  const nLat2 = Number(lat2);
+  const nLon2 = Number(lon2);
+  if (!Number.isFinite(nLat1) || !Number.isFinite(nLon1) || !Number.isFinite(nLat2) || !Number.isFinite(nLon2)) {
+    return 0;
+  }
+
   const R = 6371; // Earth radius in km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const dLat = ((nLat2 - nLat1) * Math.PI) / 180;
+  const dLon = ((nLon2 - nLon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
+    Math.cos((nLat1 * Math.PI) / 180) *
+      Math.cos((nLat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const aClamped = Math.min(1, Math.max(0, a));
+  const c = 2 * Math.atan2(Math.sqrt(aClamped), Math.sqrt(1 - aClamped));
   return R * c;
 };
 
 // Calculate perpendicular distance from a point to a line segment in kilometers
 export const distanceToSegmentKm = (pLat, pLng, aLat, aLng, bLat, bLng) => {
-  const dx = bLng - aLng;
-  const dy = bLat - aLat;
+  const npLat = Number(pLat);
+  const npLng = Number(pLng);
+  const naLat = Number(aLat);
+  const naLng = Number(aLng);
+  const nbLat = Number(bLat);
+  const nbLng = Number(bLng);
+
+  if (
+    !Number.isFinite(npLat) || !Number.isFinite(npLng) ||
+    !Number.isFinite(naLat) || !Number.isFinite(naLng) ||
+    !Number.isFinite(nbLat) || !Number.isFinite(nbLng)
+  ) {
+    return Infinity;
+  }
+
+  const dx = nbLng - naLng;
+  const dy = nbLat - naLat;
   const lenSq = dx * dx + dy * dy;
 
   if (lenSq === 0) {
-    return calculateDistance(pLat, pLng, aLat, aLng);
+    return calculateDistance(npLat, npLng, naLat, naLng);
   }
 
   // Projection parameter t clamped to [0, 1]
-  let t = ((pLng - aLng) * dx + (pLat - aLat) * dy) / lenSq;
+  let t = ((npLng - naLng) * dx + (npLat - naLat) * dy) / lenSq;
   t = Math.max(0, Math.min(1, t));
 
-  const projLat = aLat + t * dy;
-  const projLng = aLng + t * dx;
+  const projLat = naLat + t * dy;
+  const projLng = naLng + t * dx;
 
-  return calculateDistance(pLat, pLng, projLat, projLng);
+  return calculateDistance(npLat, npLng, projLat, projLng);
 };
 
 // Check if any segment of a route corridor passes close to active hazards

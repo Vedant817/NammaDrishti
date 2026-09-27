@@ -49,10 +49,12 @@ export const getCitizenTier = (points = 0) => {
 
 export const getCitizenReputation = () => {
   try {
-    const raw = localStorage.getItem(REPUTATION_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      return data;
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(REPUTATION_STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw);
+        return data;
+      }
     }
   } catch (err) {
     console.warn('[Reputation] Failed to read from localStorage:', err.message);
@@ -69,7 +71,9 @@ export const getCitizenReputation = () => {
 
 export const saveCitizenReputation = (profile) => {
   try {
-    localStorage.setItem(REPUTATION_STORAGE_KEY, JSON.stringify(profile));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(REPUTATION_STORAGE_KEY, JSON.stringify(profile));
+    }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('nammadrishti:reputation_updated', { detail: profile })
