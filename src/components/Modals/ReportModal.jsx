@@ -127,7 +127,7 @@ const ReportModal = ({
     setCompressing(true);
     setErrorMsg("");
     try {
-      const result = await compressImage(file, { maxWidth: 800, quality: 0.7 });
+      const result = await compressImage(file, 800, 800, 0.7);
       if (result && result.dataUrl) {
         setFormData((prev) => ({ ...prev, mediaUrl: result.dataUrl }));
       } else {
@@ -147,6 +147,11 @@ const ReportModal = ({
   const handleSubmit = (e) => {
     e.preventDefault();
     setErrorMsg("");
+
+    if (!formData.description || !formData.description.trim()) {
+      setErrorMsg("Please provide detailed field notes / description for fellow commuters.");
+      return;
+    }
 
     let resolvedCoords = formData.position;
 
@@ -250,6 +255,7 @@ const ReportModal = ({
             <textarea
               id="report-desc"
               rows="3"
+              required
               placeholder="Provide actionable guidance for fellow commuters..."
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}

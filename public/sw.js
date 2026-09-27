@@ -1,11 +1,11 @@
 // public/sw.js
 /**
- * NammaPulse Monsoon Offline Service Worker
+ * NammaDrishti Monsoon Offline Service Worker
  * Ensures the civic intelligence platform remains operational during severe weather,
  * power blackouts, and cellular network degradation in Bengaluru.
  */
 
-const CACHE_NAME = 'nammapulse-offline-v2';
+const CACHE_NAME = 'nammadrishti-offline-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -16,6 +16,7 @@ const STATIC_ASSETS = [
 // External real-time dynamic hosts that must NEVER be served from stale static cache
 const REALTIME_DYNAMIC_HOSTS = [
   'api.open-meteo.com',
+  'api.rainviewer.com',
   'tilecache.rainviewer.com',
   'router.project-osrm.org',
 ];

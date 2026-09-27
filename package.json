@@ -26,7 +26,8 @@
     "test:ci": "react-scripts test --watchAll=false",
     "test:backend": "node --test server/test/api.test.js",
     "test:e2e": "node scripts/simulate_user.js",
-    "test:all": "npm run test:ci && npm run test:backend && npm run test:e2e",
+    "test:sandbox": "node scripts/sandbox_scenario_runner.js",
+    "test:all": "npm run test:ci && npm run test:backend && npm run test:e2e && npm run test:sandbox",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

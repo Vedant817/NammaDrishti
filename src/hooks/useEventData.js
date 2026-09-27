@@ -553,6 +553,25 @@ export const useEventData = () => {
         });
         return { success: true };
       } catch (err) {
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          removeUserVote(id, "verify");
+          setEvents((prev) => {
+            const next = prev.map((evt) => {
+              if (evt.id === id) {
+                const prevCount = Math.max(1, (evt.verificationCount || 1) - 1);
+                return {
+                  ...evt,
+                  verificationCount: prevCount,
+                  isVerified: prevCount >= 3,
+                };
+              }
+              return evt;
+            });
+            persistLocally(next);
+            return next;
+          });
+          return { error: "Network timeout or server unavailable. Please retry." };
+        }
         return { success: true, offlineOptimistic: true };
       }
     },
@@ -607,6 +626,10 @@ export const useEventData = () => {
         }
         return { success: true };
       } catch (err) {
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          removeUserVote(id, "clear");
+          return { error: "Network timeout or server unavailable. Please retry." };
+        }
         // Server offline; apply optimistic clearance
         setEvents((prev) => {
           const target = prev.find((e) => e.id === id);

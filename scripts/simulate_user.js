@@ -1,15 +1,25 @@
 // scripts/simulate_user.js
 /**
- * End-to-End User Journey Simulation for NammaDrishti
- * Simulates an actual commuter using the civic intelligence platform.
+ * End-to-End Headless Real-User Journey Simulation for NammaDrishti
+ * Simulates a power-user commuter navigating Bengaluru:
+ * 1. Boots the application server & REST APIs
+ * 2. Fetches live civic incidents across Bengaluru
+ * 3. Connects WebSocket client and joins spatial hex room
+ * 4. Queries localized spatial hex neighborhood
+ * 5. Reports an urgent civic hazard with base64 photo
+ * 6. Tests geo-coordinate safety guard validation
+ * 7. Performs on-ground proximity-weighted consensus verification
+ * 8. Simulates multi-citizen clearance voting with Sybil-defense consensus
+ * 9. Evaluates safe navigation corridor hazard detection
+ * 10. Validates Bengaluru monsoon underpass flood diagnostics
+ * 11. Queries the NammaDrishti AI assistant with contextual traffic/rain prompts
  */
 
 const http = require('http');
-const { app, server } = require('../server/index.js');
+const { app, server } = require('../server/index');
 
-const PORT = 5055;
+const PORT = 5099;
 
-// Pure distance calculation helpers (CommonJS compatible)
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -43,24 +53,27 @@ function distanceToSegmentKm(pLat, pLng, aLat, aLng, bLat, bLng) {
 }
 
 function evaluateUnderpassRisk(underpass, currentRainIntensityMm) {
-  if (currentRainIntensityMm >= underpass.criticalThresholdMmPerHour * 1.5) {
+  const intensity = Number(currentRainIntensityMm) || 0;
+  if (intensity >= underpass.criticalThresholdMmPerHour) {
     return {
       level: 'Critical Submersion Risk',
-      color: '#e53935',
       action: 'Avoid Underpass. Automated or manual barricades recommended.',
+      color: '#EF4444',
+      isFloodedLikely: true,
     };
-  }
-  if (currentRainIntensityMm >= underpass.criticalThresholdMmPerHour) {
+  } else if (intensity >= underpass.criticalThresholdMmPerHour * 0.6) {
     return {
-      level: 'Inundation Warning',
-      color: '#fb8c00',
-      action: 'Pumping active. Slow moving traffic expected.',
+      level: 'Waterlogging Warning',
+      action: 'Moderate ponding expected. Two-wheelers exercise extreme caution.',
+      color: '#F59E0B',
+      isFloodedLikely: false,
     };
   }
   return {
     level: 'Clear / Normal Flow',
-    color: '#43a047',
-    action: 'Drains operating within design parameters.',
+    action: 'Automated pump stations operational. Passable for all traffic.',
+    color: '#10B981',
+    isFloodedLikely: false,
   };
 }
 
@@ -74,28 +87,44 @@ async function runHeavyUserSimulation() {
   const BASE_URL = `http://localhost:${PORT}`;
 
   try {
-    // 2. Heavy User Action: Launch App & Check System Health
-    const healthRes = await fetch(`${BASE_URL}/api/health`);
-    const healthData = await healthRes.json();
-    console.log(`✓ 2. Commuter loads dashboard. Health check: ${healthData.status}, Active incidents: ${healthData.activeIncidents}`);
+    // 2. Heavy User Action: Fetch all live incidents
+    const incidentsRes = await fetch(`${BASE_URL}/api/incidents`);
+    const incidents = await incidentsRes.json();
+    console.log(`✓ 2. Loaded ${incidents.length} active Bengaluru civic incidents from live storage.`);
 
-    // 3. Heavy User Action: Read live incident feed
-    const feedRes = await fetch(`${BASE_URL}/api/incidents`);
-    const feed = await feedRes.json();
-    console.log(`✓ 3. Commuter browses live incident feed (${feed.length} incidents retrieved).`);
+    // 3. Heavy User Action: Spatial Hex Neighborhood Query
+    // User is located near Silk Board (lat: 12.9171, lng: 77.6238)
+    const hoodRes = await fetch(`${BASE_URL}/api/incidents/spatial/neighborhood?lat=12.9171&lng=77.6238`);
+    const hoodData = await hoodRes.json();
+    console.log(`✓ 3. Spatial Radar: Retrieved ${hoodData.count} localized hazards for hex cell ${hoodData.centerHex} (Ring count: ${hoodData.activeRings.length})`);
 
-    // 4. Heavy User Action: Report an active flooded road with isolated coordinates
-    const simLat = 12.8500 + Math.random() * 0.01;
-    const simLng = 77.6700 + Math.random() * 0.01;
+    // 4. Heavy User Action: Upload compressed incident photo evidence
+    const dummyBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const mediaRes = await fetch(`${BASE_URL}/api/media/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: dummyBase64,
+        filename: 'pothole_koramangala.png',
+        mimeType: 'image/png',
+      }),
+    });
+    const mediaData = await mediaRes.json();
+    console.log(`✓ 4. Evidence Media Pipeline: Processed photo upload -> ${mediaData.mediaUrl} (${mediaData.provider})`);
+
+    // 5. Heavy User Action: Report an urgent waterlogging hazard
+    const simLat = 12.9345;
+    const simLng = 77.6212;
     const reportPayload = {
-      title: 'Waterlogged Ramp near Central Silk Board Metro',
+      title: 'Waterlogging at Koramangala 80ft Road',
       type: 'Waterlogging',
-      ward: 'BTM Layout / HSR',
-      description: 'Stagnant water 1.5 ft deep blocking two-wheeler lane.',
-      position: { lat: simLat, lng: simLng },
+      ward: 'Koramangala 4th Block',
       urgency: 'High',
-      reportedBy: 'Active Commuter (Heavy User)',
-      voterId: 'commuter_primary',
+      description: 'Severe gutter overflow near Sony World signal. Water depth approx 1.5 feet.',
+      position: { lat: simLat, lng: simLng },
+      mediaUrl: mediaData.mediaUrl,
+      reportedBy: 'Koramangala Commuter',
+      voterId: 'sim_device_user_1',
     };
 
     const createRes = await fetch(`${BASE_URL}/api/incidents`, {
@@ -104,29 +133,9 @@ async function runHeavyUserSimulation() {
       body: JSON.stringify(reportPayload),
     });
     const createdIncident = await createRes.json();
-    console.log(`✓ 4. Commuter successfully reports active hazard: "${createdIncident.title}" (ID: ${createdIncident.id}, Hex: ${createdIncident.hexIndex})`);
+    console.log(`✓ 5. Incident Broadcast: Created hazard [${createdIncident.id}] at hex: ${createdIncident.hexIndex}`);
 
-    // 5. Heavy User Action: Spatial Auto-Clustering
-    // Second citizen reports the same waterlogging 40 meters away (0.0003 lat ~ 33 meters)
-    const nearbyReport = {
-      title: 'Silk Board Metro Ramp Water Overflow',
-      type: 'Waterlogging',
-      ward: 'BTM Layout / HSR',
-      description: 'Two-wheelers skidding in stagnant water.',
-      position: { lat: simLat + 0.0003, lng: simLng },
-      urgency: 'High',
-      reportedBy: 'Passerby Rider',
-      voterId: 'passerby_rider',
-    };
-    const clusterRes = await fetch(`${BASE_URL}/api/incidents`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(nearbyReport),
-    });
-    const clusterData = await clusterRes.json();
-    console.log(`✓ 5. Spatial Auto-Clustering verified: Second citizen report within 200m merged cleanly into parent hazard (Cluster size: ${clusterData.clusterCount}).`);
-
-    // 6. Heavy User Action: Verify coordinate safety guard
+    // 6. Coordinate safety guard test
     const invalidPayload = {
       title: 'Ghost Incident',
       type: 'Traffic',

@@ -15,7 +15,7 @@
 2. **Hexagonal Spatial Partitioning & Rooms**: Discrete hexagonal cell indexing (Resolution 8 ~460m) mapping coordinates to discrete spatial rooms with neighbor ring queries (`/api/incidents/hex/:hexId`), enabling targeted WebSocket room broadcasts.
 3. **Proximity-Weighted Multi-Peer Consensus**: High-integrity validation where on-ground commuters ($\le 1.5$ km) receive full 1.0x confirmation weight, while remote observations receive 0.25x weight. Incidents require 2 independent citizen confirmations to clear from the live map.
 4. **Anti-Sybil Clearance & Authoritative Sanitization**: Prevents duplicate voting from the same client fingerprint on incident verification and clearance. Strips unauthorized claims of official titles (BTP, BBMP) on citizen-submitted incidents.
-5. **Time-To-Live (TTL) Dynamic Hazard Decay**: Category-based half-life decay worker (Accidents: 2h, Waterlogging: 4h, Traffic: 3h, Infrastructure: 72h) that automatically retires stale hazards.
+5. **Time-To-Live (TTL) Dynamic Hazard Decay**: Category-based half-life decay worker (Traffic: 4h, Waterlogging: 12h, Accident: 6h, Infrastructure: 48h) with high-consensus grace multipliers that automatically purges stale hazards.
 6. **Sliding-Window IP Rate Limiting**: In-memory rate limiting across incident reporting, verification votes, media uploads, and AI chat queries to prevent bot spam and denial of service.
 7. **BTP & BBMP Official Advisory Ingestion**: Background integration worker ingesting authoritative alerts from Bengaluru Traffic Police and BBMP Disaster Management (metro construction diversions, pipeline repairs, emergency road closures).
 8. **Civic Media CDN & Direct Storage Pipeline**: Secure image upload endpoint (`/api/media/upload`) with SHA-256 deduplication hashing, MIME sanitization, and automatic delegation to Cloudinary CDN when configured.
@@ -77,14 +77,15 @@ graph TD
 | Method | Endpoint | Description | Rate Limit |
 |---|---|---|:---:|
 | `GET` | `/api/health` | Service health, uptime, active incidents, and feature flags | Unlimited |
-| `GET` | `/api/incidents` | Query active incidents with optional `type` and `urgency` filters | Unlimited |
-| `POST` | `/api/incidents` | Report a new hazard (auto-clusters if within 200m of active incident) | 20 / min |
-| `POST` | `/api/incidents/:id/verify` | Weighted verification (1.0x on-ground $\le 1.5$ km, 0.25x remote) | 40 / min |
+| `GET` | `/api/incidents` | Query active incidents with optional `type`, `urgency`, `ward`, and `hex` filters | Unlimited |
+| `POST` | `/api/incidents` | Report a new hazard (auto-clusters if within 200m of active incident) | 10 / min |
+| `POST` | `/api/incidents/:id/verify` | Weighted verification (1.0x on-ground $\le 1.5$ km, 0.25x remote) | 30 / min |
 | `POST` | `/api/incidents/:id/resolve` | Multi-citizen hazard clearance (requires 2 confirmations) | Unlimited |
-| `GET` | `/api/incidents/hex/:hexId` | Query incidents within a hex cell and its 6 neighboring rings | Unlimited |
+| `GET` | `/api/incidents/hex/:hexId` | Query incidents within a hex cell and its neighboring rings | Unlimited |
+| `GET` | `/api/incidents/spatial/neighborhood` | Query hex neighborhood from GPS `lat` and `lng` | Unlimited |
 | `GET` | `/api/advisories/btp` | Ingested official Bengaluru Traffic Police & BBMP advisories | Unlimited |
 | `POST` | `/api/advisories/sync` | Trigger on-demand sync of official police advisories | Unlimited |
-| `POST` | `/api/assistant/chat` | Conversational transit assistant querying live city incidents | 30 / min |
+| `POST` | `/api/assistant/chat` | Conversational transit assistant querying live city incidents | 20 / min |
 | `POST` | `/api/media/upload` | Upload civic photo evidence with SHA-256 hash | 15 / min |
 | `GET` | `/api/media/status` | Current media storage provider (Cloudinary vs Direct Storage) | Unlimited |
 
@@ -132,7 +133,7 @@ graph TD
 NammaDrishti includes a unified multi-tier test suite with zero external mocks required:
 
 ```bash
-# Run complete test suite (Frontend + Backend + Commuter E2E Simulation)
+# Run complete test suite (Frontend + Backend + E2E + Sandbox Scenarios)
 npm run test:all
 
 # Run frontend tests only (React Testing Library - 7 test suites)
@@ -143,7 +144,22 @@ npm run test:backend
 
 # Run heavy user commuter journey simulation (11 workflows)
 npm run test:e2e
+
+# Run isolated simulation sandbox (8 end-to-end multi-commuter scenarios)
+npm run test:sandbox
 ```
+
+### 🔬 Isolated Simulation Sandbox Scenarios
+
+The isolated sandbox runner (`scripts/sandbox_scenario_runner.js`) spins up an ephemeral backend server on a dedicated isolated port with isolated temporary disk storage, systematically executing 8 real-life commuter scenarios:
+1. **Monsoon Flash Flood & Proximity Consensus**: Citizen reports ORR EcoSpace flash flood; on-ground commuters confirm with 1.0x weight; anti-Sybil protection rejects duplicate votes with HTTP 409 Conflict.
+2. **Spatial Hazard Auto-Clustering**: Nearby hazard reports within 200m auto-merge into existing corridor clusters without duplicating map pins.
+3. **Safe Navigation Corridor & Dynamic Rerouting**: Real-time corridor conflict detector alerts of flood intersections on primary route and generates a zero-conflict safe detour.
+4. **Monsoon Offline Queue Sync**: Simulates network disconnection during cloudbursts, queues reports locally, and drains + syncs with WebSocket broadcast once reconnected.
+5. **Multi-Citizen Clearance Consensus**: Requires 2 unique citizen confirmations to mark resolved and purge from live map; enforces Sybil immunity.
+6. **Dynamic TTL Decay & Worker Lifecycle**: Expired incidents past their half-life are safely purged with atomic disk persistence.
+7. **Context-Aware AI Commute Assistant**: Inquires on Panathur flood status, Silk Board/HSR congestion, and Doppler rain telemetry with 96% confidence score.
+8. **One-Tap Emergency SOS Dispatch**: Formats stranded commuter coordinates into instant 112/1095 hotline targets and pre-formatted WhatsApp SOS dispatch links.
 
 ### Production Build
 

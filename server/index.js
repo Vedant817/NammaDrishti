@@ -1,4 +1,5 @@
 // server/index.js
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -20,6 +21,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Setup Socket.io for Real-Time Event Dispatch
 const io = new Server(server, {
@@ -30,12 +32,25 @@ const io = new Server(server, {
 });
 
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'incidents.json');
+const SEED_FILE = path.join(__dirname, 'incidents.json');
 
-// In-Memory Incident Store initialized from disk
+// In-Memory Incident Store initialized from disk with fresh Docker mount seed copy support
 let incidents = [];
 try {
+  let raw = null;
   if (fs.existsSync(DATA_FILE)) {
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+    raw = fs.readFileSync(DATA_FILE, 'utf-8');
+  } else if (fs.existsSync(SEED_FILE)) {
+    // Fresh container deployment with DATA_FILE on clean mount: seed from SEED_FILE
+    raw = fs.readFileSync(SEED_FILE, 'utf-8');
+    const dataDir = path.dirname(DATA_FILE);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(DATA_FILE, raw, 'utf-8');
+  }
+
+  if (raw) {
     incidents = JSON.parse(raw);
     // Ensure all incidents have a valid createdAt timestamp and hex index
     const now = Date.now();
@@ -100,19 +115,20 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
 
 // Category-specific TTL policies (in hours)
 const TTL_HOURS_BY_TYPE = {
-  Traffic: 3,          // Rapidly shifting urban congestion
-  Waterlogging: 8,     // Monsoon flooding and underpass inundation
-  Accident: 4,         // Roadway collisions and clearance
-  Infrastructure: 24,  // Potholes, open drains, electrical hazards
+  Traffic: 4,          // Rapidly shifting urban congestion
+  Waterlogging: 12,    // Monsoon flooding and underpass inundation
+  Accident: 6,         // Roadway collisions and clearance
+  Infrastructure: 48,  // Potholes, open drains, electrical hazards
 };
 
 // Periodic Background Worker: Purge Stale Incidents based on TTL & Consensus
 function cleanupExpiredIncidents() {
   const now = Date.now();
-  const initialCount = incidents.length;
+  const initialIncidents = [...incidents];
   const expiredIncidents = [];
+  const keptIncidents = [];
 
-  incidents = incidents.filter((incident) => {
+  for (const incident of incidents) {
     // Determine category TTL (default 6 hours if type unknown)
     const ttlHours = TTL_HOURS_BY_TYPE[incident.type] || 6;
     const ttlMs = ttlHours * 60 * 60 * 1000;
@@ -128,28 +144,35 @@ function cleanupExpiredIncidents() {
     const consensusMultiplier = (incident.verificationScore >= 3 || incident.verificationCount >= 4) ? 1.5 : 1.0;
     const effectiveTtlMs = ttlMs * consensusMultiplier;
 
-    const isExpired = ageMs > effectiveTtlMs;
+    if (ageMs > effectiveTtlMs) {
+      expiredIncidents.push({ incident, ageMs });
+    } else {
+      keptIncidents.push(incident);
+    }
+  }
 
-    if (isExpired) {
+  if (expiredIncidents.length > 0) {
+    incidents = keptIncidents;
+    const saved = persistIncidents();
+    if (!saved) {
+      incidents = initialIncidents;
+      console.warn('[Lifecycle Worker] Failed to persist cleanup of expired incidents, preserving in-memory state.');
+      return [];
+    }
+
+    for (const { incident, ageMs } of expiredIncidents) {
       if (incident.isAuthoritative) {
         markAdvisoryDismissed(incident.id);
       }
-      expiredIncidents.push(incident);
       io.emit('incident:expired', {
         id: incident.id,
         reason: `Expired after ${Math.round(ageMs / (1000 * 60 * 60))} hours (TTL exceeded).`,
       });
-      return false;
     }
-    return true;
-  });
-
-  if (incidents.length !== initialCount) {
-    persistIncidents();
-    console.log(`[Lifecycle Worker] Cleaned up ${initialCount - incidents.length} expired incidents.`);
+    console.log(`[Lifecycle Worker] Cleaned up and persisted ${expiredIncidents.length} expired incidents.`);
   }
 
-  return expiredIncidents;
+  return expiredIncidents.map((e) => e.incident);
 }
 
 // Run cleanup every 5 minutes
@@ -182,7 +205,7 @@ const verifyLimiter = createRateLimiter({
 const aiLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 20,
-  message: 'NammaPulse AI assistant rate limit reached. Please wait a moment before sending another prompt.',
+  message: 'NammaDrishti AI assistant rate limit reached. Please wait a moment before sending another prompt.',
 });
 
 const mediaLimiter = createRateLimiter({
@@ -196,9 +219,7 @@ const mediaLimiter = createRateLimiter({
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
-    platform: 'NammaPulse Bengaluru Civic Intelligence',
-    version: '1.2.0',
-    timestamp: new Date().toISOString(),
+    app: 'NammaDrishti Real-Time Civic & Transit Radar Backend',
     activeIncidents: incidents.length,
     ttlPolicies: TTL_HOURS_BY_TYPE,
     features: {
@@ -206,18 +227,30 @@ app.get('/api/health', (req, res) => {
       h3HexPartitioning: true,
       rateLimiting: true,
     },
+    timestamp: new Date().toISOString(),
   });
 });
 
 app.get('/api/incidents', (req, res) => {
-  const { type, urgency } = req.query;
+  const { type, urgency, ward, verified, hex } = req.query;
   let filtered = [...incidents];
 
   if (type && type !== 'All') {
-    filtered = filtered.filter((i) => i.type === type);
+    filtered = filtered.filter((i) => i.type.toLowerCase() === type.toLowerCase());
   }
   if (urgency) {
     filtered = filtered.filter((i) => i.urgency === urgency);
+  }
+  if (ward) {
+    filtered = filtered.filter((i) => i.ward && i.ward.toLowerCase().includes(ward.toLowerCase()));
+  }
+  if (verified !== undefined) {
+    const isVer = verified === 'true';
+    filtered = filtered.filter((i) => (i.isVerified || (i.verificationCount && i.verificationCount >= 3)) === isVer);
+  }
+  if (hex) {
+    const ring = getHexRing(hex);
+    filtered = filtered.filter((i) => ring.includes(i.hexIndex));
   }
 
   res.json(filtered);
@@ -234,6 +267,28 @@ app.get('/api/incidents/hex/:hexId', (req, res) => {
     neighborhoodRing: Array.from(targetHexes),
     totalCount: localizedIncidents.length,
     incidents: localizedIncidents,
+  });
+});
+
+// Spatial Hex Neighborhood Query (lat, lng)
+app.get('/api/incidents/spatial/neighborhood', (req, res) => {
+  const { lat, lng } = req.query;
+  const nLat = parseFloat(lat);
+  const nLng = parseFloat(lng);
+
+  if (isNaN(nLat) || isNaN(nLng)) {
+    return res.status(400).json({ error: 'Valid lat and lng query parameters are required.' });
+  }
+
+  const centerHex = getHexIndex(nLat, nLng, 8);
+  const ring = getHexRing(centerHex);
+  const neighborhoodIncidents = incidents.filter((i) => ring.includes(i.hexIndex));
+
+  res.json({
+    centerHex,
+    activeRings: ring,
+    count: neighborhoodIncidents.length,
+    incidents: neighborhoodIncidents,
   });
 });
 
@@ -274,7 +329,7 @@ app.get('/api/media/status', (req, res) => {
 });
 
 app.post('/api/incidents', reportLimiter, (req, res) => {
-  const { id, type, title, ward, description, position, urgency, mediaUrl } = req.body;
+  const { id, type, title, ward, description, position, urgency, mediaUrl } = req.body || {};
 
   if (!title || !description || !position) {
     return res.status(400).json({ error: 'Missing required incident fields (title, description, position).' });
@@ -295,13 +350,14 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     }
   }
 
-  const category = type || 'Infrastructure';
+  const allowedTypes = ['Traffic', 'Waterlogging', 'Accident', 'Infrastructure'];
+  const category = allowedTypes.includes(type) ? type : 'Infrastructure';
   const hexIndex = getHexIndex(lat, lng, 8);
   const reporterKey = req.body.voterId || req.ip || 'anon_reporter';
 
   // Sanitize authoritative flags - citizen submissions cannot claim official titles
   const sanitizedReportedBy = String(req.body.reportedBy || 'Citizen Contributor')
-    .replace(/(bengaluru traffic police|btp|bbmp|official)/gi, 'Citizen')
+    .replace(/(bengaluru traffic police|btp|bbmp|official|police|highway patrol|patrol|traffic monitor|monitor|authority)/gi, 'Citizen')
     .trim() || 'Citizen Contributor';
 
   // 1. SPATIAL CLUSTERING & AUTO-MERGE (200m / 60 min threshold)
@@ -402,6 +458,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     isAuthoritative: false,
     reportedBy: sanitizedReportedBy,
     reporters: [reporterKey],
+    verifiedVoters: [reporterKey],
     mediaUrl: mediaUrl || null,
     clearanceVotes: 0,
     resolutionVoterKeys: [],
@@ -433,6 +490,23 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
     return res.status(404).json({ error: 'Incident not found' });
   }
 
+  const voterKey = voterId || req.ip || 'anon_voter';
+  if (!Array.isArray(incident.verifiedVoters)) {
+    incident.verifiedVoters = incident.reporters ? [...incident.reporters] : [];
+  }
+
+  // Anti-Sybil single vote guard: check if this citizen/device has already verified
+  if (incident.verifiedVoters.includes(voterKey)) {
+    return res.status(409).json({
+      error: 'You have already verified this incident.',
+      alreadyVoted: true,
+      id: incident.id,
+      verificationCount: incident.verificationCount,
+      verificationScore: incident.verificationScore,
+      isVerified: incident.isVerified,
+    });
+  }
+
   // Calculate proximity weight: On-ground commuters (<= 1.5km) receive full weight (1.0)
   // Remote commuters receive weighted verification (0.25)
   let weight = 0.25;
@@ -454,6 +528,7 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
   const prevScore = incident.verificationScore || prevCount;
   const prevIsVerified = !!incident.isVerified;
 
+  incident.verifiedVoters.push(voterKey);
   incident.verificationCount = prevCount + 1;
   incident.verificationScore = Number((prevScore + weight).toFixed(2));
 
@@ -463,6 +538,7 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
 
   const saved = persistIncidents();
   if (!saved) {
+    incident.verifiedVoters.pop();
     incident.verificationCount = prevCount;
     incident.verificationScore = prevScore;
     incident.isVerified = prevIsVerified;
@@ -516,6 +592,8 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
     const [cleared] = incidents.splice(index, 1);
     const saved = persistIncidents();
     if (!saved) {
+      cleared.resolutionVoterKeys.pop();
+      cleared.clearanceVotes = cleared.resolutionVoterKeys.length;
       incidents.splice(index, 0, cleared);
       return res.status(500).json({ error: 'Failed to persist incident clearance.' });
     }
@@ -576,18 +654,19 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
   let reply = '';
   const sources = [];
 
-  if (query.includes('silk board') || query.includes('silkboard') || query.includes('btm')) {
+  if (query.includes('silk board') || query.includes('silkboard') || query.includes('btm') || query.includes('hsr')) {
     const silk = activeHazards.find(
       (i) =>
         i.title.toLowerCase().includes('silk board') ||
         i.title.toLowerCase().includes('btm') ||
-        (i.ward && i.ward.toLowerCase().includes('btm'))
+        i.title.toLowerCase().includes('hsr') ||
+        (i.ward && (i.ward.toLowerCase().includes('btm') || i.ward.toLowerCase().includes('hsr') || i.ward.toLowerCase().includes('silk board')))
     );
     if (silk) {
-      reply = `🚨 Silk Board / BTM Alert: Heavy congestion flagged (${silk.verificationCount} citizen confirmations). ${silk.description} Estimated delay +28 mins. Commuters heading to Electronic City are advised to use the elevated tollway.`;
+      reply = `🚨 Silk Board / BTM / HSR Alert: Heavy congestion flagged (${silk.verificationCount} citizen confirmations). ${silk.description} Estimated delay +28 mins. Commuters heading to Electronic City are advised to use the elevated tollway.`;
       sources.push(silk.title);
     } else {
-      reply = `Silk Board Junction and BTM Layout are currently experiencing routine traffic flow with standard signal cycles.`;
+      reply = `Silk Board Junction, BTM Layout, and HSR corridor are currently experiencing routine traffic flow with standard signal cycles.`;
     }
   } else if (query.includes('flood') || query.includes('waterlog') || query.includes('underpass') || query.includes('panathur')) {
     const panathur = activeHazards.find((i) => i.title.toLowerCase().includes('panathur'));
@@ -599,12 +678,14 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
     } else {
       reply = `All major Bengaluru underpasses (K.R. Circle, Panathur, Windsor, Okalipuram) are currently clear with automated pump stations operational.`;
     }
-  } else if (query.includes('hebbal') || query.includes('airport')) {
+  } else if (query.includes('hebbal') || query.includes('airport') || query.includes('expressway') || query.includes('bellary')) {
     const hebbal = activeHazards.find(
       (i) =>
         i.title.toLowerCase().includes('hebbal') ||
         i.title.toLowerCase().includes('airport') ||
-        (i.ward && i.ward.toLowerCase().includes('hebbal'))
+        i.title.toLowerCase().includes('expressway') ||
+        (i.ward && i.ward.toLowerCase().includes('hebbal')) ||
+        (i.description && (i.description.toLowerCase().includes('hebbal') || i.description.toLowerCase().includes('airport')))
     );
     if (hebbal) {
       reply = `✈️ Airport Expressway Advisory: Accident reported near Hebbal Flyover approach ramp (${hebbal.description}). Expect +20 mins transit delay. Plan extra lead time for KIA flights.`;
@@ -612,14 +693,18 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
     } else {
       reply = `Hebbal Flyover and Bellary Road to Kempegowda International Airport are clear with steady moving traffic.`;
     }
-  } else if (query.includes('radar') || query.includes('rain') || query.includes('weather') || query.includes('forecast')) {
-    reply = `🌧️ Rain & Radar Status: RainViewer Doppler radar is tracking real-time precipitation across Bengaluru. Current civic telemetry shows ${waterlogCount} active waterlogged stretch(es). Check the live Doppler overlay and Underpass Diagnostic tab for rainfall accumulation alerts.`;
+  } else if (query.includes('radar') || query.includes('rain') || query.includes('weather') || query.includes('forecast') || query.includes('storm')) {
+    const rainMm = (req.body && req.body.weather && typeof req.body.weather.precipitation === 'number')
+      ? req.body.weather.precipitation
+      : 0;
+    const weatherCondition = req.body?.weather?.condition || (rainMm > 5 ? 'Heavy Monsoon Showers' : (rainMm > 0 ? 'Light Rain / Drizzle' : 'Clear / Overcast'));
+    reply = `🌧️ Rain & Radar Telemetry: Current conditions indicate ${weatherCondition} (${rainMm} mm/hr precipitation). RainViewer Doppler radar is tracking real-time cloud reflectivity across Bengaluru. There are ${waterlogCount} active waterlogged stretch(es) reported. Check the Underpass Diagnostic tab for localized flood risks.`;
     sources.push('RainViewer Doppler & Open-Meteo Telemetry');
   } else if (query.includes('emergency') || query.includes('helpline') || query.includes('police') || query.includes('bbmp')) {
     reply = `📞 Bengaluru Emergency Helplines:\n• BTP Traffic Police: 1095 / 080-22943030\n• BBMP Disaster Cell: 1533\n• BESCOM Electrical Emergency: 1912\n• BWSSB Water & Sewerage: 1916\n• National Emergency: 112`;
     sources.push('Karnataka State Emergency Operations');
   } else {
-    reply = `Namaskara! NammaPulse is actively monitoring ${activeHazards.length} civic hazard(s) across Bengaluru (${trafficCount} traffic bottlenecks, ${waterlogCount} waterlogged points). You can ask me about Silk Board, Hebbal airport transit, flooded underpasses, or report road hazards directly on the map.`;
+    reply = `Namaskara! NammaDrishti is actively monitoring ${activeHazards.length} civic hazard(s) across Bengaluru (${trafficCount} traffic bottlenecks, ${waterlogCount} waterlogged points). You can ask me about Silk Board, Hebbal airport transit, flooded underpasses, or report road hazards directly on the map.`;
   }
 
   res.json({
@@ -648,9 +733,7 @@ if (staticDir) {
 
 // Socket.io connection lifecycle
 io.on('connection', (socket) => {
-  console.log(`[Socket.io] Client connected: ${socket.id}`);
-
-  // Send initial dataset snapshot to freshly connected client
+  // Push full snapshot of current incidents to newly connected citizen client
   socket.emit('initial:data', incidents);
 
   // Subscribe client to specific H3-style hexagonal spatial room cells
@@ -662,17 +745,18 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
-    console.log(`[Socket.io] Client disconnected: ${socket.id}`);
-  });
+  socket.on('disconnect', () => {});
 });
 
 // Export server, app, and internal functions for automated testing
 module.exports = {
   app,
   server,
-  getDistanceKm,
+  io,
+  incidents,
+  persistIncidents,
   cleanupExpiredIncidents,
+  getDistanceKm,
   TTL_HOURS_BY_TYPE,
   getHexIndex,
   getHexRing,
@@ -683,12 +767,14 @@ module.exports = {
 
 // Start Server if executed directly
 if (require.main === module) {
-  const PORT = process.env.PORT || 5000;
+  const PORT = process.env.PORT || 5001;
   server.listen(PORT, () => {
-    console.log(`===============================================`);
-    console.log(`  NammaPulse Real-Time Intelligence Backend    `);
-    console.log(`  Port: http://localhost:${PORT}               `);
-    console.log(`  Active Incidents Loaded: ${incidents.length} `);
-    console.log(`===============================================`);
+    console.log(`\n==================================================`);
+    console.log(`🚀 NammaDrishti Civic Platform Engine Live`);
+    console.log(`📡 HTTP Server & REST API: http://localhost:${PORT}`);
+    console.log(`⚡ WebSocket Stream: ws://localhost:${PORT}`);
+    console.log(`📂 Incident Data Storage: ${DATA_FILE}`);
+    console.log(`🏙️ Active Incidents Loaded: ${incidents.length}`);
+    console.log(`==================================================\n`);
   });
 }
