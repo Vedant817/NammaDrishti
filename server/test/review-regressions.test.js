@@ -16,7 +16,7 @@ test('review regressions: access control, input validation and cluster integrity
   const sockets = [];
   t.after(async () => { sockets.forEach(socket => socket.close()); await new Promise(resolve => io.close(resolve)); fs.rmSync(directory, { recursive: true, force: true }); });
   const post = (url, body) => fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const report = { title: 'Review flood', description: 'Regression fixture', type: 'Waterlogging', position: { lat: 12.97, lng: 77.59 }, voterId: 'owner', waterDepth: 'Shallow', vehiclePassability: 'Passable with Caution' };
+  const report = { title: 'Review flood', description: 'Regression fixture', type: 'Waterlogging', position: { lat: 12.97, lng: 77.59 }, voterId: 'owner', urgency: 'Low', waterDepth: 'Shallow', vehiclePassability: 'Passable with Caution' };
 
   await t.test('unconfigured authority access fails closed, including published fallback', async () => {
     delete process.env.AUTHORITY_TOKEN;
@@ -59,7 +59,7 @@ test('review regressions: access control, input validation and cluster integrity
     const created = await (await post('/api/incidents', report)).json();
     // Server emit is not a local EventEmitter event; observe from a connected client.
     const received = new Promise(resolve => sockets[0].once('incident:clustered', resolve));
-    const response = await post('/api/incidents', { ...report, voterId: 'second', waterDepth: 'Deep', vehiclePassability: 'Impassable' });
+    const response = await post('/api/incidents', { ...report, voterId: 'second', urgency: 'High', waterDepth: 'Deep', vehiclePassability: 'Impassable' });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).waterDepth, 'Deep');
     assert.equal((await received).vehiclePassability, 'Impassable');
@@ -76,6 +76,7 @@ test('review regressions: access control, input validation and cluster integrity
     const persisted = await (await fetch(base + '/api/incidents')).json();
     const incident = persisted.find(item => item.id === created.id);
     assert.equal(incident.waterDepth, 'Deep');
+    assert.equal(incident.urgency, 'High');
     assert.ok(!incident.reporters.includes('fourth'));
   });
 });

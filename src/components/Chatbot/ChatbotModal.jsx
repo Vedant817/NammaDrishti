@@ -1,3 +1,4 @@
+import { radarFallback } from "../../utils/weatherStatus";
 import { useDialog } from "../../hooks/useDialog";
 import { authenticatedFetch as fetch } from "../../services/firebaseService";
 // src/components/Chatbot/ChatbotModal.jsx
@@ -79,10 +80,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
 
     // Check Doppler Weather Radar specifically
     if (q.includes("radar")) {
-      const rainStatus = weather?.precipitation > 0
-        ? `RainViewer Doppler radar indicates active rain bands (${weather.precipitation} mm/hr) over municipal wards. Toggle the 'Doppler Rain Radar' button on the map to inspect live 5-minute reflectivity frames.`
-        : `RainViewer Doppler radar shows clear skies over Bengaluru currently with zero significant precipitation echoes detected. Toggle the radar layer on the map to view live reflectivity scans.`;
-      return `📡 Doppler Weather Radar: ${rainStatus}`;
+      return radarFallback(weather);
     }
 
     // Check Waterlogging / Flooding / Underpass
@@ -97,7 +95,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
 
     // Check Weather / Rain
     if (q.includes("rain") || q.includes("weather")) {
-      if (weather) {
+      if (weather && !weather.loading && !weather.isOffline && weather.lastUpdated) {
         return `🌧️ Bengaluru Weather: ${weather.temp}°C, ${weather.description}. Relative humidity is ${weather.humidity}% with ${weather.precipitation}mm precipitation. Flood Risk is currently assessed as ${weather.floodRisk}.`;
       }
       return "Live weather telemetry is unavailable right now. Open the Doppler radar overlay on the map for the latest RainViewer frames.";

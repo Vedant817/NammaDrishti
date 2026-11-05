@@ -53,6 +53,7 @@ const playProximityChime = () => {
  */
 export const useProximityAlert = (userLocation, events = [], onAlertTriggered) => {
   const alertedIdsRef = useRef(new Set());
+  const voiceIdsRef = useRef(new Set());
 
   useEffect(() => {
     if (!userLocation || !events || events.length === 0) return;
@@ -69,7 +70,6 @@ export const useProximityAlert = (userLocation, events = [], onAlertTriggered) =
 
     criticalHazards.sort((a, b) => (b.urgency === 'High') - (a.urgency === 'High'));
     criticalHazards.forEach((hazard) => {
-      if (alertedIdsRef.current.has(hazard.id)) return;
 
       const distKm = calculateDistance(
         userLocation.lat,
@@ -80,14 +80,16 @@ export const useProximityAlert = (userLocation, events = [], onAlertTriggered) =
 
       // Within 2.5 km radius
       if (distKm <= 2.5) {
-        alertedIdsRef.current.add(hazard.id);
-        playProximityChime();
-
-        if (distKm <= 1.2) {
+        if (distKm <= 1.2 && !voiceIdsRef.current.has(hazard.id)) {
+          voiceIdsRef.current.add(hazard.id);
           const depthText = hazard.waterDepth ? ` Depth is ${hazard.waterDepth}.` : '';
           const voiceMessage = `Caution: ${hazard.title} reported ${distKm < 0.5 ? 'less than 500 meters ahead' : distKm.toFixed(1) + ' kilometers ahead'} in ${hazard.ward || 'Bengaluru'}.${depthText}`;
           speakVoiceAlert(voiceMessage);
         }
+
+        if (alertedIdsRef.current.has(hazard.id)) return;
+        alertedIdsRef.current.add(hazard.id);
+        playProximityChime();
 
         const alertPayload = {
           title: `⚠️ Hazard Near You (${distKm.toFixed(1)} km)`,

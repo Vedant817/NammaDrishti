@@ -432,6 +432,8 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
     if (!Array.isArray(clusterMatch.reporters)) {
       clusterMatch.reporters = [clusterMatch.reportedBy || 'initial_reporter'];
     }
+    const urgencyRank = { Low: 0, Medium: 1, High: 2 };
+    if (urgency && urgencyRank[urgency] > (urgencyRank[clusterMatch.urgency] ?? 1)) clusterMatch.urgency = urgency;
     if (waterDepth) clusterMatch.waterDepth = String(waterDepth).slice(0, 50);
     if (vehiclePassability) clusterMatch.vehiclePassability = String(vehiclePassability).slice(0, 50);
     const isNewReporter = !clusterMatch.reporters.includes(reporterKey);
@@ -465,6 +467,7 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
       description: String(description).trim(),
       reportedBy: sanitizedReportedBy,
       mediaUrl: mediaUrl || null,
+      urgency: clusterMatch.urgency,
       waterDepth: clusterMatch.waterDepth || null,
       vehiclePassability: clusterMatch.vehiclePassability || null,
     });

@@ -381,6 +381,7 @@ export const useEventData = () => {
                   verificationCount: data.verificationCount,
                   verificationScore: data.verificationScore,
                   clusterCount: data.clusterCount,
+                  urgency: data.urgency ?? e.urgency,
                   waterDepth: data.waterDepth ?? e.waterDepth,
                   vehiclePassability: data.vehiclePassability ?? e.vehiclePassability,
                   isVerified: data.isVerified,
