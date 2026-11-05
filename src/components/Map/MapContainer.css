@@ -4,6 +4,16 @@
   width: 100%;
 }
 
+.map-layer-status {
+  flex-basis: 100%;
+  background: var(--bg-surface, #fff);
+  color: var(--text-secondary, #425466);
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: .76rem;
+  max-width: 100%;
+}
+
 .map-toolbar {
   position: absolute;
   top: 12px;

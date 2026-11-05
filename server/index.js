@@ -64,6 +64,17 @@ app.get('/api/geocode', sourceLimiter, async (req, res) => {
 app.get('/api/traffic', sourceLimiter, async (req, res) => {
   try { res.json(await liveData.traffic()); } catch { res.status(503).json({ status: 'unavailable', segments: [] }); }
 });
+const trafficTile = require('./services/trafficTiles').createTrafficTiles();
+const tileLimiter = createRateLimiter({ windowMs: 60000, maxRequests: 240, message: 'Traffic tile limit reached; retry shortly.' });
+app.get('/api/traffic/tiles/:z/:x/:y.png', tileLimiter, async (req, res) => {
+  if (![req.params.z, req.params.x, req.params.y].every(v => /^\d{1,6}$/.test(v))) return res.sendStatus(404);
+  try {
+    const bytes = await trafficTile(Number(req.params.z), Number(req.params.x), Number(req.params.y));
+    res.set('Cache-Control', 'public, max-age=30, s-maxage=60').type('png').send(bytes);
+  } catch (error) {
+    res.set('Cache-Control', 'no-store').status(error.status || 503).json({ error: 'Traffic tiles unavailable' });
+  }
+});
 app.get('/api/flood-context', sourceLimiter, async(req,res)=>{try{res.json(await liveData.floodContext());}catch{res.status(503).json({status:'unavailable',forecast:[]});}});
 app.get('/api/flood-observations', sourceLimiter, async (req, res) => {
   try { res.json(await liveData.observations()); } catch { res.status(503).json({ status: 'unavailable', observations: [] }); }

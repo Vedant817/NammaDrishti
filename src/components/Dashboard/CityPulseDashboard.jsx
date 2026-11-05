@@ -1,4 +1,5 @@
 import { useReactiveRoute } from '../../hooks/useReactiveRoute';
+import { useTrafficData } from '../../hooks/useTrafficData';
 import { Plus, Route, MessageSquare } from "lucide-react";
 // src/components/Dashboard/CityPulseDashboard.jsx
 import React, { useState, useEffect, useRef } from "react";
@@ -38,6 +39,7 @@ const DEEP_LINK = parseDeepLinkParams();
 const CityPulseDashboard = () => {
   const { events, isLiveConnected, offlineQueueCount, addEvent, verifyEvent, resolveEvent } = useEventData();
   const { weather } = useWeatherTelemetry();
+  const { traffic, clock } = useTrafficData();
   const { t } = useLanguage();
 
   const [activeFilter, setActiveFilter] = useState("All");
@@ -45,7 +47,7 @@ const CityPulseDashboard = () => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showChatbotModal, setShowChatbotModal] = useState(false);
   const [showRouteModal, setShowRouteModal] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState("feed");
+  const [sidebarTab, setSidebarTab] = useState("traffic");
   const [reportPin, setReportPin] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [navigationRoute, setNavigationRoute] = useState(null);
@@ -219,6 +221,7 @@ const CityPulseDashboard = () => {
       <div className="main-content">
         <main className="map-section" role="region" aria-label="Interactive Map">
           <MapContainer
+            clock={clock}
             events={filteredEvents}
             selectedEvent={selectedEvent}
             onEventSelect={handleEventSelect}
@@ -264,6 +267,8 @@ const CityPulseDashboard = () => {
         </main>
 
         <Sidebar
+          traffic={traffic}
+          clock={clock}
           events={filteredEvents}
           allEvents={events}
           selectedEvent={selectedEvent}

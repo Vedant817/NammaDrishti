@@ -1,4 +1,18 @@
 /* src/components/Sidebar/Sidebar.css */
+.traffic-panel h3 { font-family: var(--font-display); font-size: 1.6rem; margin: 0 0 8px; }
+.traffic-panel h4 { margin: 20px 0 8px; }
+.traffic-panel p, .traffic-report-note { font-size: .88rem; line-height: 1.5; color: var(--text-secondary); }
+.traffic-key { display: flex; flex-wrap: wrap; gap: 12px; font-size: .8rem; margin: 12px 0; }
+.traffic-sample { padding: 14px 0; border-bottom: 1px solid var(--border-light); }
+.traffic-sample > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.traffic-sample > div > span { font-weight: 700; color: var(--text-primary); }
+.traffic-sample p { margin: 6px 0; }
+.traffic-sample small { display: block; color: var(--text-secondary); }
+.traffic-panel button, .traffic-report-note button { padding: 8px 10px; margin-top: 8px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 4px; color: var(--text-primary); cursor: pointer; }
+.traffic-other { margin-top: 20px; border-top: 1px solid var(--border-light); }
+.traffic-panel > a { display: inline-block; margin-top: 16px; }
+.underpass-card small { display: block; margin: 8px 0; }
+.underpass-card button { padding: 7px 10px; margin: 4px 0; background:var(--bg-surface); border:1px solid var(--border-light); border-radius:4px; color:var(--text-primary); }
 /* Sidebar Layout & Structure */
 .sidebar-container {
   width: 380px;
