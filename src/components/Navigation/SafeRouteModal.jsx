@@ -1,3 +1,4 @@
+import { useLanguage } from '../../context/LanguageContext';
 import { useDialog } from "../../hooks/useDialog";
 // src/components/Navigation/SafeRouteModal.jsx
 import React, { useState, useRef, useEffect } from "react";
@@ -12,14 +13,17 @@ import {
 } from "../../services/geocodeService";
 import "./SafeRouteModal.css";
 
-const TYPEAHEAD_DEBOUNCE_MS = 700;
 
-// Debounced live place search input backed by OpenStreetMap Nominatim.
+
+// Explicit place search backed by the shared geocoding proxy.
 // Users must either select a suggestion or press Enter to geocode the typed text.
 const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
+  const { t } = useLanguage();
   const [suggestions, setSuggestions] = useState([]);
   const [searching, setSearching] = useState(false);
-  const debounceRef = useRef(null);
+  const queryRef = useRef(value);
+  queryRef.current = value;
+  const [searchError, setSearchError] = useState(null);
   const boxRef = useRef(null);
 
   // Close the suggestion dropdown on any outside click
@@ -32,7 +36,7 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
     document.addEventListener("mousedown", onDocClick);
     return () => {
       document.removeEventListener("mousedown", onDocClick);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+
     };
   }, []);
 
@@ -42,18 +46,8 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
     onPick(null);
     setSuggestions([]);
 
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const trimmed = text.trim();
-    if (trimmed.length < 2) {
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    debounceRef.current = setTimeout(async () => {
-      const places = await suggestBengaluruPlaces(trimmed);
-      setSuggestions(places);
-      setSearching(false);
-    }, TYPEAHEAD_DEBOUNCE_MS);
+    setSearching(false);
+    setSearchError(null);
   };
 
   const handlePick = (p) => {
@@ -62,19 +56,17 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
     onPick(p);
   };
 
-  const handleKeyDown = async (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    if (suggestions.length > 0) {
-      handlePick(suggestions[0]);
-      return;
-    }
-    if (place) return;
-    const resolved = await geocodeBengaluruPlace(value);
-    if (resolved) {
-      handlePick({ ...resolved, shortLabel: resolved.label });
-    }
+  const search = async () => {
+    if (value.trim().length < 2) return;
+    const query = value;
+    setSearching(true); setSearchError(null);
+    try {
+      const results = await suggestBengaluruPlaces(query);
+      if (queryRef.current === query) { setSuggestions(results); if (!results.length) setSearchError('No matching place. Use another landmark.'); }
+    } catch (error) { if (queryRef.current === query) setSearchError(error.message); }
+    finally { if (queryRef.current === query) setSearching(false); }
   };
+  const handleKeyDown = e => { if (e.key === 'Enter') { e.preventDefault(); search(); } };
 
   const showDropdown = !place && suggestions.length > 0;
 
@@ -89,6 +81,8 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
         onChange={handleChange}
         onKeyDown={handleKeyDown}
       />
+      <button type="button" onClick={search} disabled={searching}>{t.ui["Search"]}</button>
+      {searchError && <span role="status">{searchError}</span>}
       {searching && <span className="route-search-hint">🔍…</span>}
       {showDropdown && (
         <div className="route-suggestions" role="listbox">
@@ -104,18 +98,20 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
           ))}
         </div>
       )}
-      <span className="route-place-help">Choose a result or press Enter to find this place.</span>
+      <span className="route-place-help">{t.ui["Search or press Enter, then choose a result. \u00a9 OpenStreetMap contributors."]}</span>
     </div>
   );
 };
 
 const SafeRouteModal = ({
   onClose,
+  activeRoute,
   activeHazards = [],
   hazards = [],
   onApplyRouteToMap,
   userLocation,
 }) => {
+  const { t } = useLanguage();
   const resolvedHazards = activeHazards && activeHazards.length > 0 ? activeHazards : (hazards || []);
   const dialogRef = useDialog(onClose);
   const [startText, setStartText] = useState("");
@@ -127,6 +123,8 @@ const SafeRouteModal = ({
   const [loading, setLoading] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
   const [routingError, setRoutingError] = useState(null);
+
+  useEffect(() => { if (activeRoute) setRouteResult(activeRoute); }, [activeRoute]);
 
   const resolveEndpoint = async (text, pickedPlace, fieldName) => {
     if (pickedPlace) return pickedPlace;
@@ -180,12 +178,16 @@ const SafeRouteModal = ({
 
       setRouteResult({
         ...routeData,
+        status: "checking",
         startCoords,
         endCoords,
       });
 
       if (onApplyRouteToMap) {
         onApplyRouteToMap({
+          ...routeData,
+          startCoords, endCoords, autoDetour,
+          checkedAt: Date.now(), status: "ready",
           coordinates: routeData.coordinates,
           hasConflicts: (routeData.conflicts || []).length > 0,
         });
@@ -205,16 +207,16 @@ const SafeRouteModal = ({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Plan a route" tabIndex={-1} className="safe-route-modal-content" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t.ui["Plan a route"]} tabIndex={-1} className="safe-route-modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="safe-route-header">
           <div className="safe-route-title">
             <span className="route-icon">🧭</span>
             <div>
-              <h3>Plan a route</h3>
-              <span className="route-subtitle">Check reported hazards along the way</span>
+              <h3>{t.ui["Plan a route"]}</h3>
+              <span className="route-subtitle">{t.ui["Check reported hazards along the way"]}</span>
             </div>
           </div>
-          <button type="button" className="close-btn" aria-label="Close dialog" onClick={onClose}>
+          <button type="button" className="close-btn" aria-label={t.ui["Close dialog"]} onClick={onClose}>
             ✕
           </button>
         </div>
@@ -222,7 +224,7 @@ const SafeRouteModal = ({
         <div className="safe-route-body">
           <div className="safe-route-controls">
             <div className="route-input-group">
-              <label>Origin</label>
+              <label>{t.ui["Origin"]}</label>
               {useCurrentGps && userLocation ? (
                 <div className="route-place-badge">
                   <span className="route-place-text">
@@ -253,7 +255,7 @@ const SafeRouteModal = ({
             </div>
 
             <div className="route-input-group">
-              <label>Destination</label>
+              <label>{t.ui["Destination"]}</label>
               <PlaceInput
                 value={endText}
                 place={endPlace}
@@ -270,7 +272,7 @@ const SafeRouteModal = ({
                   checked={autoDetour}
                   onChange={(e) => setAutoDetour(e.target.checked)}
                 />
-                <span className="checkbox-text">Avoid reported floods and road hazards</span>
+                <span className="checkbox-text">{t.ui["Avoid reported floods and road hazards"]}</span>
               </label>
             </div>
 
@@ -280,7 +282,7 @@ const SafeRouteModal = ({
               onClick={handleCalculateRoute}
               disabled={loading}
             >
-              {loading ? "Calculating Safest Corridor..." : "Find route"}
+              {loading ? t.ui["Checking route..."] : t.ui["Find route"]}
             </button>
           </div>
 
@@ -296,11 +298,11 @@ const SafeRouteModal = ({
               <div className="route-metrics-bar">
                 <div className="route-metric">
                   <span className="metric-val">{routeResult.distanceKm} km</span>
-                  <span className="metric-lbl">Distance</span>
+                  <span className="metric-lbl">{t.ui["Distance"]}</span>
                 </div>
                 <div className="route-metric">
                   <span className="metric-val">{routeResult.durationMin} mins</span>
-                  <span className="metric-lbl">Estimated time</span>
+                  <span className="metric-lbl">{t.ui["Estimated time (without traffic)"]}</span>
                 </div>
                 <div className="route-metric">
                   <span
@@ -312,9 +314,9 @@ const SafeRouteModal = ({
                           : "var(--status-traffic)",
                     }}
                   >
-                    {(routeResult.conflicts || []).length === 0 ? "CLEAR" : `${routeResult.conflicts.length} HAZARD(S)`}
+                    {routeResult.status !== "ready" ? (routeResult.status || "checking") : (routeResult.conflicts || []).length === 0 ? t.live.noReportedHazards : `${routeResult.conflicts.length} ${t.live.nearbyReports}`}
                   </span>
-                  <span className="metric-lbl">Reports nearby</span>
+                  <span className="metric-lbl">{t.ui["Reports nearby"]}</span>
                 </div>
               </div>
 

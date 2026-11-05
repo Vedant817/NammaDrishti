@@ -407,15 +407,15 @@ async function runBrutalStressSuite() {
       extremeWeatherQuery.status === 200 && typeof extremeWeatherQuery.data?.reply === 'string'
     );
 
-    // 4b: Multilingual Translation Parity (EN, KN, HI)
+    // 4b: Translation dictionary key parity (EN, KN, HI)
     const translationsRaw = fs.readFileSync(path.join(__dirname, '../src/data/translations.js'), 'utf8');
     const requiredKeys = ['brandName', 'brandTagline', 'activeHazards', 'filters', 'actions', 'reportModal'];
     const knValid = requiredKeys.every((k) => translationsRaw.includes(k));
     const hiValid = translationsRaw.includes('hi:');
     recordFinding(
       'Senior Frontend & UX',
-      'Multilingual Translation Parity',
-      `Kannada: ${knValid ? '100% Complete' : 'Missing keys'}, Hindi: ${hiValid ? '100% Complete' : 'Missing keys'}`,
+      'Translation dictionary key parity',
+      `Kannada: ${knValid ? 'all tested keys present' : 'Missing keys'}, Hindi: ${hiValid ? 'all tested keys present' : 'Missing keys'}`,
       knValid && hiValid
     );
 

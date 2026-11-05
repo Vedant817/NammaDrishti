@@ -71,7 +71,7 @@
   cursor: not-allowed;
 }
 
-/* ═══ Radar Timeline Scrubber (playback of past frames + 30-min nowcast) ═══ */
+/* ═══ Radar Timeline Scrubber (playback of past observations only) ═══ */
 .radar-timeline {
   display: flex;
   align-items: center;

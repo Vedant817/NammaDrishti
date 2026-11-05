@@ -1,6 +1,11 @@
+import extras from './uiExtras.json';
+import copy from './liveCopy.json';
 // src/data/translations.js
 export const translations = {
   en: {
+    live: copy.live.en,
+    account: copy.account.en,
+    ui: { ...copy.ui.en, ...extras.en },
     brandName: "NammaDrishti",
     brandTagline: "Roads, rain & local reports",
     city: "Bengaluru",
@@ -85,6 +90,9 @@ export const translations = {
     },
   },
   kn: {
+    live: copy.live.kn,
+    account: copy.account.kn,
+    ui: { ...copy.ui.kn, ...extras.kn },
     brandName: "ನಮ್ಮ ದೃಷ್ಟಿ",
     brandTagline: "ನೈಜ-ಸಮಯದ ನಾಗರಿಕ ಮತ್ತು ಸಂಚಾರ ಮಾಹಿತಿ",
     city: "ಬೆಂಗಳೂರು",
@@ -165,10 +173,13 @@ export const translations = {
       helplineTitle: "ಬೆಂಗಳೂರು ತುರ್ತು ಸಹಾಯವಾಣಿ ಸಂಖ್ಯೆಗಳು",
       helplineSub: "ನಾಗರಿಕ, ಸಂಚಾರ ಮತ್ತು ತುರ್ತು ಸೇವೆಗಳ ನಿಯಂತ್ರಣ ಕೊಠಡಿಗಳು.",
       sosTitle: "ಒಂದೇ ಕ್ಲಿಕ್‌ನಲ್ಲಿ ಬೆಂಗಳೂರು ತುರ್ತು ಎಸ್‌ಒಎಸ್",
-      sosDesc: "ನಿಮ್ಮ ಜಿಪಿಎಸ್ ಸ್ಥಳವನ್ನು ಬಿಟಿಪಿ ಮತ್ತು ಬಿಬಿಎಂಪಿ ನಿಯಂತ್ರಣ ಕೊಠಡಿಗೆ ಕಳುಹಿಸಿ ವಾಟ್ಸಾಪ್ ರಕ್ಷಣೆ ಸಂದೇಶ ಪಡೆಯಿರಿ.",
+      sosDesc: "ವಿಶ್ವಾಸಾರ್ಹ ವ್ಯಕ್ತಿಗೆ ಸ್ಥಳ ಹಂಚಿಕೊಳ್ಳಿ. ತುರ್ತು ಸಹಾಯಕ್ಕೆ 112 ಕರೆ ಮಾಡಿ.",
     },
   },
   hi: {
+    live: copy.live.hi,
+    account: copy.account.hi,
+    ui: { ...copy.ui.hi, ...extras.hi },
     brandName: "नम्मा दृष्टि",
     brandTagline: "रियल-टाइम नागरिक और यातायात आसूचना",
     city: "Bengaluru",
@@ -249,7 +260,7 @@ export const translations = {
       helplineTitle: "बेंगलुरु आपातकालीन हेल्पलाइन",
       helplineSub: "नागरिक और यातायात नियंत्रण कक्ष।",
       sosTitle: "एक-क्लिक बेंगलुरु आपातकालीन एसओएस",
-      sosDesc: "बीबीएमपी और बीटीपी नियंत्रण कक्ष को अपना जीपीएस भेजें और व्हाट्सएप संदेश तैयार करें।",
+      sosDesc: "किसी विश्वसनीय व्यक्ति को स्थान भेजें। आपातकाल में 112 पर कॉल करें।",
     },
   },
 };

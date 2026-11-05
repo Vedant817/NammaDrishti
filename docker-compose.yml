@@ -17,8 +17,23 @@ services:
       - PORT=5001
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:?Configure Firebase backend}
       - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/firebase-admin.json
+      - STATE_DIR=/var/lib/nammadrishti
+      - MEDIA_DIR=/var/lib/nammadrishti/media
+      - REQUIRE_VERIFIED_IDENTITY=${REQUIRE_VERIFIED_IDENTITY:-true}
+      - GEOCODING_URL=${GEOCODING_URL:-}
+      - GEOCODING_USER_AGENT=${GEOCODING_USER_AGENT:-}
+      - FLOOD_OBSERVATIONS_URL=${FLOOD_OBSERVATIONS_URL:-}
+      - EMERGENCY_DISPATCH_WEBHOOK_URL=${EMERGENCY_DISPATCH_WEBHOOK_URL:-}
+      - EMERGENCY_WEBHOOK_TOKEN=${EMERGENCY_WEBHOOK_TOKEN:-}
+      - TOMTOM_API_KEY=${TOMTOM_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
       - AUTHORITY_TOKEN=${AUTHORITY_TOKEN:-}
     volumes:
+      - civic-state:/var/lib/nammadrishti
       - ${GOOGLE_APPLICATION_CREDENTIALS:?Set an external credential path}:/run/secrets/firebase-admin.json:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/health"]
@@ -26,3 +41,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  civic-state:

@@ -1,3 +1,4 @@
+import { API_BASE } from '../../services/api';
 import { CloudRain, Route, Layers } from "lucide-react";
 // src/components/Map/MapContainer.jsx
 import React, { useState, useEffect, useCallback, useRef } from "react";
@@ -75,26 +76,37 @@ const CustomMapContainer = ({
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(false);
-  // RainViewer frame timeline: observed frames (past) + 30-min nowcast
+  // RainViewer frame timeline: past observations only
+  const [radarError, setRadarError] = useState(null);
+  const [traffic, setTraffic] = useState({ status: "loading", segments: [] });
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => { try { const r = await fetch(`${API_BASE}/traffic`, { signal: AbortSignal.timeout(10000) }); if (!r.ok) throw new Error(); const data = await r.json(); if (active) setTraffic(data); } catch { if (active) setTraffic({ status: "unavailable", segments: [] }); } };
+    refresh(); const timer = setInterval(refresh, 120000); const age = setInterval(() => setClock(Date.now()), 30000);
+    return () => { active = false; clearInterval(timer); clearInterval(age); };
+  }, []);
   const [radarData, setRadarData] = useState(null); // { frames: [{time, path}], nowIndex }
   const [radarIndex, setRadarIndex] = useState(null);
   const [isPlayingRadar, setIsPlayingRadar] = useState(false);
 
-  // Fetch RainViewer frame catalog (past + nowcast), auto-refresh every 5 minutes
+  // Fetch past RainViewer observations, auto-refresh every 5 minutes
   const fetchRadar = useCallback(async () => {
     try {
-      const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
-      if (!res.ok) return;
+      const res = await fetch("https://api.rainviewer.com/public/weather-maps.json", { signal: AbortSignal.timeout(7000) });
+      if (!res.ok) throw new Error("Radar catalog unavailable");
       const data = await res.json();
       const past = (data.radar && data.radar.past) || [];
-      const nowcast = (data.radar && data.radar.nowcast) || [];
-      const frames = [...past, ...nowcast]
-        .filter((frame) => frame && frame.path && Number.isFinite(frame.time))
+      const frames = past
+        .filter((frame) => frame && /^\/v2\/radar\/[A-Za-z0-9/_-]+$/.test(frame.path) && Number.isFinite(frame.time))
         .map((frame) => ({ time: frame.time, path: frame.path }));
-      if (frames.length === 0) return;
-      setRadarData({ frames, nowIndex: Math.max(0, past.length - 1) });
+      if (!frames.length || !/^https:\/\/[a-z0-9.-]+\.rainviewer\.com$/.test(data.host)) throw new Error("Invalid radar catalog");
+      frames.sort((a, b) => a.time - b.time);
+      setRadarError(null);
+      setRadarData({ frames, host: data.host, nowIndex: frames.length - 1 });
+      setRadarIndex(frames.length - 1);
     } catch (err) {
-      // Retain previous frame catalog if temporary network issue
+      setRadarError("Radar unavailable; previous observation may be stale.");
     }
   }, []);
 
@@ -131,13 +143,13 @@ const CustomMapContainer = ({
   const radarFrames = radarData ? radarData.frames : [];
   const currentRadarFrame = radarIndex != null ? radarFrames[radarIndex] : null;
 
-  // Label like "14:30 • Now", "14:10 • 20m ago", "15:00 • +30m"
+  // Age is measured against the wall clock, never against the newest frame.
   const formatRadarLabel = (frame) => {
     if (!frame || !radarData) return "";
-    const clock = new Date(frame.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const deltaMin = Math.round((frame.time - radarData.frames[radarData.nowIndex].time) / 60);
-    if (deltaMin === 0) return `${clock} • Now`;
-    return deltaMin < 0 ? `${clock} • ${-deltaMin}m ago` : `${clock} • +${deltaMin}m`;
+    const displayClock = new Date(frame.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const deltaMin = Math.round((frame.time * 1000 - clock) / 60000);
+    if (deltaMin === 0) return `${displayClock} • latest observation`;
+    return deltaMin < 0 ? `${displayClock} • ${-deltaMin}m ago` : `${displayClock} • +${deltaMin}m`;
   };
 
   // Bengaluru arterial corridors (factual geometry) with live incident correlation.
@@ -195,7 +207,7 @@ const CustomMapContainer = ({
     });
 
     let status = "No Active Reports Nearby";
-    let color = "#10B981"; // Emerald green
+    let color = "#64748b"; // Emerald green
     if (nearbyHazards.length >= 2) {
       status = `High Incident Density (${nearbyHazards.length} Active Incidents)`;
       color = "#EF4444"; // Crimson red
@@ -281,7 +293,7 @@ const CustomMapContainer = ({
               setRadarIndex(radarData ? radarData.nowIndex : null);
             }
           }}
-          aria-pressed={showRadar} title="Toggle rain radar"
+          aria-pressed={showRadar} title={t.ui["Toggle rain radar"]}
         >
           <CloudRain size={16} aria-hidden="true" /> {showRadar ? t.actions.hideRadar : t.actions.liveRadar}
         </button>
@@ -290,7 +302,7 @@ const CustomMapContainer = ({
           type="button"
           className={`toolbar-btn ${showTraffic ? "active-amber" : ""}`}
           onClick={() => setShowTraffic(!showTraffic)}
-          aria-pressed={showTraffic} title="Toggle road corridors"
+          aria-pressed={showTraffic} title={t.ui["Toggle road corridors"]}
         >
           <Route size={16} aria-hidden="true" /> {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
         </button>
@@ -304,14 +316,14 @@ const CustomMapContainer = ({
           <Layers size={16} aria-hidden="true" /> {showHeatmap ? (t.actions?.hideHeatmap || "Hide Heatmap") : (t.actions?.heatmap || "Risk Heatmap")}
         </button>
 
-        {/* GEV-style radar timeline: play the past 2h + scrub the 30-min nowcast */}
+        {/* GEV-style radar timeline: play the past radar observations */}
         {showRadar && radarData && radarFrames.length > 0 && (
           <div className="radar-timeline">
             <button
               type="button"
               className="toolbar-btn"
               onClick={() => setIsPlayingRadar((p) => !p)}
-              title="Animate past radar frames + 30-min nowcast"
+              title="Animate past radar observations"
             >
               {isPlayingRadar ? "⏸ Pause" : "▶ Play"}
             </button>
@@ -337,11 +349,14 @@ const CustomMapContainer = ({
               }}
               title="Jump to latest observed radar frame"
             >
-              ⏭ Now
+              ⏭ Latest
             </button>
           </div>
         )}
 
+        {showRadar && <span role="status">{radarError || (currentRadarFrame && clock - currentRadarFrame.time * 1000 > 1800000 ? "Radar observation stale" : "Observed radar · coverage may be incomplete")}</span>}
+        {showTraffic && <span role="status">Traffic: {traffic.status}</span>}
+        {navigationRoute && <span role="status">Route: {navigationRoute.status || "ready"} · static ETA</span>}
         {navigationRoute && (
           <button
             type="button"
@@ -358,7 +373,7 @@ const CustomMapContainer = ({
         )}
 
         <div className="toolbar-hint">
-          <span>Select a point on the map to report a hazard</span>
+          <span>{t.ui["Select a point on the map to report a hazard"]}</span>
         </div>
       </div>
 
@@ -399,13 +414,18 @@ const CustomMapContainer = ({
         {showRadar && currentRadarFrame && (
           <TileLayer
             key={currentRadarFrame.path}
-            url={`https://tilecache.rainviewer.com${currentRadarFrame.path}/256/{z}/{x}/{y}/2/1_1.png`}
+            url={`${radarData.host}${currentRadarFrame.path}/256/{z}/{x}/{y}/2/1_1.png`}
+            maxNativeZoom={7}
+            maxZoom={19}
+            attribution='Radar: <a href="https://www.rainviewer.com/">RainViewer</a>'
+            eventHandlers={{ tileerror: () => setRadarError("Radar tiles unavailable; coverage is not confirmed.") }}
             opacity={0.65}
             zIndex={200}
           />
         )}
 
-        {/* Spatial Risk Heatmap / Density Layer */}
+        {showTraffic && traffic.segments.filter(s => !s.unavailable && clock - Date.parse(s.fetchedAt) < 180000).map(s => <Polyline key={s.id} positions={s.positions} color={s.roadClosure || s.currentSpeed < s.freeFlowSpeed * 0.5 ? '#b42318' : '#176582'} weight={6}><Popup>{s.name}: {s.currentSpeed} km/h · free flow {s.freeFlowSpeed} km/h · confidence {s.confidence} · TomTom fetched {new Date(s.fetchedAt).toLocaleTimeString()} · closure {String(s.roadClosure)}</Popup></Polyline>)}
+        {/* Citizen report density is distinct from measured traffic. */}
         {showHeatmap &&
           events.map((evt) => {
             if (!evt.position || !Number.isFinite(evt.position.lat) || !Number.isFinite(evt.position.lng)) {
@@ -440,7 +460,7 @@ const CustomMapContainer = ({
         {navigationRoute && (navigationRoute.coordinates || Array.isArray(navigationRoute)) && (
           <Polyline
             positions={navigationRoute.coordinates || navigationRoute}
-            color={navigationRoute.hasConflicts ? "#EF4444" : "#10B981"}
+            color={navigationRoute.status !== "ready" ? "#64748b" : navigationRoute.hasConflicts ? "#EF4444" : "#176582"}
             weight={7}
             opacity={0.9}
             dashArray={navigationRoute.hasConflicts ? "6, 8" : undefined}
@@ -450,12 +470,12 @@ const CustomMapContainer = ({
                 <h4>
                   {navigationRoute.hasConflicts
                     ? "⚠️ Caution: High Hazard Route"
-                    : "✓ Safe Navigation Corridor"}
+                    : "No reported hazards on this route"}
                 </h4>
                 <p>
                   {navigationRoute.hasConflicts
                     ? "Route intersects active waterlogged underpass or severe choke point."
-                    : "Corridor verified clear of major civic hazards."}
+                    : "Reports can be incomplete. Check local conditions; travel time excludes live traffic."}
                 </p>
               </div>
             </Popup>

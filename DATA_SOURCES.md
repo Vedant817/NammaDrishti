@@ -1,46 +1,24 @@
-# NammaDrishti — Data Sources & Provenance
+# Source contracts
 
-NammaDrishti is **keyless-first**: every external data source below works with **no API key, no signup, and no metered spend** by default. This document records exactly where each piece of data comes from, how it is used, and its terms — so anyone can audit the platform's inputs the same way [God's Eye View](https://github.com/bilawalsidhu/gods-eye-view) does with `DATA_SOURCES.md`.
+| Data | Source and semantics | Missing/stale behavior |
+|---|---|---|
+| Citizen hazards | Firebase-backed validated Express API; consensus is account agreement, not official verification | Cached/pending items and disconnected route checks remain uncertain |
+| Weather | [Open-Meteo](https://open-meteo.com/en/docs), model current values, UTC observation timestamp and interval | Missing precipitation remains null; older than 30 minutes is stale. An interval accumulation is not an instantaneous rain rate |
+| Radar | [RainViewer transition FAQ](https://www.rainviewer.com/api/transition-faq.html), past frames, native zoom capped at 7, Universal Blue | No future nowcast. Tile/catalog errors and observation age are visible; coverage is not guaranteed |
+| Geocoding | [Nominatim policy](https://operations.osmfoundation.org/policies/nominatim/), explicit searches, Bengaluru bounds, shared server cache/gate and identifying User-Agent | No client autocomplete. Bounded queue rejects excess requests; configurable `GEOCODING_URL` and `GEOCODING_USER_AGENT` |
+| Base map | [OpenStreetMap](https://www.openstreetmap.org/copyright), attributed public tiles | Network dependent; no bulk or offline tile download |
+| Roads/ETA | [OSRM](https://project-osrm.org/docs/v5.24.0/api/), two bounded mirror attempts, static driving estimate | Fails visibly; route search cannot guarantee hazard avoidance. ETA is not traffic-adjusted |
+| Measured traffic | [TomTom flow segments](https://docs.tomtom.com/traffic-api/documentation/tomtom-maps/v1/traffic-flow/flow-segment-data), four sampled corridors, speeds/confidence and retrieval timestamp | Requires `TOMTOM_API_KEY`. Unconfigured/unavailable never becomes zero congestion. Retrieval time is not a provider observation timestamp |
+| Underpasses | Approximate candidate coordinates in source, with explicit unverified provenance; no pump, barrier, depth or threshold claims | Field review/source links remain required. Nearby citizen reports are not sensor confirmations |
+| Flood observations | Operator-configured `FLOOD_OBSERVATIONS_URL`, normalized `{observations:[{lat,lng,depthCm,source,sourceUrl,observedAt}]}` | Only finite Bengaluru values, HTTPS source links and observations within 15 minutes. Feed must be authorized and calibrated before use; no official feed is currently configured |
+| Assistant | Server-owned reports/weather; optional Gemini adapter | Labeled grounded summary when no model is configured. Model responses are advisory and may be wrong |
+| Emergency location | Private durable storage, optional operator webhook | No agreement with emergency services is implied; call 112. ACK requires `{acknowledged:true,dispatchId:<id>}` |
+| Photos | Validated, re-encoded persistent disk objects | Not Firestore inline data. Shared persistent storage and separate attachment backups required |
 
-> **Disclaimer:** NammaDrishti is a *civic awareness and advisory* tool. Crowd-sourced and weather-telemetry data can be incomplete or wrong.
-> **Do not use it for safety-critical decisions.** In an emergency call **112**; for traffic/flood help call **BTP 1095** or **BBMP 1533**.
+Public APIs have usage limits and no availability guarantee. Production authentication/storage requires a Firebase project and server credentials. [Firebase Storage requires billing](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024); this implementation uses persistent disk instead and does not enable paid storage.
 
----
+`npm run doctor` checks Node, dependency/store availability, Open-Meteo, RainViewer, OSRM and local backend health. It does not certify licenses, Bengaluru radar coverage, geocoding policy enforcement across foreign deployments, external provider credentials, sensor accuracy, or emergency delivery.
 
-## Live External Sources (keyless, public)
+## Activated public integrations
 
-| Source | Endpoint(s) | Used for | Auth | Terms / Attribution | Notes |
-|---|---|---|---|---|---|
-| **OpenStreetMap** tiles | `tile.openstreetmap.org/{z}/{x}/{y}.png` | Base map layer | None | [ODbL](https://www.openstreetmap.org/copyright) — "© OpenStreetMap contributors" shown in map attribution | Standard Leaflet usage; fair-use tile policy respected (single city, no bulk scraping) |
-| **OpenStreetMap Nominatim** | `nominatim.openstreetmap.org/search` | Live geocoding for Safe Route origins/destinations and Report Modal ward lookups | None | [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) — browser Referer used as identifier | Serialized to ≤1 req/s with per-query memoization; searches bounded to the Bengaluru viewbox (`bounded=1`) |
-| **RainViewer** radar archive | `api.rainviewer.com/public/weather-maps.json` + `tilecache.rainviewer.com` | Animated 🌧️ radar timeline: past ~2h observed frames + 30-min nowcast, play/scrub in the map toolbar | None | Public API per [RainViewer docs](https://www.rainviewer.com/api.html); free tier permits public map display | Frames refresh every 5 min; app keeps working offline when unreachable |
-| **Open-Meteo** | `api.open-meteo.com/v1/forecast` (Bengaluru coords) | Header weather telemetry, monsoon rain intensity, underpass trigger thresholds | None | [Attribution required](https://open-meteo.com/en/terms) — "Weather data by Open-Meteo.com" | Also drives the AI assistant's answers and City Recap diagnostics |
-| **OSRM public routing mirrors** | `router.project-osrm.org` (primary), `router.project-osrm.de` (FOSSGIS fallback) | Safe Route turn-by-turn corridors + hazard-detour calculation | None | Public OSRM demo servers; ODbL-derived data | Mirror chain: 5xx/network errors fail over `.org` → `.de`; bad input (NoRoute) is a final answer, not retried |
-| **OpenStreetMap share links** | `www.openstreetmap.org/?mlat=…&mlon=…#map=17/…` deep links only | Location pins inside SOS WhatsApp dispatch text and feed share text | None (plain URL) | ODbL data via standard external links; no API call is made | Free Google-Maps alternative — coordinate deep links, we never call or key the paid Maps API |
-
-## Local / Derived Data (no network)
-
-| Source | Location | Used for | Honesty note |
-|---|---|---|---|
-| **Citizen incident stream** | backend store (`DATA_FILE`, defaults to git-ignored `server/incidents.json`) + WebSocket (`socket.io`, port 5001) | Live hazard feed, verification consensus, TTL lifecycle decay | Crowd-sourced; the store **starts empty** on first run — no seeds, no synthetic incidents. Verification is heuristic consensus, not ground truth |
-| **Underpass vulnerability catalog (11)** | `src/data/bengaluruUnderpasses.js` | Chronic flooding chokepoint watch (pump capacity, gate status, trigger mm/hr) | **Curated static catalog** compiled from public BBMP/BTP reporting; needs periodic manual review — clearly labeled in the UI |
-| **Monitoring corridor geometry** | `src/components/Map/MapContainer.jsx` | Silk Board / ORR / Tin Factory / Hebbal overlay lines | Geometry + names are factual; corridor status derives **only** from live citizen report density (no speed/delay estimates) |
-| **Device APIs** | browser Geolocation, `navigator.clipboard` | Proximity alerts, Copy-Link sharing | GPS asks permission in-browser; clipboard copy falls back to a prompt dialog |
-
-### Data honesty policy
-
-Anything rendered to a user originates from one of the tables above. There are no
-sample seeds, placeholder advisories, preset "trust" percentages, baseline speeds,
-or forecast bullets anywhere in the client or server — when data is missing the UI
-shows explicit empty states. Removing or adding data sources must update both
-tables here (`npm run doctor` probes the live list).
-
-## Explicitly Not Included (pending official agreements)
-
-- **CCTV / ANPR camera locations** — OSM-tagged `man_made=surveillance` layer was evaluated and deferred: keyless but needs viewport capping and a privacy review; live video impossible without a BTP/BBMP opt-in agreement.
-- **BMTC / Namma Metro GTFS-RT feeds** — deferred until an official feed or a documented schedule-reconstruction adapter exists.
-- **Satellite / flights / quakes OSINT layers** — global data irrelevant to Bengaluru civic flooding.
-
-## Verification
-
-`npm run doctor` probes every live source above (plus the local backend health endpoint) and prints a green/warning report — run it before deploying or demoing.
+The Vercel deployment uses live TomTom speeds. Open-Meteo/GloFAS adds regional daily river-flow model context (https://open-meteo.com/en/docs/flood-api), not street-flood depth. IMD probes returned 401/API key missing. MyMemory GET (https://mymemory.translated.net/doc/spec.php) generated cached public UI labels only; anonymous quota is 5,000 characters/day per its usage policy. No runtime personal text is sent for translation. See DEPLOYMENT.md for live evidence and limits.

@@ -13,7 +13,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-leaflet": "^5.0.0",
-    "react-scripts": "5.0.1",
     "socket.io": "^4.8.4",
     "socket.io-client": "^4.8.4",
     "web-vitals": "^5.0.3"
@@ -22,41 +21,33 @@
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.1"
+    "@testing-library/user-event": "^14.6.1",
+    "@vitejs/plugin-react": "^6.2.1",
+    "jsdom": "^29.1.1",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "vite --host 127.0.0.1 --port 3000",
     "server": "node server/index.js",
     "doctor": "node scripts/doctor.js",
-    "build": "react-scripts build && node scripts/prepare-service-worker.js",
-    "test": "react-scripts test",
-    "test:ci": "react-scripts test --watchAll=false",
+    "build": "vite build && node scripts/prepare-service-worker.js",
+    "test": "vitest",
+    "test:ci": "vitest run",
     "test:backend": "node --test server/test/*.test.js",
     "test:e2e": "node scripts/simulate_user.js",
     "test:sandbox": "node scripts/sandbox_scenario_runner.js",
     "test:brutal": "node scripts/brutal_stress_runner.js",
     "test:all": "npm run test:ci && npm run test:backend && npm run test:e2e && npm run test:sandbox && npm run test:brutal",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/backup.js restore",
+    "test:recovery": "node --test server/test/recovery.test.js",
+    "i18n:sync": "node scripts/sync-ui-translations.js"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0 <25"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.0"
   }
 }

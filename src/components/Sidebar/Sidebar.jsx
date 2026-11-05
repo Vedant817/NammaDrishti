@@ -1,3 +1,4 @@
+import { API_BASE } from "../../services/api";
 import { authenticatedFetch as fetch } from "../../services/firebaseService";
 // src/components/Sidebar/Sidebar.jsx
 import React, { useState } from "react";
@@ -7,19 +8,7 @@ import { EMERGENCY_CONTACTS } from "../../data/constants";
 import { useLanguage } from "../../context/LanguageContext";
 import "./Sidebar.css";
 
-const getApiBase = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  if (
-    typeof window !== "undefined" &&
-    window.location.hostname !== "localhost" &&
-    window.location.hostname !== "127.0.0.1"
-  ) {
-    return `${window.location.origin}/api`;
-  }
-  return "http://localhost:5001/api";
-};
 
-const API_BASE = getApiBase();
 
 const Sidebar = ({
   activeTab = "feed",
@@ -36,12 +25,14 @@ const Sidebar = ({
   userLocation = null,
 }) => {
   const { t } = useLanguage();
+  const [delivery, setDelivery] = useState(null);
   const [sosStatus, setSosStatus] = useState(null);
   const [acquiringGps, setAcquiringGps] = useState(false);
 
   const handleTriggerSos = () => {
     setAcquiringGps(true);
     setSosStatus(null);
+    setDelivery(null);
 
     const onCoordsAcquired = (lat, lng) => {
       setAcquiringGps(false);
@@ -56,7 +47,7 @@ const Sidebar = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
-        }).catch(() => {});
+        }).then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); setDelivery(data.status); }).catch(() => setDelivery('SAVE_FAILED'));
       } catch (err) {
         // Continue even if network is restricted
       }
@@ -86,7 +77,7 @@ const Sidebar = ({
             )}`,
           });
         },
-        { timeout: 7000, enableHighAccuracy: true }
+        { timeout: 7000, enableHighAccuracy: true, maximumAge: 0 }
       );
     } else {
       setAcquiringGps(false);
@@ -127,6 +118,7 @@ const Sidebar = ({
       </div>
 
       <div className="sidebar-scrollable-body">
+        {delivery && <p role="status">{delivery} · {t.live.call112}</p>}
         {activeTab === "feed" && (
           <PersonalizedFeed
             events={events}
@@ -159,7 +151,7 @@ const Sidebar = ({
             <div className="emergency-sos-box">
               <div className="sos-box-header">
                 <span className="sos-badge">Need urgent help?</span>
-                <a className="sos-network" href="tel:112">Call 112</a>
+                <a className="sos-network" href="tel:112">{t.ui["Call 112"]}</a>
               </div>
               <h5>{t.sidebar?.sosTitle || "One-Tap Bengaluru Emergency SOS Dispatch"}</h5>
               <p>{t.sidebar?.sosDesc || "Instantly broadcast your GPS location to BTP & BBMP control and generate emergency WhatsApp dispatch."}</p>
@@ -170,7 +162,7 @@ const Sidebar = ({
                 onClick={handleTriggerSos}
                 disabled={acquiringGps}
               >
-                {acquiringGps ? "Finding your location…" : "Share emergency location"}
+                {acquiringGps ? "Finding your location…" : t.ui["Share emergency location"]}
               </button>
 
               {sosStatus && (
@@ -200,12 +192,12 @@ const Sidebar = ({
                       💬 Send WhatsApp SOS
                     </a>
                     <a
-                      href={`sms:112?body=${encodeURIComponent(
+                      href={`sms:?body=${encodeURIComponent(
                         sosStatus.isVerifiedGps ? `EMERGENCY ALERT [NammaDrishti]: Stranded in Bengaluru at GPS: ${sosStatus.lat.toFixed(5)}, ${sosStatus.lng.toFixed(5)}. Need urgent assistance.` : 'EMERGENCY ALERT [NammaDrishti]: Need urgent assistance in Bengaluru. GPS unavailable; contact me for my location.'
                       )}`}
                       className="sos-sms-btn"
                     >
-                      📱 SMS (Offline GSM)
+                      📱 SMS
                     </a>
                     <a href="tel:112" className="sos-dial-btn">
                       📞 Call 112 (Police/Med)

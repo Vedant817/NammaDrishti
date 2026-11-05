@@ -36,3 +36,15 @@ self.addEventListener('fetch', event => {
     return response;
   })());
 });
+
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    const data = event.data ? event.data.json() : {};
+    const url = typeof data.url === 'string' && data.url.startsWith('/?incident=') ? data.url : '/';
+    await self.registration.showNotification('NammaDrishti', { body: data.body || 'New road hazard report near your saved area.', icon:'/logo192.png', tag:'nearby-hazard', data:{url} });
+  })());
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(self.clients.openWindow(new URL(event.notification.data?.url || '/', self.location.origin).href));
+});

@@ -170,7 +170,7 @@ const ReportModal = ({
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Report a hazard" tabIndex={-1} className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{reportT.modalTitle}</h3>
-          <button type="button" className="close-btn" aria-label="Close dialog" onClick={onClose}>
+          <button type="button" className="close-btn" aria-label={t.ui["Close dialog"]} onClick={onClose}>
             ✕
           </button>
         </div>

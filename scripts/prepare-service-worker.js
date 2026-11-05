@@ -2,7 +2,15 @@ const fs = require('fs');
 const path = require('path');
 const { createHash } = require('crypto');
 function prepareServiceWorker(buildDir = path.join(__dirname, '..', 'build')) {
-  const manifestText = fs.readFileSync(path.join(buildDir, 'asset-manifest.json'), 'utf8');
+  let manifestText;
+  const legacy = path.join(buildDir, 'asset-manifest.json');
+  if (fs.existsSync(legacy)) manifestText = fs.readFileSync(legacy, 'utf8');
+  else {
+    const vite = JSON.parse(fs.readFileSync(path.join(buildDir, '.vite/manifest.json'), 'utf8'));
+    const files = [...new Set(Object.values(vite).flatMap(entry => [entry.file, ...(entry.css || [])]).filter(Boolean))];
+    manifestText = JSON.stringify({ files: Object.fromEntries(files.map(file => [file, '/' + file])) });
+    fs.writeFileSync(legacy, manifestText);
+  }
   const manifest = JSON.parse(manifestText);
   const worker = fs.readFileSync(path.join(__dirname, '..', 'public', 'sw.js'), 'utf8');
   const assets = ['/index.html', '/manifest.json', '/favicon.ico', ...Object.values(manifest.files).filter(file => /\.(js|css)$/.test(file))];

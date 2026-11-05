@@ -1,0 +1,42 @@
+.account-overlay { z-index: 3000; padding: 16px; }
+.account-panel { width: min(100%, 440px); max-height: calc(100dvh - 32px); overflow: hidden; display: flex; flex-direction: column; background: var(--bg-surface, #fff); color: var(--text-primary, #203640); border: 1px solid var(--border-subtle, #d7e0e5); border-radius: 12px; box-shadow: var(--shadow-modal, 0 20px 70px #142e4033); outline: none; }
+.account-panel--moderator { width: min(100%, 760px); }
+.account-panel__header { display: flex; align-items: center; gap: 12px; padding: 22px 24px; border-bottom: 1px solid var(--border-subtle, #d7e0e5); flex-shrink: 0; }
+.account-panel__icon { display: grid; place-items: center; height: 42px; width: 42px; flex-shrink: 0; border-radius: 9px; color: var(--brand-accent, #176582); background: var(--bg-elevated, #edf3f6); }
+.account-panel__header h2 { margin: 0; font: 500 28px/1.15 var(--font-display, sans-serif); }
+.account-panel__close { margin-left: auto; flex-shrink: 0; display: grid; place-items: center; width: 40px; height: 40px; background: transparent; border: 1px solid var(--border-subtle, #d7e0e5); color: var(--text-secondary); border-radius: 6px; cursor: pointer; }
+.account-panel__body { padding: 24px; overflow-y: auto; overscroll-behavior: contain; }
+.account-panel__intro { margin: 0 0 22px; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+.account-panel__modes { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 24px; border: 1px solid var(--border-light, #bdcdd6); border-radius: 6px; overflow: hidden; }
+.account-panel__modes button { min-height: 44px; padding: 9px; border: 0; background: var(--bg-surface); color: var(--text-secondary); font: 600 14px var(--font-sans, sans-serif); cursor: pointer; }
+.account-panel__modes button + button { border-left: 1px solid var(--border-light, #bdcdd6); }
+.account-panel__modes button[aria-pressed="true"] { background: var(--bg-hover, #e7f0f4); color: var(--brand-accent, #176582); box-shadow: inset 0 -2px var(--brand-accent, #176582); }
+.account-panel__form { display: grid; gap: 18px; }
+.account-panel__field { display: grid; gap: 7px; }
+.account-panel label { color: var(--text-secondary); font-size: 14px; font-weight: 600; }
+.account-panel input, .account-panel textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 46px; padding: 10px 12px; font: 16px/1.4 var(--font-sans, sans-serif); border: 1px solid var(--border-light, #bdcdd6); border-radius: 5px; background: var(--bg-input, #fff); color: var(--text-primary); }
+.account-panel textarea { min-height: 80px; margin: 8px 0 18px; resize: vertical; }
+.account-panel input:focus, .account-panel textarea:focus { outline: 2px solid var(--brand-accent, #176582); outline-offset: 2px; }
+.account-panel__field small { color: var(--text-muted); font-size: 12px; }
+.account-panel__primary { min-height: 46px; padding: 12px 16px; margin-top: 4px; background: var(--brand-accent, #176582); color: #fff; border: 1px solid var(--brand-accent, #176582); border-radius: 5px; font: 600 15px var(--font-sans, sans-serif); cursor: pointer; }
+.account-panel__primary:hover:not(:disabled) { background: #114f67; }
+.account-panel button:disabled { opacity: .6; cursor: wait; }
+.account-panel__status { margin: 20px 0 0; padding: 12px; border-left: 3px solid var(--brand-accent); background: var(--bg-elevated); font-size: 14px; line-height: 1.5; }
+.account-panel__status.is-error { border-color: #b42318; color: #98251e; }
+.account-panel__identity { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--border-subtle); border-radius: 6px; }
+.account-panel__email { overflow-wrap: anywhere; font-weight: 600; }
+.account-panel__verification { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.account-panel__verification.is-verified { color: #176545; align-items: center; }
+.account-panel__actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 20px; }
+.account-panel__actions button, .account-panel__report button { min-height: 42px; padding: 9px 12px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 5px; color: var(--brand-accent); font: 600 13px var(--font-sans, sans-serif); cursor: pointer; }
+.account-panel__moderation { border-top: 1px solid var(--border-subtle); margin-top: 24px; padding-top: 22px; }
+.account-panel__moderation h3 { margin: 0 0 18px; font: 500 24px var(--font-display); }
+.account-panel__report { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border-subtle); }
+.account-panel__report p { font-size: 14px; color: var(--text-secondary); margin: 6px 0; }
+.account-panel__moderation details { margin-top: 20px; font-size: 13px; }
+.account-panel__moderation summary { cursor: pointer; font-weight: 600; }
+.account-panel__metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 20px 0 0; font-size: 13px; }
+.account-panel__metrics div { padding: 10px; background: var(--bg-elevated); }
+.account-panel__metrics dt { font-weight: 600; }
+.account-panel__metrics dd { margin: 5px 0 0; color: var(--text-secondary); }
+@media (max-width: 480px) { .account-overlay { padding: 12px; } .account-panel { max-height: calc(100dvh - 24px); } .account-panel__header { padding: 18px; } .account-panel__body { padding: 20px; } .account-panel__header h2 { font-size: 26px; } .account-panel__actions { flex-direction: column; } }

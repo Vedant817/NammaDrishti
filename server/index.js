@@ -10,7 +10,8 @@ const { hasAuthorityAccess, voterKeyFor } = require('./services/accessControl');
 
 const { getHexIndex, getHexRing } = require('./services/spatialHex.js');
 const { createRateLimiter } = require('./services/rateLimiter.js');
-const { processMediaUpload } = require('./services/mediaService.js');
+const { processMediaUpload, MEDIA_DIR } = require('./services/mediaService.js');
+const { publicIncident } = require('./services/publicIncident');
 
 const app = express();
 const server = http.createServer(app);
@@ -36,12 +37,63 @@ const io = new Server(server, {
   },
 });
 
-const firebaseStore = require.main === module && process.env.NODE_ENV !== 'test' && process.env.FIREBASE_PROJECT_ID
+const liveData = require('./services/liveData').createLiveData({ reserveGeocode: async () => {
+  if (!firebaseStore) { const wait = Math.max(0, localGeocodeAt - Date.now()); localGeocodeAt = Math.max(Date.now(), localGeocodeAt) + 1100; await new Promise(r => setTimeout(r, wait)); return; }
+  const ref = firebaseStore.db.collection('_coordination').doc('geocoder');
+  const owner = require('crypto').randomUUID();
+  const wait = await firebaseStore.db.runTransaction(async tx => {
+    const item=(await tx.get(ref)).data();
+    if(item?.until>Date.now())throw new Error('Geocoder busy; retry shortly');
+    const wait=Math.max(0,(item?.nextAt||0)-Date.now());
+    tx.set(ref,{owner,until:Date.now()+15000,nextAt:Date.now()+1100});return wait;
+  });
+  await new Promise(r=>setTimeout(r,wait));
+  return async()=>firebaseStore.db.runTransaction(async tx=>{const item=(await tx.get(ref)).data();if(item?.owner===owner)tx.set(ref,{until:0,nextAt:Date.now()+1100});});
+} });
+let localGeocodeAt = 0;
+const sourceLimiter = createRateLimiter({ windowMs: 60000, maxRequests: 60, message: 'Source request limit reached.' });
+// Network reads do not hold the incident mutation queue.
+app.get('/api/weather', sourceLimiter, async (req, res) => {
+  try { res.json(await liveData.weather(req.query.lat === undefined ? undefined : Number(req.query.lat), req.query.lng === undefined ? undefined : Number(req.query.lng))); }
+  catch { res.status(503).json({ error: 'Weather unavailable', isOffline: true, precipitation: null }); }
+});
+app.get('/api/geocode', sourceLimiter, async (req, res) => {
+  try { res.json({ results: await liveData.geocode(req.query.q), attribution: '© OpenStreetMap contributors' }); }
+  catch (e) { res.status(503).json({ error: e.message }); }
+});
+app.get('/api/traffic', sourceLimiter, async (req, res) => {
+  try { res.json(await liveData.traffic()); } catch { res.status(503).json({ status: 'unavailable', segments: [] }); }
+});
+app.get('/api/flood-context', sourceLimiter, async(req,res)=>{try{res.json(await liveData.floodContext());}catch{res.status(503).json({status:'unavailable',forecast:[]});}});
+app.get('/api/flood-observations', sourceLimiter, async (req, res) => {
+  try { res.json(await liveData.observations()); } catch { res.status(503).json({ status: 'unavailable', observations: [] }); }
+});
+
+const serverRuntime = require.main === module || process.env.VERCEL === '1';
+const firebaseStore = serverRuntime && process.env.NODE_ENV !== 'test' && process.env.FIREBASE_PROJECT_ID
   ? require('./services/firebaseStore').createFirebaseStore(process.env.FIREBASE_PROJECT_ID)
   : null;
+if (process.env.VERCEL === '1' && !firebaseStore) throw new Error('Hosted backend requires Firebase configuration.');
+const records = require('./services/records').createRecords({ db: firebaseStore?.db, directory: process.env.STATE_DIR || (process.env.DATA_FILE ? path.dirname(process.env.DATA_FILE) : undefined) });
+function defer(work) {
+  const safe = work.catch(() => console.error('[Background] Task failed; durable job retained'));
+  if (process.env.VERCEL === '1') require('@vercel/functions').waitUntil(safe);
+}
+const pushService = require('./services/pushService').createPushService(records);
+const pushTimer = setInterval(() => pushService.process(incidents).catch(() => console.error('[Push] Delivery queue unavailable')), 15000);
+pushTimer.unref();
+const emergencyOutbox = require('./services/emergencyOutbox').createEmergencyOutbox(records);
+const outboxTimer = setInterval(() => emergencyOutbox.process().catch(() => console.error('[SOS] Outbox storage unavailable')), 10000);
+outboxTimer.unref();
 let storageReady = !firebaseStore;
 let storageQueue = Promise.resolve();
 let pendingCommit = Promise.resolve();
+async function coordinated(task) {
+  if (!firebaseStore) return task();
+  const release = await firebaseStore.lease.acquire();
+  try { incidents = await firebaseStore.load(); return await task(); }
+  finally { await release(); }
+}
 function serializeStorage(task) {
   const result = storageQueue.then(task);
   storageQueue = result.catch(() => {});
@@ -52,22 +104,38 @@ function serializeStorage(task) {
 // owns this index; multiple replicas require a transactional repository instead.
 app.use('/api', async (req, res, next) => {
   if (!firebaseStore) return next();
+  if (process.env.VERCEL === '1') {
+    try { await ready; }
+    catch { return res.status(503).json({ error: 'Incident storage unavailable.' }); }
+  }
   if (!storageReady) return res.status(503).json({ error: 'Incident storage is initializing.' });
+  if (process.env.VERCEL === '1' && Date.now() - lastMaintenance > 60000) {
+    lastMaintenance = Date.now();
+    defer(maintenance());
+  }
   if (req.method !== 'GET' && req.method !== 'OPTIONS') {
     try {
       const match = /^Bearer (.+)$/.exec(req.headers.authorization || '');
       if (!match) return res.status(401).json({ error: 'Firebase sign-in required.' });
-      req.citizen = await firebaseStore.auth.verifyIdToken(match[1]);
+      req.citizen = await firebaseStore.auth.verifyIdToken(match[1], true);
+      if(req.path.startsWith('/incidents') && process.env.REQUIRE_VERIFIED_IDENTITY !== 'false' && !req.citizen.email_verified) return res.status(403).json({error:'Verify your email in Citizen account before reporting or voting.'});
       req.body = { ...req.body, voterId: req.citizen.uid };
     } catch { return res.status(401).json({ error: 'Invalid Firebase sign-in token.' }); }
   }
-  serializeStorage(() => new Promise(resolve => {
+  if (!req.path.startsWith('/incidents')) return next();
+  // Decode legacy inline photos before acquiring the mutation lease. A client
+  // disconnect during decoding must not release a lease for a still-running write.
+  if (req.method === 'POST' && typeof req.body?.mediaUrl === 'string' && req.body.mediaUrl.startsWith('data:')) {
+    try { req.body.mediaUrl = (await processMediaUpload({imageBase64:req.body.mediaUrl})).mediaUrl; }
+    catch { return res.status(400).json({error:'Invalid image attachment.'}); }
+  }
+  serializeStorage(() => coordinated(() => new Promise(resolve => {
     if (res.destroyed) return resolve();
     res.once('finish', resolve);
     // A disconnected client must not release the index while its write is pending.
     res.once('close', () => { pendingCommit.then(resolve, resolve); });
     next();
-  })).catch(next);
+  }))).catch(() => { if (!res.headersSent) res.status(503).json({ error: 'Storage busy; retry shortly.' }); });
 });
 
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'incidents.json');
@@ -212,7 +280,7 @@ function cleanupExpiredIncidents() {
 // Run cleanup every 60 seconds (documented lifecycle ticker cadence)
 const cleanupInterval = setInterval(() => {
   if (!firebaseStore) cleanupExpiredIncidents();
-  else if (storageReady) serializeStorage(cleanupExpiredIncidents).catch(err => console.error('[Lifecycle]', err.message));
+  else if (storageReady) serializeStorage(() => coordinated(cleanupExpiredIncidents)).catch(err => console.error('[Lifecycle]', err.message));
 }, 60 * 1000);
 if (cleanupInterval.unref) cleanupInterval.unref();
 
@@ -250,12 +318,13 @@ const sosLimiter = createRateLimiter({
 // REST ENDPOINTS
 
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'online',
+  res.status(storageReady ? 200 : 503).json({
+    status: storageReady ? 'online' : 'initializing',
     app: 'NammaDrishti Real-Time Civic & Transit Radar Backend',
     activeIncidents: incidents.length,
     storage: firebaseStore ? 'firestore' : 'local-json',
     authentication: firebaseStore ? 'firebase' : 'device-id',
+    replicaMode: firebaseStore ? 'fenced-writer-with-live-snapshots' : 'single-process',
     ttlPolicies: TTL_HOURS_BY_TYPE,
     features: {
       spatialClustering: true,
@@ -268,7 +337,7 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/incidents', (req, res) => {
   const { type, urgency, ward, verified, hex } = req.query;
-  let filtered = [...incidents];
+  let filtered = incidents.map(publicIncident).filter(Boolean);
 
   if (type && type !== 'All') {
     filtered = filtered.filter((i) => i.type.toLowerCase() === type.toLowerCase());
@@ -288,7 +357,7 @@ app.get('/api/incidents', (req, res) => {
     filtered = filtered.filter((i) => ring.includes(i.hexIndex));
   }
 
-  res.json(filtered);
+  res.json(filtered.map(publicIncident).filter(Boolean));
 });
 
 // Hexagonal spatial partition endpoint (queries hex cell and its 8 neighbor rings)
@@ -296,12 +365,12 @@ app.get('/api/incidents/hex/:hexId', (req, res) => {
   const { hexId } = req.params;
   const targetHexes = new Set(getHexRing(hexId));
 
-  const localizedIncidents = incidents.filter((i) => targetHexes.has(i.hexIndex));
+  const localizedIncidents = incidents.filter((i) => !i.moderationHidden && targetHexes.has(i.hexIndex));
   res.json({
     hexId,
     neighborhoodRing: Array.from(targetHexes),
     totalCount: localizedIncidents.length,
-    incidents: localizedIncidents,
+    incidents: localizedIncidents.map(publicIncident).filter(Boolean),
   });
 });
 
@@ -317,13 +386,13 @@ app.get('/api/incidents/spatial/neighborhood', (req, res) => {
 
   const centerHex = getHexIndex(nLat, nLng, 8);
   const ring = getHexRing(centerHex);
-  const neighborhoodIncidents = incidents.filter((i) => ring.includes(i.hexIndex));
+  const neighborhoodIncidents = incidents.filter((i) => !i.moderationHidden && ring.includes(i.hexIndex));
 
   res.json({
     centerHex,
     activeRings: ring,
     count: neighborhoodIncidents.length,
-    incidents: neighborhoodIncidents,
+    incidents: neighborhoodIncidents.map(publicIncident).filter(Boolean),
   });
 });
 
@@ -338,16 +407,17 @@ app.post('/api/media/upload', mediaLimiter, async (req, res) => {
   }
 });
 
+app.use('/api/media/objects', express.static(MEDIA_DIR, { dotfiles: 'deny', immutable: true, maxAge: '1y', setHeaders: res => res.setHeader('X-Content-Type-Options', 'nosniff') }));
 app.get('/api/media/status', (req, res) => {
   res.json({
     cloudinaryConfigured: Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY),
-    provider: process.env.CLOUDINARY_CLOUD_NAME ? 'Cloudinary CDN' : 'Optimized Direct Storage',
-    maxPayloadMb: 10,
+    provider: 'Persistent disk',
+    maxPayloadMb: 2,
   });
 });
 
 app.post('/api/incidents', reportLimiter, async (req, res) => {
-  const { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability } = req.body || {};
+  let { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability } = req.body || {};
 
   if (urgency !== undefined && !['Low', 'Medium', 'High'].includes(urgency)) return res.status(400).json({ error: 'Invalid urgency.' });
   if (id !== undefined && (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(id))) return res.status(400).json({ error: 'Invalid incident ID.' });
@@ -388,17 +458,19 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Invalid media attachment: payload exceeds the 3MB inline limit.' });
     }
     const isHttpUrl = /^https?:\/\/[^\s]+$/i.test(mediaUrl) && mediaUrl.length <= 2048;
-    const isImageDataURL = /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(mediaUrl);
-    if (!isHttpUrl && !isImageDataURL) {
-      return res.status(400).json({ error: 'Invalid media attachment: only http(s) URLs or base64 image data URLs are permitted.' });
-    }
+    const isLocalObject = /^\/api\/media\/objects\/[a-f0-9]{64}\.webp$/.test(mediaUrl);
+    if (mediaUrl.startsWith('data:image/')) {
+      try { mediaUrl = (await processMediaUpload({ imageBase64: mediaUrl })).mediaUrl; }
+      catch { return res.status(400).json({ error: 'Invalid image attachment.' }); }
+    } else if (!isHttpUrl && !isLocalObject) return res.status(400).json({ error: 'Invalid media attachment.' });
   }
 
   // Deduplicate if client supplied specific ID
   if (id) {
     const existing = incidents.find((i) => i.id === id);
+    if (existing?.moderationHidden) return res.status(409).json({error:"This report is under moderation."});
     if (existing) {
-      return res.status(200).json(existing);
+      return res.status(200).json(publicIncident(existing));
     }
   }
 
@@ -415,6 +487,7 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
   // 1. SPATIAL CLUSTERING & AUTO-MERGE (200m / 60 min threshold)
   const now = Date.now();
   const clusterMatch = incidents.find((inc) => {
+    if (inc.moderationHidden) return false;
     if (inc.type !== category) return false;
     const dist = getDistanceKm(inc.position.lat, inc.position.lng, lat, lng);
     if (dist > 0.2) return false; // More than 200m away
@@ -480,21 +553,22 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
     }
 
     // Broadcast cluster update to all clients and to the spatial hex room
+    defer(pushService.enqueue(clusterMatch).then(() => pushService.process(incidents)));
     io.emit('incident:clustered', {
-      ...clusterMatch,
+      ...publicIncident(clusterMatch),
       id: clusterMatch.id,
       clusterId: clusterMatch.id,
       verificationCount: clusterMatch.verificationCount,
       verificationScore: clusterMatch.verificationScore,
       clusterCount: clusterMatch.clusterCount,
       isVerified: clusterMatch.isVerified,
-      latestUpdate: clusterMatch.updates[0],
-      updates: clusterMatch.updates,
+      latestUpdate: publicIncident(clusterMatch).updates?.[0],
+      updates: publicIncident(clusterMatch).updates || [],
     });
-    io.to(`hex:${clusterMatch.hexIndex || hexIndex}`).emit('incident:spatial_update', clusterMatch);
+    io.to(`hex:${clusterMatch.hexIndex || hexIndex}`).emit('incident:spatial_update', publicIncident(clusterMatch));
 
     return res.status(200).json({
-      ...clusterMatch,
+      ...publicIncident(clusterMatch),
       isClustered: true,
       message: 'Merged with nearby active hazard report within 200m corridor.',
     });
@@ -537,18 +611,19 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
   }
 
   // Real-time broadcast to all connected WebSocket clients and hex room
-  io.emit('incident:created', newIncident);
-  io.emit('incident:new', newIncident);
-  io.to(`hex:${hexIndex}`).emit('incident:spatial_update', newIncident);
+  defer(pushService.enqueue(newIncident).then(() => pushService.process(incidents)));
+  io.emit('incident:created', publicIncident(newIncident));
+  io.emit('incident:new', publicIncident(newIncident));
+  io.to(`hex:${hexIndex}`).emit('incident:spatial_update', publicIncident(newIncident));
 
-  res.status(201).json(newIncident);
+  res.status(201).json(publicIncident(newIncident));
 });
 
 // 3. PROXIMITY-WEIGHTED VERIFICATION ENDPOINT
 app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
   const { id } = req.params;
   const { voterPosition, voterId } = req.body || {};
-  const incident = incidents.find((i) => i.id === id);
+  const incident = incidents.find((i) => i.id === id && !i.moderationHidden);
 
   if (!incident) {
     return res.status(404).json({ error: 'Incident not found' });
@@ -623,7 +698,7 @@ app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
 // 4. MULTI-CITIZEN CLEARANCE ENDPOINT
 app.post('/api/incidents/:id/resolve', async (req, res) => {
   const { id } = req.params;
-  const index = incidents.findIndex((i) => i.id === id);
+  const index = incidents.findIndex((i) => i.id === id && !i.moderationHidden);
 
   if (index === -1) {
     return res.status(404).json({ error: 'Incident not found' });
@@ -695,156 +770,95 @@ app.post('/api/incidents/:id/resolve', async (req, res) => {
   });
 });
 
-const emergencyDispatches = [];
-
-// 5. EMERGENCY SOS DISPATCH ENDPOINT (Secured dispatch room & privacy protection)
-app.post('/api/sos/dispatch', sosLimiter, (req, res) => {
-  const { lat, lng, timestamp } = req.body || {};
-  if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-    return res.status(400).json({ error: 'Valid GPS coordinates (lat, lng) are required for emergency dispatch.' });
-  }
-
-  const dispatchEvent = {
-    id: `sos_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    lat: Number(lat),
-    lng: Number(lng),
-    timestamp: timestamp || new Date().toISOString(),
-    status: 'LOCATION_RECORDED',
-    targetAgencies: [
-      { name: 'Karnataka Police Emergency Response Support System', phone: '112' },
-      { name: 'Bengaluru Traffic Police Control Desk', phone: '1095' },
-      { name: 'BBMP Disaster Management Control Room', phone: '1533' },
-    ],
-  };
-
-  emergencyDispatches.push(dispatchEvent);
-  if (emergencyDispatches.length > 100) emergencyDispatches.shift();
-
-  // Route ONLY to authorized emergency dispatch channels, protecting citizen privacy
-  io.to('emergency:control_room').emit('emergency:sos', dispatchEvent);
-
-  // If external dispatch webhook is configured, asynchronously post
-  if (process.env.EMERGENCY_DISPATCH_WEBHOOK_URL) {
-    fetch(process.env.EMERGENCY_DISPATCH_WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dispatchEvent),
-    }).catch((err) => {
-      console.warn('[SOS Dispatch] External webhook deferred:', err.message);
-    });
-  }
-
-  res.status(200).json({
-    success: true,
-    dispatchId: dispatchEvent.id,
-    status: 'LOCATION_RECORDED',
-    message: 'Location recorded. Emergency-service delivery is not confirmed; call 112 for urgent help.',
-    authorities: dispatchEvent.targetAgencies,
-    directDial: '112',
-    dispatch: dispatchEvent,
-  });
+// Durable private delivery outbox. A recipient ACK is distinct from agency dispatch.
+app.post('/api/sos/dispatch', sosLimiter, async (req, res) => {
+  const {lat,lng}=req.body||{};
+  if(typeof lat!=='number'||typeof lng!=='number'||!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return res.status(400).json({error:'Valid GPS coordinates required.'});
+  try {
+    const event=await emergencyOutbox.enqueue(lat,lng,req.citizen?.uid);
+    io.to('emergency:control_room').emit('emergency:sos',event);
+    res.json({success:true,dispatchId:event.id,status:event.status,message:'Location saved. Call 112; emergency-service delivery is not confirmed.',directDial:'112'});
+    defer(emergencyOutbox.process());
+  }catch {res.status(503).json({error:'Location could not be saved. Call 112.'});}
 });
-
-app.get('/api/sos/dispatches', (req, res) => {
-  if (!hasAuthorityAccess(req.headers['x-authority-token'])) {
-    return res.status(401).json({ error: 'Unauthorized: Authority credentials required.' });
-  }
-  res.json({ dispatches: emergencyDispatches });
+app.get('/api/sos/dispatches',async(req,res)=>{
+  if(!hasAuthorityAccess(req.headers['x-authority-token']))return res.status(401).json({error:'Authority credentials required.'});
+  try {res.json({dispatches:await records.list('emergencyOutbox')});}catch {res.status(503).json({error:'History unavailable'});}
+});
+app.get('/api/sos/status/:id',async(req,res)=>{
+  try {
+    const token=/^Bearer (.+)$/.exec(req.headers.authorization||'');
+    const uid=firebaseStore&&token?(await firebaseStore.auth.verifyIdToken(token[1])).uid:null;
+    const item=await records.get('emergencyOutbox',req.params.id);
+    if(!item || (!hasAuthorityAccess(req.headers['x-authority-token']) && (!uid || uid!==item.uid)))return res.status(404).json({error:'Dispatch not found'});
+    res.json({id:item.id,status:item.status,attempts:item.attempts});
+  }catch {res.status(401).json({error:'Sign in required'});}
 });
 
 // 6. CONVERSATIONAL AI TRANSIT ASSISTANT ENDPOINT
-app.post('/api/assistant/chat', aiLimiter, (req, res) => {
-  const { message } = req.body || {};
-  if (!message || typeof message !== 'string') {
-    return res.status(400).json({ error: 'Prompt message is required.' });
-  }
-
-  const query = message.toLowerCase().trim();
-  const activeHazards = incidents.filter((i) => !i.isResolved);
-  const trafficCount = activeHazards.filter((i) => i.type === 'Traffic').length;
-  const waterlogCount = activeHazards.filter((i) => i.type === 'Waterlogging').length;
-
-  let reply = '';
-  const sources = [];
-
-  if (query.includes('silk board') || query.includes('silkboard') || query.includes('btm') || query.includes('hsr')) {
-    const silk = activeHazards.find(
-      (i) =>
-        i.title.toLowerCase().includes('silk board') ||
-        i.title.toLowerCase().includes('btm') ||
-        i.title.toLowerCase().includes('hsr') ||
-        (i.ward && (i.ward.toLowerCase().includes('btm') || i.ward.toLowerCase().includes('hsr') || i.ward.toLowerCase().includes('silk board')))
-    );
-    if (silk) {
-      reply = `🚨 ${silk.title} (${silk.ward || 'Silk Board / BTM / HSR corridor'}): ${silk.description} Confirmed by ${silk.verificationCount} citizen(s). Check the live map and Safe Route radar before heading out.`;
-      sources.push(silk.title);
-    } else {
-      reply = `No citizen report currently mentions Silk Board, BTM, or HSR. Absence of reports is not a guarantee of clear roads — verify on the live map.`;
-    }
-  } else if (query.includes('flood') || query.includes('waterlog') || query.includes('underpass') || query.includes('panathur')) {
-    const panathur = activeHazards.find((i) => i.title.toLowerCase().includes('panathur'));
-    if (panathur) {
-      const depthText = panathur.waterDepth ? ` Reported depth: ${panathur.waterDepth}.` : '';
-      reply = `⚠️ ${panathur.title} (${panathur.ward || 'Panathur'}): ${panathur.description}${depthText} Confirmed by ${panathur.verificationCount} citizen(s). Consider alternate routes and verify conditions locally.`;
-      sources.push(panathur.title);
-    } else if (waterlogCount > 0) {
-      reply = `Bengaluru has ${waterlogCount} active waterlogging point(s) reported right now. Avoid low-lying underpasses and monitor live Doppler radar.`;
-    } else {
-      reply = `No active waterlogging reports right now — but this is citizen-driven data that can lag reality. Check the rain radar and underpass trigger thresholds on the map before you cross.`;
-    }
-  } else if (query.includes('hebbal') || query.includes('airport') || query.includes('expressway') || query.includes('bellary')) {
-    const hebbal = activeHazards.find(
-      (i) =>
-        i.title.toLowerCase().includes('hebbal') ||
-        i.title.toLowerCase().includes('airport') ||
-        i.title.toLowerCase().includes('expressway') ||
-        (i.ward && i.ward.toLowerCase().includes('hebbal')) ||
-        (i.description && (i.description.toLowerCase().includes('hebbal') || i.description.toLowerCase().includes('airport')))
-    );
-    if (hebbal) {
-      reply = `✈️ ${hebbal.title} (${hebbal.verificationCount} citizen confirmations): ${hebbal.description} Plan extra lead time for airport drives and verify on the live map.`;
-      sources.push(hebbal.title);
-    } else {
-      reply = `No citizen report on the Hebbal / airport corridor right now. Reports can lag road reality — check the live map before you leave.`;
-    }
-  } else if (query.includes('radar') || query.includes('rain') || query.includes('weather') || query.includes('forecast') || query.includes('storm')) {
-    const hasWeather = req.body?.weather && typeof req.body.weather.precipitation === 'number';
-    const rainMm = hasWeather ? req.body.weather.precipitation : null;
-    reply = hasWeather
-      ? `🌧️ Rain & Radar Telemetry: Current Open-Meteo reading is ${rainMm} mm/hr precipitation. RainViewer Doppler radar tracks real-time cloud reflectivity across Bengaluru, and there are ${waterlogCount} waterlogged stretch(es) reported. Check the Underpass Diagnostic tab before crossing.`
-      : `🌧️ Rain & Radar Telemetry: Open the live radar overlay on the map for the latest RainViewer frames — ${waterlogCount} waterlogged stretch(es) reported right now.`;
-    sources.push('RainViewer Doppler & Open-Meteo Telemetry');
-  } else if (query.includes('emergency') || query.includes('helpline') || query.includes('police') || query.includes('bbmp')) {
-    reply = `📞 Bengaluru Emergency Helplines:\n• BTP Traffic Police: 1095 / 080-22943030\n• BBMP Disaster Cell: 1533\n• BESCOM Electrical Emergency: 1912\n• BWSSB Water & Sewerage: 1916\n• National Emergency: 112`;
-    sources.push('Karnataka State Emergency Operations');
-  } else {
-    // Dynamic matching on any ward or title present in active hazards
-    const matchedHazard = activeHazards.find((i) => {
-      const ward = (i.ward || '').toLowerCase();
-      const title = i.title.toLowerCase();
-      return (ward && query.includes(ward)) || query.includes(title);
-    });
-
-    if (matchedHazard) {
-      reply = `📍 Live Alert for ${matchedHazard.ward || matchedHazard.title}: ${matchedHazard.title} (${matchedHazard.type}, Urgency: ${matchedHazard.urgency}). ${matchedHazard.description} Verified by ${matchedHazard.verificationCount || 1} citizens.`;
-      sources.push(matchedHazard.title);
-    } else {
-      reply = `Namaskara! NammaDrishti is actively monitoring ${activeHazards.length} civic hazard(s) across Bengaluru (${trafficCount} traffic bottlenecks, ${waterlogCount} waterlogged points). You can ask me about Silk Board, Hebbal airport transit, flooded underpasses, or report road hazards directly on the map.`;
-    }
-  }
-
-  res.json({
-    reply,
-    sources,
-    timestamp: new Date().toISOString(),
-    activeIncidentCount: activeHazards.length,
-  });
+app.post('/api/assistant/chat', aiLimiter, async (req,res) => {
+  if(typeof req.body?.message!=='string'||!req.body.message.trim()||req.body.message.length>2000)return res.status(400).json({error:'Prompt must be 1–2000 characters.'});
+  try {res.json(await require('./services/assistant').answer({message:req.body.message,language:req.body.language,incidents,liveData}));}
+  catch {res.status(503).json({error:'Assistant unavailable'});}
 });
+
+app.get('/api/push/config', (req,res)=>res.json({configured:pushService.configured,publicKey:process.env.VAPID_PUBLIC_KEY||null}));
+app.post('/api/push/subscribe', sosLimiter, async(req,res)=>{
+  if(!req.citizen?.uid)return res.status(401).json({error:'Firebase sign-in required'});
+  const {position,subscription}=req.body||{};
+  if(!position||!require('./services/liveData').insideCity(position.lat,position.lng))return res.status(400).json({error:'Bengaluru location required'});
+  try {res.json({id:await pushService.subscribe(req.citizen.uid,subscription,position)});}catch(e){res.status(400).json({error:e.message});}
+});
+app.post('/api/push/unsubscribe', async(req,res)=>{
+  try {const id=req.body.id;if(typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))return res.status(400).json({error:'Invalid subscription ID'});const sub=await records.get('pushSubscriptions',id);if(!req.citizen?.uid||sub?.uid!==req.citizen.uid)return res.status(404).json({error:'Subscription not found'});await records.remove('pushSubscriptions',id);res.json({success:true});}catch {res.status(503).json({error:'Storage unavailable'});}
+});
+
+async function requireModerator(req,res,next) {
+  try {
+    const match=/^Bearer (.+)$/.exec(req.headers.authorization||'');
+    if(!firebaseStore||!match)throw new Error();
+    const citizen=await firebaseStore.auth.verifyIdToken(match[1],true);
+    if(citizen.moderator!==true||citizen.firebase?.sign_in_provider==='anonymous')return res.status(403).json({error:'Moderator role required'});
+    req.moderator=citizen.uid;next();
+  }catch {res.status(401).json({error:'Moderator sign-in required'});}
+}
+app.get('/api/moderation', requireModerator, async(req,res)=>{
+  try {res.json({incidents,audit:await records.list('moderationAudit')});}catch {res.status(503).json({error:'Audit unavailable'});}
+});
+app.post('/api/moderation/:id', requireModerator, async(req,res)=>{
+  if(!['hide','restore'].includes(req.body.action)||typeof req.body.reason!=='string'||req.body.reason.trim().length<5||req.body.reason.length>500)return res.status(400).json({error:'Action and reason (5–500 characters) required'});
+  try {await serializeStorage(()=>coordinated(async()=>{
+    const item=incidents.find(i=>i.id===req.params.id);if(!item){res.status(404).json({error:'Incident not found'});return;}
+    const previousHidden=item.moderationHidden;const audit={id:require('crypto').randomUUID(),incidentId:item.id,actor:req.moderator,action:req.body.action,reason:req.body.reason.trim(),at:new Date().toISOString(),status:'attempted'};
+    // Audit first; failed writes retain a record of the attempted action.
+    await records.put('moderationAudit',audit.id,audit);
+    item.moderationHidden=req.body.action==='hide';
+    if(!await persistIncidents()){if(previousHidden===undefined)delete item.moderationHidden;else item.moderationHidden=previousHidden;res.status(503).json({error:'Storage unavailable'});return;}
+    await records.put('moderationAudit',audit.id,{...audit,status:'committed'});
+    io.emit('initial:data',incidents.map(publicIncident).filter(Boolean));res.json({success:true});
+  }));}catch {res.status(503).json({error:'Storage busy'});}
+});
+app.get('/api/operations', requireModerator, async(req,res)=>res.json({uptimeSeconds:process.uptime(),storageReady,sourceMetrics:liveData.metrics,replicaMode:firebaseStore?'fenced-writer-with-live-snapshots':'single-process',sources:{traffic:process.env.TOMTOM_API_KEY?'configured':'unconfigured',assistant:process.env.GEMINI_API_KEY&&process.env.GEMINI_MODEL?'configured':'summary',flood:process.env.FLOOD_OBSERVATIONS_URL?'configured':'unconfigured',sos:process.env.EMERGENCY_DISPATCH_WEBHOOK_URL?'configured':'location-only'}}));
+
+async function maintenance() {
+  await ready;
+  if (firebaseStore && storageReady) await serializeStorage(() => coordinated(cleanupExpiredIncidents));
+  await emergencyOutbox.process();
+  await pushService.process(incidents);
+}
+app.get('/api/maintenance', async (req, res) => {
+  const expected = process.env.CRON_SECRET;
+  const supplied = (req.headers.authorization || '').replace(/^Bearer /, '');
+  if (!expected || Buffer.byteLength(expected) !== Buffer.byteLength(supplied) || !require('crypto').timingSafeEqual(Buffer.from(expected), Buffer.from(supplied))) return res.status(401).json({ error: 'Maintenance authorization required.' });
+  try { await maintenance(); res.json({ success: true }); }
+  catch { res.status(503).json({ error: 'Maintenance unavailable.' }); }
+});
+let lastMaintenance = 0;
 
 // Production SPA Static File Serving
 const buildPath = path.join(__dirname, '../build');
 const publicPath = path.join(__dirname, '../public');
-const staticDir = fs.existsSync(buildPath) ? buildPath : (fs.existsSync(publicPath) ? publicPath : null);
+const staticDir = process.env.VERCEL === '1' ? null : fs.existsSync(buildPath) ? buildPath : (fs.existsSync(publicPath) ? publicPath : null);
 
 if (staticDir) {
   app.use(express.static(staticDir));
@@ -859,13 +873,13 @@ if (staticDir) {
 // Socket.io connection lifecycle
 io.on('connection', (socket) => {
   // Push full snapshot of current incidents to newly connected citizen client
-  storageQueue.then(() => { if (socket.connected && storageReady) socket.emit('initial:data', incidents); });
+  ready.then(() => storageQueue).then(() => { if (socket.connected && storageReady) socket.emit('initial:data', incidents.map(publicIncident).filter(Boolean)); });
 
   // Subscribe client to specific H3-style hexagonal spatial room cells
   socket.on('subscribe:hex', (hexIds) => {
     if (Array.isArray(hexIds)) {
-      hexIds.forEach((id) => socket.join(`hex:${id}`));
-    } else if (typeof hexIds === 'string') {
+      hexIds.slice(0, 20).filter(id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(id)).forEach(id => socket.join(`hex:${id}`));
+    } else if (typeof hexIds === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(hexIds)) {
       socket.join(`hex:${hexIds}`);
     }
   });
@@ -901,6 +915,10 @@ module.exports = {
   processMediaUpload,
 };
 
+// Exported Vercel servers initialize storage without opening a second listener.
+const ready = firebaseStore ? firebaseStore.load().then(items => { incidents = items; storageReady = true; firebaseStore.subscribe(items => { storageReady = true; serializeStorage(() => { incidents = items; io.emit('initial:data', items.map(publicIncident).filter(Boolean)); }).catch(() => {}); }, () => { storageReady = false; }); }) : Promise.resolve();
+ready.catch(() => console.error('[Startup] Cloud storage unavailable'));
+
 // Start Server if executed directly
 if (require.main === module) {
   if (process.env.NODE_ENV === 'production' && !firebaseStore) {
@@ -908,7 +926,6 @@ if (require.main === module) {
     process.exit(1);
   }
   const PORT = process.env.PORT || 5001;
-  const ready = firebaseStore ? firebaseStore.load().then(items => { incidents = items; storageReady = true; }) : Promise.resolve();
   ready.then(() => server.listen(PORT, () => {
     console.log(`\n==================================================`);
     console.log(`🚀 NammaDrishti Civic Platform Engine Live (${firebaseStore ? 'Firestore + Firebase Auth' : 'local JSON'})`);

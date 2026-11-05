@@ -1,7 +1,13 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // All access goes through the validated Express API and its Admin SDK.
+    // Only the server's explicit public projection is readable by signed-in
+    // listeners. All writes and private collections remain API/Admin-only.
+    match /publicIncidents/{incidentId} {
+      allow get: if request.auth != null;
+      allow list: if request.auth != null && request.query.limit <= 1000;
+      allow write: if false;
+    }
     match /{document=**} {
       allow read, write: if false;
     }
