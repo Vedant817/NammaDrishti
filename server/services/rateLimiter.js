@@ -25,11 +25,6 @@ function createRateLimiter({ windowMs = 60000, maxRequests, max = 30, message = 
   if (cleanupTimer.unref) cleanupTimer.unref();
 
   return (req, res, next) => {
-    // Only bypass in automated unit test environments (NODE_ENV === 'test')
-    if (process.env.NODE_ENV === 'test') {
-      return next();
-    }
-
     // Resolve client IP securely: only trust X-Forwarded-For if behind a configured reverse proxy or in non-strict dev
     const isTrustProxy = Boolean(req.app?.get?.('trust proxy') || process.env.TRUST_PROXY === 'true');
     let ip = req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';

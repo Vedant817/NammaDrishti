@@ -6,7 +6,7 @@ describe('NammaDrishti Core Platform Tests', () => {
     render(<App />);
     expect(screen.getByText('NammaDrishti')).toBeInTheDocument();
     expect(screen.getByText('Bengaluru')).toBeInTheDocument();
-    expect(screen.getByText('Real-Time Civic & Traffic Radar')).toBeInTheDocument();
+    expect(screen.getByText('Roads, rain & local reports')).toBeInTheDocument();
   });
 
   test('renders hazard filter chips and calculates active incidents', () => {
@@ -15,26 +15,26 @@ describe('NammaDrishti Core Platform Tests', () => {
     expect(screen.getAllByText('Traffic Jams').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Waterlogging').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Accidents').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Potholes / Infra').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Road damage').length).toBeGreaterThan(0);
   });
 
   test('renders floating action buttons for reporting, AI, and Safe Route', () => {
     render(<App />);
     expect(screen.getByText(/Report Hazard/i)).toBeInTheDocument();
-    expect(screen.getByText(/NammaDrishti AI/i)).toBeInTheDocument();
-    expect(screen.getByText(/Safe Route/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Plan route" })).toBeInTheDocument();
   });
 
-  test('switches sidebar tabs between Feed, Diagnostic, and Helplines with Emergency SOS', () => {
+  test('switches sidebar tabs between Reports, Overview, and Helplines with Emergency SOS', () => {
     render(<App />);
     const helplineTab = screen.getByText(/Helplines/i);
     fireEvent.click(helplineTab);
     expect(screen.getByText(/Bengaluru Emergency Helplines/i)).toBeInTheDocument();
-    expect(screen.getByText(/Broadcast 1-Tap Emergency SOS/i)).toBeInTheDocument();
+    expect(screen.getByText(/Share emergency location/i)).toBeInTheDocument();
 
-    const diagnosticTab = screen.getByText(/Diagnostic/i);
+    const diagnosticTab = screen.getByRole("button", { name: "Overview" });
     fireEvent.click(diagnosticTab);
-    expect(screen.getByText(/Today's Bengaluru Diagnostic/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bengaluru overview/i)).toBeInTheDocument();
   });
 
   test('opens and closes report hazard modal', () => {
@@ -42,24 +42,26 @@ describe('NammaDrishti Core Platform Tests', () => {
     const reportBtn = screen.getByText(/Report Hazard/i);
     fireEvent.click(reportBtn);
 
-    expect(screen.getByText('Report Civic or Traffic Incident')).toBeInTheDocument();
+    expect(screen.getByText('Report a hazard')).toBeInTheDocument();
     const cancelBtn = screen.getByText('Cancel');
     fireEvent.click(cancelBtn);
 
-    expect(screen.queryByText('Report Civic or Traffic Incident')).not.toBeInTheDocument();
+    expect(screen.queryByText('Report a hazard')).not.toBeInTheDocument();
   });
 
   test('opens and closes Safe Route transit navigation modal with Auto-Detour', () => {
     render(<App />);
-    const routeBtn = screen.getByText(/Safe Route/i);
+    const routeBtn = screen.getByRole("button", { name: "Plan route" });
+    routeBtn.focus();
     fireEvent.click(routeBtn);
 
-    expect(screen.getByText('Safe Transit & Hazard Avoidance')).toBeInTheDocument();
-    expect(screen.getByText(/Auto-Detour around Flooded Underpasses/i)).toBeInTheDocument();
-    const closeBtn = screen.getByText('✕');
-    fireEvent.click(closeBtn);
+    expect(screen.getByText('Plan a route')).toBeInTheDocument();
+    expect(screen.getByText(/Avoid reported floods/i)).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Plan a route' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(routeBtn).toHaveFocus();
 
-    expect(screen.queryByText('Safe Transit & Hazard Avoidance')).not.toBeInTheDocument();
+    expect(screen.queryByText('Plan a route')).not.toBeInTheDocument();
   });
 
   test('toggles language to Kannada and translates UI elements', () => {

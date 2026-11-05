@@ -1,3 +1,4 @@
+import { useDialog } from "../../hooks/useDialog";
 // src/components/Navigation/SafeRouteModal.jsx
 import React, { useState, useRef, useEffect } from "react";
 import {
@@ -38,6 +39,7 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
   const handleChange = (e) => {
     const text = e.target.value;
     onChange(text);
+    onPick(null);
     setSuggestions([]);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -102,7 +104,7 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
           ))}
         </div>
       )}
-      <span className="route-place-help">Pick a suggestion or press Enter to geocode</span>
+      <span className="route-place-help">Choose a result or press Enter to find this place.</span>
     </div>
   );
 };
@@ -115,6 +117,7 @@ const SafeRouteModal = ({
   userLocation,
 }) => {
   const resolvedHazards = activeHazards && activeHazards.length > 0 ? activeHazards : (hazards || []);
+  const dialogRef = useDialog(onClose);
   const [startText, setStartText] = useState("");
   const [startPlace, setStartPlace] = useState(null);
   const [endText, setEndText] = useState("");
@@ -202,16 +205,16 @@ const SafeRouteModal = ({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="safe-route-modal-content" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Plan a route" tabIndex={-1} className="safe-route-modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="safe-route-header">
           <div className="safe-route-title">
             <span className="route-icon">🧭</span>
             <div>
-              <h3>Safe Transit & Hazard Avoidance</h3>
-              <span className="route-subtitle">NammaDrishti Smart Commute Radar</span>
+              <h3>Plan a route</h3>
+              <span className="route-subtitle">Check reported hazards along the way</span>
             </div>
           </div>
-          <button type="button" className="close-btn" onClick={onClose}>
+          <button type="button" className="close-btn" aria-label="Close dialog" onClick={onClose}>
             ✕
           </button>
         </div>
@@ -267,7 +270,7 @@ const SafeRouteModal = ({
                   checked={autoDetour}
                   onChange={(e) => setAutoDetour(e.target.checked)}
                 />
-                <span className="checkbox-text">⚡ Auto-Detour around Flooded Underpasses & Chokepoints</span>
+                <span className="checkbox-text">Avoid reported floods and road hazards</span>
               </label>
             </div>
 
@@ -277,7 +280,7 @@ const SafeRouteModal = ({
               onClick={handleCalculateRoute}
               disabled={loading}
             >
-              {loading ? "Calculating Safest Corridor..." : "🔍 Find Safe Route"}
+              {loading ? "Calculating Safest Corridor..." : "Find route"}
             </button>
           </div>
 
@@ -293,11 +296,11 @@ const SafeRouteModal = ({
               <div className="route-metrics-bar">
                 <div className="route-metric">
                   <span className="metric-val">{routeResult.distanceKm} km</span>
-                  <span className="metric-lbl">Total Distance</span>
+                  <span className="metric-lbl">Distance</span>
                 </div>
                 <div className="route-metric">
                   <span className="metric-val">{routeResult.durationMin} mins</span>
-                  <span className="metric-lbl">Estimated Transit</span>
+                  <span className="metric-lbl">Estimated time</span>
                 </div>
                 <div className="route-metric">
                   <span
@@ -311,7 +314,7 @@ const SafeRouteModal = ({
                   >
                     {(routeResult.conflicts || []).length === 0 ? "CLEAR" : `${routeResult.conflicts.length} HAZARD(S)`}
                   </span>
-                  <span className="metric-lbl">Corridor Safety</span>
+                  <span className="metric-lbl">Reports nearby</span>
                 </div>
               </div>
 
@@ -331,7 +334,7 @@ const SafeRouteModal = ({
                 <div className="route-safe-banner">
                   <span>✓</span>
                   <div>
-                    <strong>Clear Corridor Verified</strong>
+                    <strong>No reported hazards nearby</strong>
                     <p>No active waterlogging or major accidents reported near this path.</p>
                   </div>
                 </div>

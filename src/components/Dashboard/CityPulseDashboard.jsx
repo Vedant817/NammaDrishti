@@ -1,3 +1,4 @@
+import { Plus, Route, MessageSquare } from "lucide-react";
 // src/components/Dashboard/CityPulseDashboard.jsx
 import React, { useState, useEffect, useRef } from "react";
 import Header from "../Header/Header";
@@ -59,7 +60,7 @@ const CityPulseDashboard = () => {
   // Auto-detect commuter GPS on mount to power proximity verification
   useEffect(() => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
+      const watchId = navigator.geolocation.watchPosition(
         (pos) => {
           setUserLocation({
             lat: pos.coords.latitude,
@@ -69,8 +70,9 @@ const CityPulseDashboard = () => {
         (err) => {
           console.warn("[Dashboard] GPS detection deferred:", err.message);
         },
-        { enableHighAccuracy: true, timeout: 8000 }
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 15000 }
       );
+      return () => navigator.geolocation.clearWatch(watchId);
     }
   }, []);
 
@@ -126,7 +128,7 @@ const CityPulseDashboard = () => {
     }
     setSelectedEvent(created);
     setReportPin(null);
-    showToast("✓ Hazard incident broadcast to NammaDrishti live stream!");
+    showToast("Report added to the map.");
     return { success: true };
   };
 
@@ -168,7 +170,7 @@ const CityPulseDashboard = () => {
     if (routeData.hasConflicts) {
       showToast("⚠️ Caution: Navigation corridor intersects active civic hazards. Rerouted.");
     } else {
-      showToast("✓ Safe Hazard-Free Navigation Corridor active.");
+      showToast("Route added. No reported hazards nearby.");
     }
   };
 
@@ -218,6 +220,8 @@ const CityPulseDashboard = () => {
             events={filteredEvents}
             selectedEvent={selectedEvent}
             onEventSelect={handleEventSelect}
+            onVerifyEvent={handleVerifyEvent}
+            onResolveEvent={handleResolveEvent}
             onMapClick={handleMapPinSelected}
             onOpenReportModal={handleOpenReportModal}
             navigationRoute={navigationRoute}
@@ -233,16 +237,16 @@ const CityPulseDashboard = () => {
               onClick={handleOpenReportModal}
               title="Report Civic Hazard"
             >
-              <span>🚨</span>
+              <Plus size={17} aria-hidden="true" />
               <span>{t.actions?.reportHazard || "Report Hazard"}</span>
             </button>
             <button
               type="button"
               className="action-fab route-fab safe-route-trigger-btn"
               onClick={() => setShowRouteModal(true)}
-              title="Calculate Safe Hazard-Avoidance Corridor"
+              title="Plan a route around reported hazards"
             >
-              <span>🧭</span>
+              <Route size={17} aria-hidden="true" />
               <span>{t.actions?.safeRoute || "Safe Route"}</span>
             </button>
             <button
@@ -251,7 +255,7 @@ const CityPulseDashboard = () => {
               onClick={() => setShowChatbotModal(true)}
               title="Open NammaDrishti AI Assistant"
             >
-              <span>🤖</span>
+              <MessageSquare size={17} aria-hidden="true" />
               <span>{t.actions?.aiAssistant || "NammaDrishti AI"}</span>
             </button>
           </div>

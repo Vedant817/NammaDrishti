@@ -8,7 +8,6 @@ import { calculateDistance } from "../services/routingService";
 const speakVoiceAlert = (text) => {
   try {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
@@ -68,6 +67,7 @@ export const useProximityAlert = (userLocation, events = [], onAlertTriggered) =
         (e.urgency === "High" || e.type === "Waterlogging" || e.type === "Accident")
     );
 
+    criticalHazards.sort((a, b) => (b.urgency === 'High') - (a.urgency === 'High'));
     criticalHazards.forEach((hazard) => {
       if (alertedIdsRef.current.has(hazard.id)) return;
 

@@ -1,3 +1,4 @@
+import { authenticatedFetch as fetch } from "../../services/firebaseService";
 // src/components/Sidebar/Sidebar.jsx
 import React, { useState } from "react";
 import PersonalizedFeed from "./PersonalizedFeed";
@@ -42,34 +43,25 @@ const Sidebar = ({
     setAcquiringGps(true);
     setSosStatus(null);
 
-    const onCoordsAcquired = async (lat, lng) => {
+    const onCoordsAcquired = (lat, lng) => {
       setAcquiringGps(false);
-      const googleMapsUrl = `https://maps.google.com/?q=${lat.toFixed(5)},${lng.toFixed(5)}`;
-      const message = `🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n📍 Location: ${googleMapsUrl}\n🆘 Immediate road/civic assistance required in Bengaluru!`;
+      const mapUrl = `https://www.openstreetmap.org/?mlat=${lat.toFixed(5)}&mlon=${lng.toFixed(5)}#map=17/${lat.toFixed(5)}/${lng.toFixed(5)}`;
+      const message = `🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n📍 Location: ${mapUrl}\n🆘 Immediate road/civic assistance required in Bengaluru!`;
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
 
       // Post dispatch event to backend
       try {
-        await fetch(`${API_BASE}/sos/dispatch`, {
+        fetch(`${API_BASE}/sos/dispatch`, {
+          signal: AbortSignal.timeout(3000),
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
-        });
+        }).catch(() => {});
       } catch (err) {
         // Continue even if network is restricted
       }
 
-      let popupBlocked = false;
-      try {
-        if (typeof window !== "undefined") {
-          const win = window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-          if (!win || win.closed || typeof win.closed === "undefined") {
-            popupBlocked = true;
-          }
-        }
-      } catch (openErr) {
-        popupBlocked = true;
-      }
+      const popupBlocked = true;
 
       setSosStatus({
         lat,
@@ -81,9 +73,7 @@ const Sidebar = ({
       });
     };
 
-    if (userLocation && Number.isFinite(userLocation.lat) && Number.isFinite(userLocation.lng)) {
-      onCoordsAcquired(userLocation.lat, userLocation.lng);
-    } else if (navigator && navigator.geolocation) {
+    if (navigator && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => onCoordsAcquired(pos.coords.latitude, pos.coords.longitude),
         (err) => {
@@ -116,21 +106,21 @@ const Sidebar = ({
         <button
           type="button"
           className={`sidebar-tab-btn ${activeTab === "feed" ? "active" : ""}`}
-          onClick={() => onTabChange("feed")}
+          aria-pressed={activeTab === "feed"} onClick={() => onTabChange("feed")}
         >
           {t.tabs.feed}
         </button>
         <button
           type="button"
           className={`sidebar-tab-btn ${activeTab === "recap" ? "active" : ""}`}
-          onClick={() => onTabChange("recap")}
+          aria-pressed={activeTab === "recap"} onClick={() => onTabChange("recap")}
         >
           {t.tabs.recap}
         </button>
         <button
           type="button"
           className={`sidebar-tab-btn ${activeTab === "helpline" ? "active" : ""}`}
-          onClick={() => onTabChange("helpline")}
+          aria-pressed={activeTab === "helpline"} onClick={() => onTabChange("helpline")}
         >
           {t.tabs.helpline}
         </button>
@@ -168,8 +158,8 @@ const Sidebar = ({
             {/* One-Tap Emergency SOS Dispatch Section */}
             <div className="emergency-sos-box">
               <div className="sos-box-header">
-                <span className="sos-badge">EMERGENCY DISPATCH</span>
-                <span className="sos-network">BTP & BBMP LINK</span>
+                <span className="sos-badge">Need urgent help?</span>
+                <a className="sos-network" href="tel:112">Call 112</a>
               </div>
               <h5>{t.sidebar?.sosTitle || "One-Tap Bengaluru Emergency SOS Dispatch"}</h5>
               <p>{t.sidebar?.sosDesc || "Instantly broadcast your GPS location to BTP & BBMP control and generate emergency WhatsApp dispatch."}</p>
@@ -180,7 +170,7 @@ const Sidebar = ({
                 onClick={handleTriggerSos}
                 disabled={acquiringGps}
               >
-                {acquiringGps ? "📍 Acquiring GPS Coordinates..." : "🚨 Broadcast 1-Tap Emergency SOS"}
+                {acquiringGps ? "Finding your location…" : "Share emergency location"}
               </button>
 
               {sosStatus && (
@@ -197,7 +187,7 @@ const Sidebar = ({
                   )}
                   {sosStatus.popupBlocked && (
                     <div className="sos-coords-row" style={{ color: "#F59E0B", fontSize: "0.82rem" }}>
-                      <span>ℹ️ Browser pop-up blocked. Click "Send WhatsApp SOS" directly below:</span>
+                      <span>ℹ️ Location ready. Choose how to share it below:</span>
                     </div>
                   )}
                   <div className="sos-actions-row" style={{ flexWrap: 'wrap' }}>
@@ -211,7 +201,7 @@ const Sidebar = ({
                     </a>
                     <a
                       href={`sms:112?body=${encodeURIComponent(
-                        `EMERGENCY ALERT [NammaDrishti]: Stranded in Bengaluru at GPS: ${sosStatus.lat ? sosStatus.lat.toFixed(5) : ''}, ${sosStatus.lng ? sosStatus.lng.toFixed(5) : ''}. Need urgent assistance.`
+                        sosStatus.isVerifiedGps ? `EMERGENCY ALERT [NammaDrishti]: Stranded in Bengaluru at GPS: ${sosStatus.lat.toFixed(5)}, ${sosStatus.lng.toFixed(5)}. Need urgent assistance.` : 'EMERGENCY ALERT [NammaDrishti]: Need urgent assistance in Bengaluru. GPS unavailable; contact me for my location.'
                       )}`}
                       className="sos-sms-btn"
                     >

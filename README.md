@@ -7,7 +7,7 @@
 [![CI Pipeline](https://github.com/Vedant817/NammaDrishti/actions/workflows/ci.yml/badge.svg)](https://github.com/Vedant817/NammaDrishti/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bengaluru Civic Intelligence](https://img.shields.io/badge/Bengaluru-Namma%20Bengaluru-orange.svg)](https://github.com/Vedant817/NammaDrishti)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B%20%7C%2020%2B-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-19.0-61dafb.svg)](https://react.dev/)
 
 </div>
@@ -18,14 +18,14 @@
 
 **NammaDrishti** (*ನಮ್ಮ ದೃಷ್ಟಿ - "Our Vision"*) is a hyper-localized civic awareness and flood warning platform engineered for the complex urban topology of Bengaluru. When torrential monsoons strike corridors like Bellandur, Silk Board, Outer Ring Road, and Panathur, commuters face waterlogged railway underpasses, tree falls, severe gridlocks, and unmapped hazards.
 
-NammaDrishti empowers citizens and traffic wardens to crowd-source ground-truth road status, verify hazards with proximity weighting, calculate safe detour corridors avoiding flooded segments, and dispatch emergency SOS alerts with precise GPS locations.
+NammaDrishti collects citizen road reports, rain telemetry, and route information for Bengaluru. Reports are community observations, not independently verified ground truth.
 
 ---
 
 ## ✨ Key Capabilities
 
 - **🗺️ Interactive Hyper-Local Map**: Live rendering of active traffic jams, flash floods, accidents, and potholes across BBMP wards and major IT corridors.
-- **🛡️ Proximity-Weighted Verification**: On-ground commuters (<1.5 km) carry higher verification weight ($1.0\times$) than remote observers ($0.25\times$), defeating false alarms while remaining tamper-resistant. Requires at least 2 distinct voters and score $\ge 2.5$ for verified status.
+- **Account-bound voting**: Firebase ID tokens identify contributors in production. A contributor counts once per incident, across reporting and verification. Browser GPS does not increase vote weight or prove physical presence.
 - **📍 Dynamic Spatial Auto-Clustering**: Nearby hazard reports within 200m auto-merge into unified clusters, preventing visual clutter and consolidating confirmation scores.
 - **🧭 Safe Navigation & Hazard Detour Radar**: Interactive origin-to-destination routing that samples road corridors, alerts commuters of intersecting hazards, and calculates safe bypasses. Supports both GeoJSON routes and raw coordinate arrays.
 - **🌊 Monsoon Diagnostic Engine**: Dedicated telemetry analyzing 11 documented high-risk Bengaluru underpasses (Panathur, Hebbal, Okalipuram, Le Méridien, etc.) alongside real-time Doppler precipitation data.
@@ -87,7 +87,7 @@ NammaDrishti incorporates robust production and concurrency safeguards:
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js >= 18.0.0
+- Node.js >= 22.0.0
 - npm >= 9.0.0
 
 ### Local Development
@@ -177,11 +177,11 @@ Simulates an isolated, high-concurrency sandbox environment with harsh, adversar
 ### 🔬 Isolated Simulation Sandbox Scenarios (`test:sandbox`)
 
 The isolated sandbox runner (`scripts/sandbox_scenario_runner.js`) spins up an ephemeral backend server on a dedicated isolated port with isolated temporary disk storage, systematically executing 8 real-life commuter scenarios:
-1. **Monsoon Flash Flood & Proximity Consensus**: Citizen reports ORR EcoSpace flash flood; on-ground commuters confirm with 1.0x weight; anti-Sybil protection rejects duplicate votes with HTTP 409 Conflict.
+1. **Monsoon Flash Flood & Proximity Consensus**: Citizen reports ORR EcoSpace flash flood; all accounts confirm with equal weight; duplicate-account protection rejects duplicate votes with HTTP 409 Conflict.
 2. **Spatial Hazard Auto-Clustering**: Nearby hazard reports within 200m auto-merge into existing corridor clusters without duplicating map pins.
 3. **Safe Navigation Corridor & Dynamic Rerouting**: Real-time corridor conflict detector alerts of flood intersections on primary route and generates a zero-conflict safe detour.
 4. **Monsoon Offline Queue Sync**: Simulates network disconnection during cloudbursts, queues reports locally, and drains + syncs with WebSocket broadcast once reconnected.
-5. **Multi-Citizen Clearance Consensus**: Requires 2 unique citizen confirmations to mark resolved and purge from live map; enforces Sybil immunity.
+5. **Multi-Citizen Clearance Consensus**: Requires 2 unique citizen confirmations to mark resolved and purge from live map; rejects repeat account contributions.
 6. **Dynamic TTL Decay & Worker Lifecycle**: Expired incidents past their half-life are safely purged with atomic disk persistence.
 7. **Context-Aware AI Commute Assistant**: Inquires on Panathur flood status, Silk Board/HSR congestion, and Doppler rain telemetry, with answers composed strictly from live incident data (no invented delays or engine "confidence" scores).
 8. **One-Tap Emergency SOS Dispatch**: Formats stranded commuter coordinates into instant 112/1095 hotline targets and pre-formatted WhatsApp SOS dispatch links.
@@ -195,7 +195,7 @@ Bengaluru commuters traditionally juggle multiple disconnected platforms to navi
 | Dimension / Capability | **NammaDrishti** (Our Platform) | **Google Maps** | **Waze** | **BTP ASTrAM & BBMP Sahaya** |
 | :--- | :--- | :--- | :--- | :--- |
 | **Monsoon Flooding & Inundation Tracking** | **Hyper-localized real-time alerts** with depth telemetry, waterlogged underpass monitoring, and RainViewer Doppler radar overlay | Generic traffic delay color-coding (red/orange); no distinction between slow traffic and impassable deep water | Crowd-flagged "flood" warnings, but zero depth metrics or low-lying underpass classification | Periodic official advisories or grievance tickets; not embedded in live commuter maps |
-| **Verification & Anti-Sybil Consensus** | **Proximity-weighted consensus**: on-ground commuters ($<1.5$ km) receive $1.0\times$ weight, remote voters $0.25\times$; strict Sybil-proof multi-citizen clearance | Algorithmic telemetry estimation; citizen incident reporting lacks visible consensus verification | Thumbs up/down crowdsourcing without strict physical proximity weighting; vulnerable to remote spam | Manual departmental verification; hours or days delay before resolution status updates |
+| **Community verification** | Account-bound contributions; anonymous accounts do not prove unique humans | Provider-specific | Provider-specific | Provider-specific |
 | **Bengaluru Underpass Diagnostic Engine** | **Automated risk telemetry** for 11 documented chronic underpasses (Panathur, Hebbal, Okalipuram, etc.) with rain intensity thresholds | None (treats underpasses as standard road segments) | None | Periodic manual barricading announcements via Twitter/X or control rooms |
 | **Safe Corridor Navigation & Hazard Detour** | **Dynamic corridor hazard conflict detection** with automated bypass routing around submerged roads & fallen trees | Standard fastest-route routing (frequently guides motorists directly into flooded underpasses) | Real-time rerouting based on congestion, but lacks flood-depth awareness | No navigation routing engine; text-only notifications |
 | **Low-Connectivity Offline Resilience** | **Zero-drop offline queue**: stores drafted reports and consensus votes in `localStorage`, auto-syncs with atomic replay upon reconnection | Offline map download available for static maps, but crowd incident reporting and voting are disabled offline | Requires active cellular data to submit or view crowd alerts | Web portal requires steady connectivity; high failure rates during cloudburst signal dropouts |
@@ -218,7 +218,7 @@ Bengaluru commuters traditionally juggle multiple disconnected platforms to navi
    - Unlike commercial apps that merely paint the Outer Ring Road in solid dark red, NammaDrishti isolates **why** a corridor is risky: citizen reports carry water depth, vehicle passability, and multi-citizen confirmation counts.
 
 2. **Proximity-Weighted Trust Factor**:
-   - On-ground confirmations (<1.5 km) carry 1.0× weight, so a "Verified" badge means nearby commuters actually confirmed the hazard — not that an opaque algorithm guessed. Stale reports age out via the TTL worker, and two citizens can clear a resolved hazard.
+   - Account-bound confirmations are community observations. GPS is not attested, and anonymous sign-in is not proof of unique people. Stale reports expire via the TTL worker.
 
 3. **Avoiding the Panathur "Trap"**:
    - The Underpass Diagnostic tab evaluates every catalogued chokepoint against the live rain intensity using BBMP/BTP-derived trigger thresholds, so a crossing shows *below trigger*, *warning*, or *critical submersion risk* — never a made-up water depth.
@@ -277,3 +277,49 @@ Bug reports, feature PRs, and Bengaluru ward data corrections are welcome — st
 
 ## 📄 License
 MIT © Vedant817
+
+
+### Firebase authentication and incident storage
+
+Firebase is optional. Without Firebase environment variables, the standalone server
+uses the existing local JSON store. To enable cloud storage, configure the variables
+in `.env.example`, enable Anonymous Authentication, create a Firestore database,
+and run `firebase deploy --only firestore:rules --project YOUR_PROJECT_ID`.
+The frontend uses persistent anonymous Firebase sign-in for API mutations; the
+backend verifies the ID token and derives the reporter/voter identity from its UID.
+Anonymous accounts identify a browser installation, not a verified human.
+
+The Admin SDK uses `GOOGLE_APPLICATION_CREDENTIALS` (or application default credentials).
+Keep the credential outside the repository and grant only `roles/datastore.user`.
+The web SDK configuration is public configuration, never an Admin credential.
+Restart both servers after changing `.env`; React embeds the web configuration at build time.
+The configured project is `nammadrishti-20261105`, with Firestore in `asia-south1` (Mumbai).
+All direct browser Firestore reads and writes are denied; the validated Express API
+continues to own incident queries, voting, TTL cleanup, and Socket.io broadcasts.
+
+Cloud mode loads existing Firestore incidents before listening and waits for an
+atomic batch commit before acknowledging mutations. It fails startup if storage
+is unavailable and rolls failed mutations back using the existing API error paths.
+Run **one backend process** for this in-memory spatial index; multiple replicas need
+a transactional repository and shared broadcasts. A mutation exceeding 500 changed
+documents or Firestore's document/request size limits fails rather than partially
+committing. Large inline photos can exceed Firestore's 1 MiB document limit; use
+hosted photo URLs. Existing local JSON data is not imported automatically.
+
+The ordinary test harnesses import the server in local JSON mode; they do not prove
+Firebase acceptance. Live cloud verification must separately exercise sign-in,
+unauthenticated rejection, persistence across restarts, and Firestore access rules.
+
+
+Production requires Node 22+ and Firebase Auth/Firestore configuration. Without
+Firebase, `npm run server` remains a local development mode; local voter identity
+comes from the client IP, never a caller-selected voter ID. Fixture voter IDs are
+accepted only under NODE_ENV=test. Set TRUST_PROXY=true only behind a trusted proxy.
+Browser GPS is not location attestation: all account votes have equal weight and
+no vote is labelled ground-verified. Anonymous accounts are not verified humans.
+SOS history and emergency socket subscriptions require a nonempty AUTHORITY_TOKEN
+in every environment (HTTP x-authority-token header / socket auth.authorityToken).
+An unset token disables authority access; there is no default secret.
+Docker Compose reads Firebase web build arguments and server credentials from the
+operator environment. The Admin credential is mounted read-only, never baked into
+an image; .env files are excluded from the Docker build context.

@@ -37,7 +37,7 @@ npm run server     # Express + Socket.io backend on :5001
 
 ## Validation gate (required before every PR)
 
-CI runs on Node 18.x and 20.x, so run the same suite locally first — it must be
+CI runs on Node 22.x and 24.x, so run the same suite locally first — it must be
 **fully green**:
 
 ```bash
@@ -80,3 +80,17 @@ src/
 Open a GitHub issue with the `question` label, or check the README's
 Architecture section first — the backend contract starts at
 `server/index.js` and the frontend data flow starts at `CityPulseDashboard.jsx`.
+
+
+Production requires Node 22+ and Firebase Auth/Firestore configuration. Without
+Firebase, `npm run server` remains a local development mode; local voter identity
+comes from the client IP, never a caller-selected voter ID. Fixture voter IDs are
+accepted only under NODE_ENV=test. Set TRUST_PROXY=true only behind a trusted proxy.
+Browser GPS is not location attestation: all account votes have equal weight and
+no vote is labelled ground-verified. Anonymous accounts are not verified humans.
+SOS history and emergency socket subscriptions require a nonempty AUTHORITY_TOKEN
+in every environment (HTTP x-authority-token header / socket auth.authorityToken).
+An unset token disables authority access; there is no default secret.
+Docker Compose reads Firebase web build arguments and server credentials from the
+operator environment. The Admin credential is mounted read-only, never baked into
+an image; .env files are excluded from the Docker build context.

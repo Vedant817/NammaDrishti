@@ -1,3 +1,5 @@
+process.env.TRUST_PROXY = 'true'; // Isolated fixture IPs, never a production default.
+process.env.NODE_ENV = 'test';
 // scripts/simulate_user.js
 /**
  * End-to-End Headless Real-User Journey Simulation for NammaDrishti

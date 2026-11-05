@@ -1,3 +1,5 @@
+import { reconcileReport, reconcileSnapshot } from "../utils/incidentState";
+import { authenticatedFetch as fetch } from "../services/firebaseService";
 // src/hooks/useEventData.js
 import { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
@@ -182,19 +184,9 @@ export const useEventData = () => {
             successfulIds.add(item.id);
             const created = await res.json();
             setEvents((prev) => {
-              const idx = prev.findIndex((e) => e.id === item.id);
-              if (idx !== -1) {
-                const copy = [...prev];
-                copy[idx] = { ...created, _isLocalPending: false };
-                safeSaveStorage(copy);
-                return copy;
-              }
-              if (!prev.some((e) => e.id === created.id)) {
-                const next = [created, ...prev];
-                safeSaveStorage(next);
-                return next;
-              }
-              return prev;
+              const next = reconcileReport(prev, item.id, created);
+              safeSaveStorage(next);
+              return next;
             });
           }
         } catch (err) {
@@ -247,9 +239,12 @@ export const useEventData = () => {
               fetch(`${API_BASE}/incidents`)
                 .then((r) => r.json())
                 .then((fresh) => {
-                  if (Array.isArray(fresh) && fresh.length > 0) {
-                    setEvents(fresh);
-                    safeSaveStorage(fresh);
+                  if (Array.isArray(fresh)) {
+                    setEvents(prev => {
+                      const next = reconcileSnapshot(prev, fresh);
+                      safeSaveStorage(next);
+                      return next;
+                    });
                   }
                 })
                 .catch(() => {});
@@ -386,6 +381,8 @@ export const useEventData = () => {
                   verificationCount: data.verificationCount,
                   verificationScore: data.verificationScore,
                   clusterCount: data.clusterCount,
+                  waterDepth: data.waterDepth ?? e.waterDepth,
+                  vehiclePassability: data.vehiclePassability ?? e.vehiclePassability,
                   isVerified: data.isVerified,
                   updates: data.latestUpdate ? [data.latestUpdate, ...(e.updates || [])] : (data.updates || e.updates),
                 }
@@ -535,15 +532,7 @@ export const useEventData = () => {
       if (res.ok) {
         const created = await res.json();
         setEvents((prev) => {
-          const index = prev.findIndex((e) => e.id === formatted.id);
-          if (index !== -1) {
-            const copy = [...prev];
-            copy[index] = { ...created, _isLocalPending: false };
-            safeSaveStorage(copy);
-            return copy;
-          }
-          if (prev.some((e) => e.id === created.id)) return prev;
-          const next = [created, ...prev];
+          const next = reconcileReport(prev, formatted.id, created);
           safeSaveStorage(next);
           return next;
         });

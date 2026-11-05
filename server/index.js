@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const { hasAuthorityAccess, voterKeyFor } = require('./services/accessControl');
 
 const { getHexIndex, getHexRing } = require('./services/spatialHex.js');
 const { createRateLimiter } = require('./services/rateLimiter.js');
@@ -15,7 +16,7 @@ const app = express();
 const server = http.createServer(app);
 
 // Express reverse-proxy trust configuration
-if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV !== 'production') {
+if (process.env.TRUST_PROXY === 'true') {
   app.set('trust proxy', 1);
 }
 
@@ -35,6 +36,40 @@ const io = new Server(server, {
   },
 });
 
+const firebaseStore = require.main === module && process.env.NODE_ENV !== 'test' && process.env.FIREBASE_PROJECT_ID
+  ? require('./services/firebaseStore').createFirebaseStore(process.env.FIREBASE_PROJECT_ID)
+  : null;
+let storageReady = !firebaseStore;
+let storageQueue = Promise.resolve();
+let pendingCommit = Promise.resolve();
+function serializeStorage(task) {
+  const result = storageQueue.then(task);
+  storageQueue = result.catch(() => {});
+  return result;
+}
+
+// Hold API reads and writes while a cloud mutation is pending. One server process
+// owns this index; multiple replicas require a transactional repository instead.
+app.use('/api', async (req, res, next) => {
+  if (!firebaseStore) return next();
+  if (!storageReady) return res.status(503).json({ error: 'Incident storage is initializing.' });
+  if (req.method !== 'GET' && req.method !== 'OPTIONS') {
+    try {
+      const match = /^Bearer (.+)$/.exec(req.headers.authorization || '');
+      if (!match) return res.status(401).json({ error: 'Firebase sign-in required.' });
+      req.citizen = await firebaseStore.auth.verifyIdToken(match[1]);
+      req.body = { ...req.body, voterId: req.citizen.uid };
+    } catch { return res.status(401).json({ error: 'Invalid Firebase sign-in token.' }); }
+  }
+  serializeStorage(() => new Promise(resolve => {
+    if (res.destroyed) return resolve();
+    res.once('finish', resolve);
+    // A disconnected client must not release the index while its write is pending.
+    res.once('close', () => { pendingCommit.then(resolve, resolve); });
+    next();
+  })).catch(next);
+});
+
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'incidents.json');
 
 // In-Memory Incident Store initialized ONLY from the operator's own persisted
@@ -42,7 +77,7 @@ const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'incidents.json'
 // live feed is built from real citizen reports arriving over REST/WebSocket.
 let incidents = [];
 try {
-  if (fs.existsSync(DATA_FILE)) {
+  if (!firebaseStore && fs.existsSync(DATA_FILE)) {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
     if (raw.trim()) {
       incidents = JSON.parse(raw);
@@ -67,6 +102,13 @@ try {
 
 // Persist active incidents to disk atomically with swap backup
 function persistIncidents() {
+  if (firebaseStore) {
+    pendingCommit = firebaseStore.save(incidents).then(() => true).catch(err => {
+      console.error('[Firestore] Commit failed:', err.message);
+      return false;
+    });
+    return pendingCommit;
+  }
   try {
     const dir = path.dirname(DATA_FILE);
     if (!fs.existsSync(dir)) {
@@ -147,27 +189,31 @@ function cleanupExpiredIncidents() {
 
   if (expiredIncidents.length > 0) {
     incidents = keptIncidents;
+    const finish = (saved) => {
+      if (!saved) {
+        incidents = initialIncidents;
+        console.warn('[Lifecycle Worker] Failed to persist cleanup; restored previous state.');
+        return [];
+      }
+      for (const { incident, ageMs } of expiredIncidents) {
+        io.emit('incident:expired', {
+          id: incident.id,
+          reason: `Expired after ${Math.round(ageMs / 3600000)} hours (TTL exceeded).`,
+        });
+      }
+      return expiredIncidents.map(e => e.incident);
+    };
     const saved = persistIncidents();
-    if (!saved) {
-      incidents = initialIncidents;
-      console.warn('[Lifecycle Worker] Failed to persist cleanup of expired incidents, preserving in-memory state.');
-      return [];
-    }
-
-    for (const { incident, ageMs } of expiredIncidents) {
-      io.emit('incident:expired', {
-        id: incident.id,
-        reason: `Expired after ${Math.round(ageMs / (1000 * 60 * 60))} hours (TTL exceeded).`,
-      });
-    }
-    console.log(`[Lifecycle Worker] Cleaned up and persisted ${expiredIncidents.length} expired incidents.`);
+    return saved instanceof Promise ? saved.then(finish) : finish(saved);
   }
-
-  return expiredIncidents.map((e) => e.incident);
+  return [];
 }
 
 // Run cleanup every 60 seconds (documented lifecycle ticker cadence)
-const cleanupInterval = setInterval(cleanupExpiredIncidents, 60 * 1000);
+const cleanupInterval = setInterval(() => {
+  if (!firebaseStore) cleanupExpiredIncidents();
+  else if (storageReady) serializeStorage(cleanupExpiredIncidents).catch(err => console.error('[Lifecycle]', err.message));
+}, 60 * 1000);
 if (cleanupInterval.unref) cleanupInterval.unref();
 
 // RATE LIMITERS
@@ -208,6 +254,8 @@ app.get('/api/health', (req, res) => {
     status: 'online',
     app: 'NammaDrishti Real-Time Civic & Transit Radar Backend',
     activeIncidents: incidents.length,
+    storage: firebaseStore ? 'firestore' : 'local-json',
+    authentication: firebaseStore ? 'firebase' : 'device-id',
     ttlPolicies: TTL_HOURS_BY_TYPE,
     features: {
       spatialClustering: true,
@@ -298,9 +346,12 @@ app.get('/api/media/status', (req, res) => {
   });
 });
 
-app.post('/api/incidents', reportLimiter, (req, res) => {
+app.post('/api/incidents', reportLimiter, async (req, res) => {
   const { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability } = req.body || {};
 
+  if (urgency !== undefined && !['Low', 'Medium', 'High'].includes(urgency)) return res.status(400).json({ error: 'Invalid urgency.' });
+  if (id !== undefined && (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(id))) return res.status(400).json({ error: 'Invalid incident ID.' });
+  if (ward !== undefined && (typeof ward !== 'string' || ward.length > 200)) return res.status(400).json({ error: 'Invalid ward.' });
   const trimmedTitle = typeof title === 'string' ? title.trim() : '';
   const trimmedDesc = typeof description === 'string' ? description.trim() : '';
 
@@ -354,7 +405,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
   const allowedTypes = ['Traffic', 'Waterlogging', 'Accident', 'Infrastructure'];
   const category = allowedTypes.includes(type) ? type : 'Infrastructure';
   const hexIndex = getHexIndex(lat, lng, 8);
-  const reporterKey = req.body.voterId || req.ip || 'anon_reporter';
+  const reporterKey = voterKeyFor(req);
 
   // Sanitize authoritative flags - citizen submissions cannot claim official titles
   const sanitizedReportedBy = String(req.body.reportedBy || 'Citizen Contributor')
@@ -376,15 +427,18 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
   });
 
   if (clusterMatch) {
+    const previousCluster = JSON.parse(JSON.stringify(clusterMatch));
     // Auto-clustering Sybil check: verify reporter has not already contributed to this cluster
     if (!Array.isArray(clusterMatch.reporters)) {
       clusterMatch.reporters = [clusterMatch.reportedBy || 'initial_reporter'];
     }
-    if (waterDepth && !clusterMatch.waterDepth) clusterMatch.waterDepth = String(waterDepth).slice(0, 50);
-    if (vehiclePassability && !clusterMatch.vehiclePassability) clusterMatch.vehiclePassability = String(vehiclePassability).slice(0, 50);
+    if (waterDepth) clusterMatch.waterDepth = String(waterDepth).slice(0, 50);
+    if (vehiclePassability) clusterMatch.vehiclePassability = String(vehiclePassability).slice(0, 50);
     const isNewReporter = !clusterMatch.reporters.includes(reporterKey);
+    const isNewContributor = isNewReporter && !(clusterMatch.verifiedVoters || []).includes(reporterKey);
     if (isNewReporter) {
       clusterMatch.reporters.push(reporterKey);
+      clusterMatch.verifiedVoters = [...new Set([...(clusterMatch.verifiedVoters || []), ...clusterMatch.reporters])];
     }
 
     // Save previous values for atomic rollback
@@ -394,7 +448,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
     const prevIsVerified = !!clusterMatch.isVerified;
     const prevUpdates = clusterMatch.updates ? [...clusterMatch.updates] : [];
 
-    if (isNewReporter) {
+    if (isNewContributor) {
       clusterMatch.verificationCount = prevCount + 1;
       clusterMatch.verificationScore = Number((prevScore + 1.0).toFixed(2));
       clusterMatch.clusterCount = prevClusterCount + 1;
@@ -411,22 +465,20 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
       description: String(description).trim(),
       reportedBy: sanitizedReportedBy,
       mediaUrl: mediaUrl || null,
+      waterDepth: clusterMatch.waterDepth || null,
+      vehiclePassability: clusterMatch.vehiclePassability || null,
     });
 
-    const saved = persistIncidents();
+    const saved = await persistIncidents();
     if (!saved) {
-      // Rollback on failed write
-      clusterMatch.verificationCount = prevCount;
-      clusterMatch.verificationScore = prevScore;
-      clusterMatch.clusterCount = prevClusterCount;
-      clusterMatch.isVerified = prevIsVerified;
-      clusterMatch.updates = prevUpdates;
-      if (isNewReporter) clusterMatch.reporters.pop();
+      for (const key of Object.keys(clusterMatch)) delete clusterMatch[key];
+      Object.assign(clusterMatch, previousCluster);
       return res.status(500).json({ error: 'Failed to write clustered incident to persistent storage.' });
     }
 
     // Broadcast cluster update to all clients and to the spatial hex room
     io.emit('incident:clustered', {
+      ...clusterMatch,
       id: clusterMatch.id,
       clusterId: clusterMatch.id,
       verificationCount: clusterMatch.verificationCount,
@@ -475,7 +527,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
 
   incidents.unshift(newIncident);
 
-  const saved = persistIncidents();
+  const saved = await persistIncidents();
   if (!saved) {
     incidents.shift(); // Rollback in-memory state on write error
     return res.status(500).json({ error: 'Failed to write incident to persistent storage.' });
@@ -490,7 +542,7 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
 });
 
 // 3. PROXIMITY-WEIGHTED VERIFICATION ENDPOINT
-app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
+app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
   const { id } = req.params;
   const { voterPosition, voterId } = req.body || {};
   const incident = incidents.find((i) => i.id === id);
@@ -499,13 +551,13 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
     return res.status(404).json({ error: 'Incident not found' });
   }
 
-  const voterKey = voterId || req.ip || 'anon_voter';
+  const voterKey = voterKeyFor(req);
   if (!Array.isArray(incident.verifiedVoters)) {
     incident.verifiedVoters = incident.reporters ? [...incident.reporters] : [];
   }
 
   // Anti-Sybil single vote guard: check if this citizen/device has already verified
-  if (incident.verifiedVoters.includes(voterKey)) {
+  if (incident.verifiedVoters.includes(voterKey) || incident.reporters?.includes(voterKey)) {
     return res.status(409).json({
       error: 'You have already verified this incident.',
       alreadyVoted: true,
@@ -516,21 +568,12 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
     });
   }
 
-  // Calculate proximity weight: On-ground commuters (<= 1.5km) receive full weight (1.0)
-  // Remote commuters receive weighted verification (0.25)
-  let weight = 0.25;
-  let isGroundVerified = false;
+  // Browser GPS is caller-reported, never proof of physical presence.
+  const weight = 1.0;
+  const isGroundVerified = false;
   let distKm = 0;
-
-  if (voterPosition && Number.isFinite(Number(voterPosition.lat)) && Number.isFinite(Number(voterPosition.lng))) {
-    distKm = getDistanceKm(incident.position.lat, incident.position.lng, Number(voterPosition.lat), Number(voterPosition.lng));
-    if (distKm <= 1.5) {
-      weight = 1.0; // On-ground observation
-      isGroundVerified = true;
-    } else {
-      weight = 0.25; // Remote observation
-      isGroundVerified = false;
-    }
+  if (voterPosition && Number.isFinite(voterPosition.lat) && Number.isFinite(voterPosition.lng) && Math.abs(voterPosition.lat) <= 90 && Math.abs(voterPosition.lng) <= 180) {
+    distKm = getDistanceKm(incident.position.lat, incident.position.lng, voterPosition.lat, voterPosition.lng);
   }
 
   const prevCount = incident.verificationCount || 1;
@@ -546,7 +589,7 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
     incident.isVerified = true;
   }
 
-  const saved = persistIncidents();
+  const saved = await persistIncidents();
   if (!saved) {
     incident.verifiedVoters.pop();
     incident.verificationCount = prevCount;
@@ -575,7 +618,7 @@ app.post('/api/incidents/:id/verify', verifyLimiter, (req, res) => {
 });
 
 // 4. MULTI-CITIZEN CLEARANCE ENDPOINT
-app.post('/api/incidents/:id/resolve', (req, res) => {
+app.post('/api/incidents/:id/resolve', async (req, res) => {
   const { id } = req.params;
   const index = incidents.findIndex((i) => i.id === id);
 
@@ -584,7 +627,7 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
   }
 
   const incident = incidents[index];
-  const voterKey = req.body?.voterId || req.ip || 'anon_voter';
+  const voterKey = voterKeyFor(req);
 
   if (!Array.isArray(incident.resolutionVoterKeys)) {
     incident.resolutionVoterKeys = [];
@@ -600,7 +643,7 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
 
   if (incident.clearanceVotes >= 2) {
     const [cleared] = incidents.splice(index, 1);
-    const saved = persistIncidents();
+    const saved = await persistIncidents();
     if (!saved) {
       cleared.resolutionVoterKeys.pop();
       cleared.clearanceVotes = cleared.resolutionVoterKeys.length;
@@ -621,7 +664,7 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
     });
   }
 
-  const saved = persistIncidents();
+  const saved = await persistIncidents();
   if (!saved) {
     incident.resolutionVoterKeys.pop();
     incident.clearanceVotes = incident.resolutionVoterKeys.length;
@@ -654,7 +697,7 @@ const emergencyDispatches = [];
 // 5. EMERGENCY SOS DISPATCH ENDPOINT (Secured dispatch room & privacy protection)
 app.post('/api/sos/dispatch', sosLimiter, (req, res) => {
   const { lat, lng, timestamp } = req.body || {};
-  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+  if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     return res.status(400).json({ error: 'Valid GPS coordinates (lat, lng) are required for emergency dispatch.' });
   }
 
@@ -663,7 +706,7 @@ app.post('/api/sos/dispatch', sosLimiter, (req, res) => {
     lat: Number(lat),
     lng: Number(lng),
     timestamp: timestamp || new Date().toISOString(),
-    status: 'QUEUED_TO_DISPATCH',
+    status: 'LOCATION_RECORDED',
     targetAgencies: [
       { name: 'Karnataka Police Emergency Response Support System', phone: '112' },
       { name: 'Bengaluru Traffic Police Control Desk', phone: '1095' },
@@ -691,8 +734,8 @@ app.post('/api/sos/dispatch', sosLimiter, (req, res) => {
   res.status(200).json({
     success: true,
     dispatchId: dispatchEvent.id,
-    status: 'QUEUED_TO_DISPATCH',
-    message: 'Emergency coordinates queued for dispatch to Karnataka ERSS 112 and BTP control desks.',
+    status: 'LOCATION_RECORDED',
+    message: 'Location recorded. Emergency-service delivery is not confirmed; call 112 for urgent help.',
     authorities: dispatchEvent.targetAgencies,
     directDial: '112',
     dispatch: dispatchEvent,
@@ -700,9 +743,7 @@ app.post('/api/sos/dispatch', sosLimiter, (req, res) => {
 });
 
 app.get('/api/sos/dispatches', (req, res) => {
-  const token = req.headers['x-authority-token'] || req.query.token;
-  const isDev = process.env.NODE_ENV !== 'production';
-  if (!isDev && token !== (process.env.AUTHORITY_TOKEN || 'btp_control_secret')) {
+  if (!hasAuthorityAccess(req.headers['x-authority-token'])) {
     return res.status(401).json({ error: 'Unauthorized: Authority credentials required.' });
   }
   res.json({ dispatches: emergencyDispatches });
@@ -815,7 +856,7 @@ if (staticDir) {
 // Socket.io connection lifecycle
 io.on('connection', (socket) => {
   // Push full snapshot of current incidents to newly connected citizen client
-  socket.emit('initial:data', incidents);
+  storageQueue.then(() => { if (socket.connected && storageReady) socket.emit('initial:data', incidents); });
 
   // Subscribe client to specific H3-style hexagonal spatial room cells
   socket.on('subscribe:hex', (hexIds) => {
@@ -826,8 +867,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('join:emergency_control', () => {
-    socket.join('emergency:control_room');
+  socket.on('join:emergency_control', (ack) => {
+    const allowed = hasAuthorityAccess(socket.handshake.auth?.authorityToken);
+    if (allowed) socket.join('emergency:control_room');
+    if (typeof ack === 'function') ack({ authorized: allowed });
   });
 
   socket.on('disconnect', () => {});
@@ -857,15 +900,23 @@ module.exports = {
 
 // Start Server if executed directly
 if (require.main === module) {
+  if (process.env.NODE_ENV === 'production' && !firebaseStore) {
+    console.error('[Startup] Production requires FIREBASE_PROJECT_ID and backend credentials.');
+    process.exit(1);
+  }
   const PORT = process.env.PORT || 5001;
-  server.listen(PORT, () => {
+  const ready = firebaseStore ? firebaseStore.load().then(items => { incidents = items; storageReady = true; }) : Promise.resolve();
+  ready.then(() => server.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`🚀 NammaDrishti Civic Platform Engine Live`);
+    console.log(`🚀 NammaDrishti Civic Platform Engine Live (${firebaseStore ? 'Firestore + Firebase Auth' : 'local JSON'})`);
     console.log(`📡 HTTP Server & REST API: http://localhost:${PORT}`);
     console.log(`⚡ WebSocket Server: ws://localhost:${PORT}`);
     console.log(`🧪 Hexagonal Spatial Partitioning & Clustering: ACTIVE`);
     console.log(`⏱️ Dynamic TTL Expiration Worker: ACTIVE`);
     console.log(`🛡️ Rate Limiting & Sliding Window: ACTIVE`);
     console.log(`==================================================\n`);
+  })).catch(err => {
+    console.error('[Startup] Incident storage unavailable:', err.message);
+    process.exitCode = 1;
   });
 }

@@ -44,8 +44,8 @@ const CityRecap = ({ events = [], rainIntensity = 0, isWeatherOffline = false, o
   return (
     <div className="recap-content">
       <div className="recap-header">
-        <h4>Today's Bengaluru Diagnostic</h4>
-        <span className="recap-time">Updated live</span>
+        <h4>Bengaluru overview</h4>
+        <span className="recap-time">Based on reports and weather</span>
       </div>
 
       <div className="recap-grid">
@@ -68,7 +68,7 @@ const CityRecap = ({ events = [], rainIntensity = 0, isWeatherOffline = false, o
       </div>
 
       {/* Bengaluru Chronic Underpass Inundation Watch (curated catalog, live-correlated) */}
-      <h5 className="recap-subtitle">🌊 Chronic Underpass Vulnerability Watch ({correlatedUnderpasses.length} curated chokepoints)</h5>
+      <h5 className="recap-subtitle">Underpass watch ({correlatedUnderpasses.length} locations)</h5>
       {!isWeatherOffline && (criticalCount > 0 || warningCount > 0) && (
         <div
           className="underpass-summary-banner"

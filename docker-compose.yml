@@ -1,10 +1,13 @@
-version: '3.8'
-
 services:
   nammadrishti:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        REACT_APP_FIREBASE_PROJECT_ID: ${REACT_APP_FIREBASE_PROJECT_ID:?Configure Firebase web settings}
+        REACT_APP_FIREBASE_API_KEY: ${REACT_APP_FIREBASE_API_KEY:?Configure Firebase web settings}
+        REACT_APP_FIREBASE_AUTH_DOMAIN: ${REACT_APP_FIREBASE_AUTH_DOMAIN:?Configure Firebase web settings}
+        REACT_APP_FIREBASE_APP_ID: ${REACT_APP_FIREBASE_APP_ID:?Configure Firebase web settings}
     container_name: nammadrishti-app
     restart: unless-stopped
     ports:
@@ -12,9 +15,11 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=5001
-      - DATA_FILE=/app/data/incidents.json
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:?Configure Firebase backend}
+      - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/firebase-admin.json
+      - AUTHORITY_TOKEN=${AUTHORITY_TOKEN:-}
     volumes:
-      - nammadrishti_data:/app/data
+      - ${GOOGLE_APPLICATION_CREDENTIALS:?Set an external credential path}:/run/secrets/firebase-admin.json:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/health"]
       interval: 30s
@@ -22,5 +27,3 @@ services:
       retries: 3
       start_period: 10s
 
-volumes:
-  nammadrishti_data:

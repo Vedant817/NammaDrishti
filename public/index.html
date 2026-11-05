@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#090D16" />
+  <meta name="theme-color" content="#EDF2F4" />
   
   <!-- SEO Meta Tags -->
   <meta name="description" content="NammaDrishti - Real-time civic intelligence, live transit radar, Doppler rain radar, and urban monitoring for Bengaluru" />
@@ -26,7 +26,7 @@
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   
   <!-- Modern Inter & JetBrains Mono Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Leaflet CSS for Maps -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -34,126 +34,8 @@
         crossorigin=""/>
   
   <style>
-    :root {
-      --bg-canvas: #090D16;
-      --bg-surface: #0F172A;
-      --bg-card: #1E293B;
-      --border-subtle: #334155;
-      --border-active: #3B82F6;
-      --text-main: #F8FAFC;
-      --text-muted: #94A3B8;
-      --accent-blue: #2563EB;
-      --accent-amber: #F59E0B;
-      --accent-emerald: #10B981;
-      --accent-rose: #EF4444;
-      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-    }
-    
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    :focus-visible {
-      outline: 2px solid var(--border-active) !important;
-      outline-offset: 2px !important;
-    }
-    
-    body {
-      background-color: var(--bg-canvas);
-      color: var(--text-main);
-      font-family: var(--font-sans);
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      line-height: 1.5;
-      overflow: hidden;
-    }
-    
-    /* Clean Minimalist Loading Screen */
-    .loading-screen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: var(--bg-canvas);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      color: var(--text-main);
-      gap: 16px;
-    }
-    
-    .loading-brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 1.75rem;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-    }
-    
-    .loading-pulse-dot {
-      width: 10px;
-      height: 10px;
-      background: var(--accent-emerald);
-      border-radius: 50%;
-      box-shadow: 0 0 12px var(--accent-emerald);
-      animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    
-    .loading-subtitle {
-      font-size: 0.875rem;
-      color: var(--text-muted);
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      font-family: var(--font-mono);
-    }
-    
-    .loading-bar-wrap {
-      width: 200px;
-      height: 3px;
-      background: var(--border-subtle);
-      border-radius: 999px;
-      overflow: hidden;
-      margin-top: 8px;
-    }
-    
-    .loading-bar {
-      width: 50%;
-      height: 100%;
-      background: var(--accent-blue);
-      border-radius: 999px;
-      animation: bar-slide 1.2s ease-in-out infinite;
-    }
-    
-    @keyframes bar-slide {
-      0% { transform: translateX(-100%); }
-      50% { transform: translateX(100%); }
-      100% { transform: translateX(200%); }
-    }
-    
-    @keyframes pulse-ring {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .loading-bar,
-      .loading-pulse-dot {
-        animation: none !important;
-      }
-    }
-    
-    .app-loaded .loading-screen {
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease-out;
-    }
+    .loading-screen { position:fixed; inset:0; display:grid; place-content:center; background:#EDF2F4; color:#203640; font:18px system-ui; z-index:9999; }
+    .app-loaded .loading-screen { display:none; }
   </style>
   
   <title>NammaDrishti | Real-Time Bengaluru Civic & Transit Radar</title>
@@ -166,17 +48,8 @@
     </div>
   </noscript>
   
-  <div class="loading-screen" id="loading-screen">
-    <div class="loading-brand">
-      <span class="loading-pulse-dot"></span>
-      <span>NammaDrishti</span>
-    </div>
-    <div class="loading-subtitle">Bengaluru Live Civic Radar</div>
-    <div class="loading-bar-wrap">
-      <div class="loading-bar"></div>
-    </div>
-  </div>
-  
+  <div class="loading-screen" id="loading-screen" role="status">Loading NammaDrishti…</div>
+
   <div id="root"></div>
 </body>
 </html>

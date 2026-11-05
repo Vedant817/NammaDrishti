@@ -1,3 +1,5 @@
+process.env.TRUST_PROXY = 'true'; // Isolated fixture IPs, never a production default.
+process.env.NODE_ENV = 'test';
 // server/test/api.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -126,7 +128,7 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     });
   });
 
-  await t.test('5. Proximity-Weighted Verification: On-ground vs remote weighting', async () => {
+  await t.test('5. Uniform voting: GPS does not attest presence', async () => {
     // Dynamically create a test incident at Silk Board
     const createRes = await fetch(`${BASE_URL}/api/incidents`, {
       method: 'POST',
@@ -152,7 +154,7 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
       body: JSON.stringify({ voterPosition: { lat: 12.9180, lng: 77.6240 }, voterId: 'device_ground_1' }),
     });
     const onGroundData = await onGroundRes.json();
-    assert.equal(onGroundData.groundVerified, true);
+    assert.equal(onGroundData.groundVerified, false);
     assert.equal(onGroundData.weight, 1.0);
 
     // Remote observation (commuter 15km away in Yelahanka at lat: 13.1000, lng: 77.5900)
@@ -163,7 +165,7 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     });
     const remoteData = await remoteRes.json();
     assert.equal(remoteData.groundVerified, false);
-    assert.equal(remoteData.weight, 0.25);
+    assert.equal(remoteData.weight, 1.0);
 
     // Clean up
     await fetch(`${BASE_URL}/api/incidents/${targetId}/resolve`, {

@@ -1,6 +1,6 @@
 // src/components/Sidebar/PersonalizedFeed.jsx
 import React, { useState } from "react";
-import TrendingItems from "./TrendingItems";
+import { MapPin } from "lucide-react";
 import { useLanguage } from "../../context/LanguageContext";
 
 const currentAppOrigin = () => {
@@ -72,7 +72,7 @@ const PersonalizedFeed = ({
   const handleWhatsAppShare = (e, item) => {
     e.stopPropagation();
     const mapLink = item.position
-      ? `https://maps.google.com/?q=${item.position.lat},${item.position.lng}`
+      ? `https://www.openstreetmap.org/?mlat=${item.position.lat}&mlon=${item.position.lng}#map=17/${item.position.lat}/${item.position.lng}`
       : currentAppOrigin();
     const appLink = buildIncidentLink(item);
     const text = `🚨 *NammaDrishti Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n*Open live on map:* ${appLink}\n_Stay safe & take alternate routes._`;
@@ -111,8 +111,8 @@ const PersonalizedFeed = ({
       <div className="feed-items-list">
         {filteredEvents.length === 0 ? (
           <div className="feed-empty-state">
-            <span className="empty-icon">✓</span>
-            <p>{t.sidebar.emptyState}</p>
+            <MapPin size={28} strokeWidth={1.4} aria-hidden="true" />
+            <h5>{searchQuery ? "No matching reports" : t.sidebar.emptyState}</h5><p>{searchQuery ? "Try another area or clear your search." : "Reports from people nearby will appear here. See something on your route? Add it to the map."}</p>
           </div>
         ) : (
           filteredEvents.map((item) => {
@@ -122,6 +122,7 @@ const PersonalizedFeed = ({
               <div
                 key={item.id}
                 className={`feed-item-card ${isSelected ? "selected" : ""}`}
+
                 onClick={() => onEventSelect && onEventSelect(item)}
               >
                 <div className="card-top-row">
@@ -142,7 +143,7 @@ const PersonalizedFeed = ({
                   <span className="card-time">{item.timestamp}</span>
                 </div>
 
-                <h5 className="card-title">{item.title}</h5>
+                <h5 className="card-title"><button type="button" className="incident-title-btn" onClick={e => { e.stopPropagation(); onEventSelect?.(item); }}>{item.title}</button></h5>
                 <p className="card-desc">{item.description}</p>
                 {item.waterDepth && (
                   <div className="card-water-depth-pill" style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4', padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', marginTop: '6px', marginBottom: '4px' }}>
@@ -152,7 +153,7 @@ const PersonalizedFeed = ({
                 )}
 
                 <div className="card-bottom-row">
-                  <span className="card-ward">📍 {item.ward || "Bengaluru"}</span>
+                  <span className="card-ward">{item.ward || "Bengaluru"}</span>
                   <div className="card-actions-right">
                     <button
                       type="button"
@@ -160,7 +161,7 @@ const PersonalizedFeed = ({
                       onClick={(e) => handleCopyLink(e, item)}
                       title="Copy a direct link that opens this incident on the map"
                     >
-                      {copiedEventId === item.id ? "✓ Copied" : "🔗 Copy Link"}
+                      {copiedEventId === item.id ? "Copied" : "Copy link"}
                     </button>
                     <button
                       type="button"
@@ -168,10 +169,10 @@ const PersonalizedFeed = ({
                       onClick={(e) => handleWhatsAppShare(e, item)}
                       title="Share emergency hazard alert via WhatsApp"
                     >
-                      💬 SOS Share
+                      Share
                     </button>
                     <div className="card-verifications">
-                      <span>👥 {item.verificationCount || 1} {t.actions.confirmations}</span>
+                      <span>{item.verificationCount || 1} {t.actions.confirmations}</span>
                       {item.isVerified && <span className="verified-glyph">✓</span>}
                     </div>
                   </div>
@@ -182,10 +183,7 @@ const PersonalizedFeed = ({
         )}
       </div>
 
-      <div className="trending-divider">
-        <h4>{t.sidebar.trendingHeader}</h4>
-      </div>
-      <TrendingItems events={allEvents || events} />
+
     </div>
   );
 };

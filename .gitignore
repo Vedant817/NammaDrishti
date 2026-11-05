@@ -29,3 +29,7 @@ server/*.tmp
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+firebase-debug.log*
+firestore-debug.log*
+*-adminsdk-*.json

@@ -1,3 +1,4 @@
+import { useDialog } from "../../hooks/useDialog";
 // src/components/Modals/ReportModal.jsx
 import React, { useState, useEffect } from "react";
 import Button from "../Common/Button";
@@ -13,6 +14,7 @@ const ReportModal = ({
   onSubmitReport,
   initialCoordinates,
 }) => {
+  const dialogRef = useDialog(onClose);
   const { getPosition } = useGeolocation();
   const { t } = useLanguage();
 
@@ -23,7 +25,7 @@ const ReportModal = ({
     wardLocality: t?.report?.wardLocality || t?.reportModal?.wardLabel || "Ward / Locality",
     severity: t?.report?.severity || t?.reportModal?.urgencyLabel || "Urgency",
     fieldNotes: t?.report?.fieldNotes || t?.reportModal?.descLabel || "Description & Traffic Impact",
-    locationVerification: t?.report?.locationVerification || "Location Pin / GPS Coordinates",
+    locationVerification: t?.report?.locationVerification || "Report location",
     autoDetectGps: t?.report?.autoDetectGps || t?.actions?.autoGps || "Auto-Detect GPS",
     photoEvidence: t?.report?.photoEvidence || t?.reportModal?.photoLabel || "Attach Evidence Photo (Optional)",
     broadcastHazard: t?.report?.broadcastHazard || t?.actions?.submitReport || "Submit Live Hazard",
@@ -165,10 +167,10 @@ const ReportModal = ({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Report a hazard" tabIndex={-1} className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{reportT.modalTitle}</h3>
-          <button type="button" className="close-btn" onClick={onClose}>
+          <button type="button" className="close-btn" aria-label="Close dialog" onClick={onClose}>
             ✕
           </button>
         </div>
@@ -231,7 +233,7 @@ const ReportModal = ({
               id="report-title"
               type="text"
               required
-              placeholder="e.g. Waterlogging under bridge, Massive crater pothole"
+              placeholder="e.g. Waterlogging under the railway bridge"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             />
@@ -269,7 +271,7 @@ const ReportModal = ({
               id="report-desc"
               rows="3"
               required
-              placeholder="Provide actionable guidance for fellow commuters..."
+              placeholder="Describe what you can see and how it affects the road."
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
@@ -289,7 +291,7 @@ const ReportModal = ({
               <span className="location-status-badge">
                 {locationSource === "GPS" && "✓ GPS Locked"}
                 {locationSource === "PIN_SELECTED" && "✓ Map Pin Selected"}
-                {locationSource === "MANUAL" && "ℹ Live geocode on submit"}
+                {locationSource === "MANUAL" && "Choose a map location or enter an area."}
               </span>
             </div>
           </div>

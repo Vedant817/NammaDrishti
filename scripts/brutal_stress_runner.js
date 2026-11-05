@@ -1,3 +1,5 @@
+process.env.NODE_ENV = 'test';
+process.env.TRUST_PROXY = 'true'; // Isolated fixture IPs, never a production default.
 // scripts/brutal_stress_runner.js
 /**
  * NammaDrishti Brutal Harsh User & 5 Senior QA Engineers Stress Suite

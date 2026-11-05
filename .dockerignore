@@ -18,3 +18,7 @@ testsprite
 .eslintcache
 coverage
 build
+
+.env
+.env.*
+*-adminsdk-*.json

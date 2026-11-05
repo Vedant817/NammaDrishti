@@ -15,7 +15,7 @@ const FilterPanel = ({ activeFilter, onFilterChange, events = [] }) => {
   return (
     <div className="filter-panel-bar">
       <div className="filter-chips-list">
-        {filters.map((filter) => {
+        {filters.filter(filter => !["Event", "Rain"].includes(filter.id)).map((filter) => {
           const count = getCountForFilter(filter.id);
           const isActive = activeFilter === filter.id;
           const translatedName = (t.filters && t.filters[filter.id]) || filter.name;
@@ -25,9 +25,10 @@ const FilterPanel = ({ activeFilter, onFilterChange, events = [] }) => {
               key={filter.id}
               type="button"
               className={`filter-chip ${isActive ? "active" : ""}`}
+              aria-pressed={isActive}
               onClick={() => onFilterChange(filter.id)}
             >
-              <span className="filter-chip-icon">{filter.icon}</span>
+              <span className={`filter-chip-dot category-${filter.id.toLowerCase()}`} aria-hidden="true" />
               <span className="filter-chip-name">{translatedName}</span>
               <span className="filter-chip-count">{count}</span>
             </button>

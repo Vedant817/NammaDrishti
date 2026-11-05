@@ -1,3 +1,4 @@
+process.env.TRUST_PROXY = 'true'; // Isolated fixture IPs, never a production default.
 // scripts/sandbox_scenario_runner.js
 /**
  * NammaDrishti Isolated Sandbox & Scenario Simulation Engine
@@ -103,7 +104,7 @@ function distanceToSegmentKm(pLat, pLng, aLat, aLng, bLat, bLng) {
 function generateSosPayload(userCoords, emergencyContacts = ['112', '1095']) {
   const latStr = userCoords?.lat?.toFixed(5) || '12.97160';
   const lngStr = userCoords?.lng?.toFixed(5) || '77.59460';
-  const mapsLink = `https://maps.google.com/?q=${latStr},${lngStr}`;
+  const mapsLink = `https://www.openstreetmap.org/?mlat=${latStr}&mlon=${lngStr}#map=17/${latStr}/${lngStr}`;
   const message = `EMERGENCY ALERT: I am stranded in Bengaluru flood/monsoon hazard at GPS: ${latStr}, ${lngStr}. Live Location: ${mapsLink} Please dispatch assistance immediately!`;
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
   return {
@@ -483,7 +484,7 @@ async function runScenarioSandbox() {
       const sosData = generateSosPayload(strandedLocation);
 
       console.log(`  ✓ 8a. Stranded Commuter coordinates: ${sosData.latitude}, ${sosData.longitude}`);
-      console.log(`  ✓ 8b. Google Maps Locator: ${sosData.mapsLink}`);
+      console.log(`  ✓ 8b. OpenStreetMap Locator: ${sosData.mapsLink}`);
       console.log(`  ✓ 8c. WhatsApp Emergency Dispatch Link: ${sosData.whatsappUrl.substring(0, 65)}...`);
       console.log(`  ✓ 8d. Emergency Hotline Targets: ${sosData.helplines.join(', ')}`);
 

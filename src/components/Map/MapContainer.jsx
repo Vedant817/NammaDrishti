@@ -1,3 +1,4 @@
+import { CloudRain, Route, Layers } from "lucide-react";
 // src/components/Map/MapContainer.jsx
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
@@ -280,27 +281,27 @@ const CustomMapContainer = ({
               setRadarIndex(radarData ? radarData.nowIndex : null);
             }
           }}
-          title="Toggle live Doppler rain radar overlay"
+          aria-pressed={showRadar} title="Toggle rain radar"
         >
-          🌧️ {showRadar ? t.actions.hideRadar : t.actions.liveRadar}
+          <CloudRain size={16} aria-hidden="true" /> {showRadar ? t.actions.hideRadar : t.actions.liveRadar}
         </button>
 
         <button
           type="button"
           className={`toolbar-btn ${showTraffic ? "active-amber" : ""}`}
           onClick={() => setShowTraffic(!showTraffic)}
-          title="Toggle monitored arterial corridor choke points"
+          aria-pressed={showTraffic} title="Toggle road corridors"
         >
-          🚗 {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
+          <Route size={16} aria-hidden="true" /> {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
         </button>
 
         <button
           type="button"
           className={`toolbar-btn ${showHeatmap ? "active-rose" : ""}`}
           onClick={() => setShowHeatmap(!showHeatmap)}
-          title="Toggle spatial hazard risk density heatmap"
+          aria-pressed={showHeatmap} title="Toggle reported hazard density"
         >
-          🔥 {showHeatmap ? (t.actions?.hideHeatmap || "Hide Heatmap") : (t.actions?.heatmap || "Risk Heatmap")}
+          <Layers size={16} aria-hidden="true" /> {showHeatmap ? (t.actions?.hideHeatmap || "Hide Heatmap") : (t.actions?.heatmap || "Risk Heatmap")}
         </button>
 
         {/* GEV-style radar timeline: play the past 2h + scrub the 30-min nowcast */}
@@ -357,7 +358,7 @@ const CustomMapContainer = ({
         )}
 
         <div className="toolbar-hint">
-          <span>Click map to set report coordinates</span>
+          <span>Select a point on the map to report a hazard</span>
         </div>
       </div>
 
@@ -382,6 +383,11 @@ const CustomMapContainer = ({
             />
           )}
 
+        {selectedEvent?.id?.startsWith('underpass_') && selectedEvent.position && (
+          <CircleMarker center={[selectedEvent.position.lat, selectedEvent.position.lng]} radius={12} pathOptions={{ color: '#176582', fillColor: '#176582', fillOpacity: 0.5 }}>
+            <Popup>{selectedEvent.title} — curated underpass location</Popup>
+          </CircleMarker>
+        )}
         {/* Clean OpenStreetMap Tiles */}
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

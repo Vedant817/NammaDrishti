@@ -1,3 +1,5 @@
+import { useDialog } from "../../hooks/useDialog";
+import { authenticatedFetch as fetch } from "../../services/firebaseService";
 // src/components/Chatbot/ChatbotModal.jsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import "./ChatbotModal.css";
@@ -29,10 +31,11 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
     return Array.isArray(currentEvents) ? currentEvents : (Array.isArray(events) ? events : []);
   }, [currentEvents, events]);
 
+  const dialogRef = useDialog(onClose);
   const [messages, setMessages] = useState([
     {
       type: "bot",
-      text: "Namaskara! I am NammaDrishti AI, your live Bengaluru civic & transit radar assistant. How can I assist your commute today?",
+      text: "Ask about reported road hazards, rain, or getting around Bengaluru.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -213,13 +216,13 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
 
   return (
     <div className="chatbot-modal-overlay" onClick={onClose}>
-      <div className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="NammaDrishti AI" tabIndex={-1} className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
         <div className="chatbot-modal-header">
           <div className="bot-header-info">
             <span className="bot-avatar">🤖</span>
             <div>
-              <h3>NammaDrishti AI</h3>
-              <span className="bot-status">● Live City Radar Context</span>
+              <h3>City assistant</h3>
+              <span className="bot-status">Answers based on current reports</span>
             </div>
           </div>
           <div className="header-actions-group">
@@ -231,7 +234,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
             >
               {voiceEnabled ? "🔊" : "🔇"}
             </button>
-            <button type="button" className="close-button" onClick={onClose}>
+            <button type="button" className="close-button" aria-label="Close dialog" onClick={onClose}>
               ✕
             </button>
           </div>

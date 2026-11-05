@@ -21,10 +21,14 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#090D16",
-  "background_color": "#090D16",
+  "theme_color": "#EDF2F4",
+  "background_color": "#EDF2F4",
   "orientation": "portrait-primary",
-  "categories": ["productivity", "utilities", "navigation"],
+  "categories": [
+    "productivity",
+    "utilities",
+    "navigation"
+  ],
   "lang": "en-US",
   "dir": "ltr",
   "scope": "/"

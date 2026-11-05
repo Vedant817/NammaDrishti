@@ -7,6 +7,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "firebase": "^13.2.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.16.0",
     "react": "^19.0.0",
@@ -27,10 +28,10 @@
     "start": "react-scripts start",
     "server": "node server/index.js",
     "doctor": "node scripts/doctor.js",
-    "build": "react-scripts build",
+    "build": "react-scripts build && node scripts/prepare-service-worker.js",
     "test": "react-scripts test",
     "test:ci": "react-scripts test --watchAll=false",
-    "test:backend": "node --test server/test/api.test.js",
+    "test:backend": "node --test server/test/*.test.js",
     "test:e2e": "node scripts/simulate_user.js",
     "test:sandbox": "node scripts/sandbox_scenario_runner.js",
     "test:brutal": "node scripts/brutal_stress_runner.js",
@@ -54,5 +55,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
