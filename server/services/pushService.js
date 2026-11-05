@@ -37,7 +37,7 @@ function createPushService(records) {
         if(job.status!=='queued'||job.nextAt>Date.now())continue;
         const item=activeIncidents.find(i=>i.id===job.incidentId&&!i.moderationHidden);
         if(!item){await records.remove('pushOutbox',job.id);continue;}
-        const claim=await records.claim('pushOutbox',job.id,owner);if(!claim)continue;
+        const claim=await records.claim('pushOutbox',job.id,owner,Date.now(),['queued']);if(!claim)continue;
         const sub=await records.get('pushSubscriptions',job.subscriptionId);
         if(!sub){await records.remove('pushOutbox',job.id);continue;}
         try {

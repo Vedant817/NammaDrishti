@@ -18,8 +18,17 @@ function createLease(db,{owner=randomUUID(),now=Date.now}={}) {
       await db.runTransaction(async tx=>{
         const current=(await tx.get(ref)).data();
         if(current?.owner!==owner||current.until<=now())throw new Error('Write lease expired');
-        for(const item of changes)tx.set(collection.doc(item.id),item);
-        for(const id of deleted)tx.delete(collection.doc(id));
+        const publicCollection = db.collection('publicIncidents');
+        for(const item of changes) {
+          tx.set(collection.doc(item.id),item);
+          const published = require('./publicIncident').publicIncident(item);
+          if (published) tx.set(publicCollection.doc(item.id),published);
+          else tx.delete(publicCollection.doc(item.id));
+        }
+        for(const id of deleted) {
+          tx.delete(collection.doc(id));
+          tx.delete(publicCollection.doc(id));
+        }
       });
     }
   };

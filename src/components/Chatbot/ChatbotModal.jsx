@@ -1,3 +1,4 @@
+import { API_BASE } from "../../services/api";
 import { useLanguage } from '../../context/LanguageContext';
 import { useDialog } from "../../hooks/useDialog";
 import { authenticatedFetch as fetch } from "../../services/firebaseService";
@@ -13,19 +14,7 @@ const QUICK_PROMPTS = [
   "Emergency helplines",
 ];
 
-const getApiBase = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  if (
-    typeof window !== "undefined" &&
-    window.location.hostname !== "localhost" &&
-    window.location.hostname !== "127.0.0.1"
-  ) {
-    return `${window.location.origin}/api`;
-  }
-  return "http://localhost:5001/api";
-};
 
-const API_BASE = getApiBase();
 
 const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) => {
   const activeEvents = useMemo(() => {
@@ -86,7 +75,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
 
       if (res.ok) {
         const data = await res.json();
-        setMessages((prev) => [...prev, { type: "bot", text: `${data.reply}\n[${data.mode}]` }]);
+        setMessages((prev) => [...prev, { type: "bot", text: data.reply }]);
         setIsTyping(false);
         speakText(data.reply);
         return;

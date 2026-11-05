@@ -1,3 +1,4 @@
+import { API_BASE } from "../../services/api";
 import { authenticatedFetch as fetch } from "../../services/firebaseService";
 // src/components/Sidebar/Sidebar.jsx
 import React, { useState } from "react";
@@ -7,19 +8,7 @@ import { EMERGENCY_CONTACTS } from "../../data/constants";
 import { useLanguage } from "../../context/LanguageContext";
 import "./Sidebar.css";
 
-const getApiBase = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  if (
-    typeof window !== "undefined" &&
-    window.location.hostname !== "localhost" &&
-    window.location.hostname !== "127.0.0.1"
-  ) {
-    return `${window.location.origin}/api`;
-  }
-  return "http://localhost:5001/api";
-};
 
-const API_BASE = getApiBase();
 
 const Sidebar = ({
   activeTab = "feed",
@@ -162,7 +151,7 @@ const Sidebar = ({
             <div className="emergency-sos-box">
               <div className="sos-box-header">
                 <span className="sos-badge">Need urgent help?</span>
-                <a className="sos-network" href="tel:112">Call 112</a>
+                <a className="sos-network" href="tel:112">{t.ui["Call 112"]}</a>
               </div>
               <h5>{t.sidebar?.sosTitle || "One-Tap Bengaluru Emergency SOS Dispatch"}</h5>
               <p>{t.sidebar?.sosDesc || "Instantly broadcast your GPS location to BTP & BBMP control and generate emergency WhatsApp dispatch."}</p>

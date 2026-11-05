@@ -5,6 +5,7 @@ import { API_BASE } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 const CityRecap = ({ events = [], onSelectLocation }) => {
   const { t } = useLanguage();
+  const [river, setRiver] = useState(null);
   const [readings, setReadings] = useState({});
   const [observations, setObservations] = useState([]);
   useEffect(() => {
@@ -17,12 +18,14 @@ const CityRecap = ({ events = [], onSelectLocation }) => {
       if (active) setReadings(Object.fromEntries(results.filter(r => r.status === 'fulfilled').map(r => r.value)));
       try { const r = await fetch(`${API_BASE}/flood-observations`, { signal: AbortSignal.timeout(10000) }); const data = await r.json(); if (active) setObservations(data.observations || []); } catch { if (active) setObservations([]); }
     }
+    fetch(`${API_BASE}/flood-context`,{signal:AbortSignal.timeout(10000)}).then(r=>r.ok?r.json():null).then(data=>{if(active)setRiver(data);}).catch(()=>{});
     refresh(); const timer = setInterval(refresh, 120000);
     return () => { active = false; clearInterval(timer); };
   }, []);
   return <div className="recap-content">
     <div className="recap-header"><h4>{t.live.overview}</h4><span>{t.live.citizenData}</span></div>
     <div className="recap-grid">{['Traffic','Waterlogging','Accident','Infrastructure'].map(type => <div className="recap-stat-card" key={type}><span className="recap-num">{events.filter(e => e.type === type).length}</span><span>{t.filters[type]}</span></div>)}</div>
+    {river?.status === 'available' && <section><h5>{t.live.riverContext}</h5><p>{t.live.riverLimit}</p><p>{river.latitude.toFixed(3)}, {river.longitude.toFixed(3)} · {new Date(river.fetchedAt).toLocaleString()}</p>{river.forecast.map(f=><p key={f.date}>{f.date}: {f.discharge} m³/s</p>)}<a href={river.sourceUrl} target="_blank" rel="noreferrer">{river.source}</a></section>}
     <h5>{t.live.underpasses}</h5><p>{t.live.unverifiedCatalog}</p>
     <div className="underpass-watch-list">{BENGALURU_UNDERPASSES.map(p => {
       const reports = events.filter(e => e.type === 'Waterlogging' && e.position && calculateDistance(e.position.lat,e.position.lng,p.lat,p.lng) <= 1.2);

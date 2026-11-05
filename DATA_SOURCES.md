@@ -18,3 +18,7 @@
 Public APIs have usage limits and no availability guarantee. Production authentication/storage requires a Firebase project and server credentials. [Firebase Storage requires billing](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024); this implementation uses persistent disk instead and does not enable paid storage.
 
 `npm run doctor` checks Node, dependency/store availability, Open-Meteo, RainViewer, OSRM and local backend health. It does not certify licenses, Bengaluru radar coverage, geocoding policy enforcement across foreign deployments, external provider credentials, sensor accuracy, or emergency delivery.
+
+## Activated public integrations
+
+The Vercel deployment uses live TomTom speeds. Open-Meteo/GloFAS adds regional daily river-flow model context (https://open-meteo.com/en/docs/flood-api), not street-flood depth. IMD probes returned 401/API key missing. MyMemory GET (https://mymemory.translated.net/doc/spec.php) generated cached public UI labels only; anonymous quota is 5,000 characters/day per its usage policy. No runtime personal text is sent for translation. See DEPLOYMENT.md for live evidence and limits.

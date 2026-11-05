@@ -1,5 +1,7 @@
+import { API_BASE } from "../services/api";
 import { reconcileReport, reconcileSnapshot } from "../utils/incidentState";
 import { authenticatedFetch as fetch } from "../services/firebaseService";
+import { subscribePublicIncidents } from "../services/firebaseService";
 // src/hooks/useEventData.js
 import { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
@@ -13,31 +15,9 @@ const LEGACY_VOTES_KEY = "nammapulse_user_votes_v1";
 const OFFLINE_QUEUE_KEY = "nammadrishti_offline_queue_v1";
 const OFFLINE_VOTES_KEY = "nammadrishti_offline_votes_v1";
 
-const getApiBase = () => {
-  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
-  if (
-    typeof window !== "undefined" &&
-    window.location.hostname !== "localhost" &&
-    window.location.hostname !== "127.0.0.1"
-  ) {
-    return `${window.location.origin}/api`;
-  }
-  return "http://localhost:5001/api";
-};
+const getSocketUrl = () => process.env.REACT_APP_SOCKET_URL || ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port === '3000' ? 'http://localhost:5001' : window.location.origin);
 
-const getSocketUrl = () => {
-  if (process.env.REACT_APP_SOCKET_URL) return process.env.REACT_APP_SOCKET_URL;
-  if (
-    typeof window !== "undefined" &&
-    window.location.hostname !== "localhost" &&
-    window.location.hostname !== "127.0.0.1"
-  ) {
-    return window.location.origin;
-  }
-  return "http://localhost:5001";
-};
 
-const API_BASE = getApiBase();
 const SOCKET_URL = getSocketUrl();
 
 // Safe storage persistence with quota fallback (strips base64 image if quota exceeded)
@@ -170,9 +150,13 @@ export const useEventData = () => {
   const [isLiveConnected, setIsLiveConnected] = useState(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState(() => getOfflineQueue().length);
   const socketRef = useRef(null);
+  const syncingRef = useRef(false);
 
   // Sync queued offline submissions & votes to server safely without race condition
   const syncOfflineQueue = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    try {
     // 1. Sync pending hazard reports
     const queue = getOfflineQueue();
     if (queue && queue.length > 0) {
@@ -270,6 +254,7 @@ export const useEventData = () => {
         saveOfflineVotes(remainingVotes);
       }
     }
+    } finally { syncingRef.current = false; }
   }, []);
 
   // Listen to network status changes to drain offline queue
@@ -327,19 +312,35 @@ export const useEventData = () => {
       }
     };
 
-    loadInitialData().finally(() => {
-      if (isMounted) setLoading(false);
-    });
+    if (process.env.REACT_APP_REALTIME_TRANSPORT !== 'firestore') {
+      loadInitialData().finally(() => { if (isMounted) setLoading(false); });
+    } else {
+      // The public listener owns hosted snapshots. A slower initial REST read
+      // must not overwrite a newer realtime update.
+      try { const cached = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if (Array.isArray(cached)) setEvents(cached); } catch {}
+      setLoading(false);
+    }
 
+    // Hosted Vercel clients use the atomic sanitized Firestore projection.
+    if (process.env.REACT_APP_REALTIME_TRANSPORT === 'firestore') {
+      const stop=subscribePublicIncidents((remote,online)=>{
+        if(!isMounted)return;
+        setIsLiveConnected(online);
+        setEvents(previous=>{const next=reconcileSnapshot(previous,remote);safeSaveStorage(next);return next;});
+        if(online)syncOfflineQueue();
+      },()=>{if(isMounted)setIsLiveConnected(false);});
+      return ()=>{isMounted=false;stop();};
+    }
     // Establish WebSocket Connection with automatic reconnection
     try {
       const socket = io(SOCKET_URL, {
+        path: process.env.REACT_APP_SOCKET_PATH || '/socket.io',
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 10000,
-        transports: ["websocket", "polling"],
+        transports: ["websocket"],
       });
       socketRef.current = socket;
 

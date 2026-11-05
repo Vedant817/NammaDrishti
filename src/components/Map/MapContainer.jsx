@@ -293,7 +293,7 @@ const CustomMapContainer = ({
               setRadarIndex(radarData ? radarData.nowIndex : null);
             }
           }}
-          aria-pressed={showRadar} title="Toggle rain radar"
+          aria-pressed={showRadar} title={t.ui["Toggle rain radar"]}
         >
           <CloudRain size={16} aria-hidden="true" /> {showRadar ? t.actions.hideRadar : t.actions.liveRadar}
         </button>
@@ -302,7 +302,7 @@ const CustomMapContainer = ({
           type="button"
           className={`toolbar-btn ${showTraffic ? "active-amber" : ""}`}
           onClick={() => setShowTraffic(!showTraffic)}
-          aria-pressed={showTraffic} title="Toggle road corridors"
+          aria-pressed={showTraffic} title={t.ui["Toggle road corridors"]}
         >
           <Route size={16} aria-hidden="true" /> {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
         </button>

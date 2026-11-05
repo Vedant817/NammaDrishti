@@ -1,10 +1,11 @@
+import extras from './uiExtras.json';
 import copy from './liveCopy.json';
 // src/data/translations.js
 export const translations = {
   en: {
     live: copy.live.en,
     account: copy.account.en,
-    ui: copy.ui.en,
+    ui: { ...copy.ui.en, ...extras.en },
     brandName: "NammaDrishti",
     brandTagline: "Roads, rain & local reports",
     city: "Bengaluru",
@@ -91,7 +92,7 @@ export const translations = {
   kn: {
     live: copy.live.kn,
     account: copy.account.kn,
-    ui: copy.ui.kn,
+    ui: { ...copy.ui.kn, ...extras.kn },
     brandName: "ನಮ್ಮ ದೃಷ್ಟಿ",
     brandTagline: "ನೈಜ-ಸಮಯದ ನಾಗರಿಕ ಮತ್ತು ಸಂಚಾರ ಮಾಹಿತಿ",
     city: "ಬೆಂಗಳೂರು",
@@ -178,7 +179,7 @@ export const translations = {
   hi: {
     live: copy.live.hi,
     account: copy.account.hi,
-    ui: copy.ui.hi,
+    ui: { ...copy.ui.hi, ...extras.hi },
     brandName: "नम्मा दृष्टि",
     brandTagline: "रियल-टाइम नागरिक और यातायात आसूचना",
     city: "Bengaluru",

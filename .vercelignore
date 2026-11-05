@@ -1,0 +1,11 @@
+.env
+.env.*
+.git
+node_modules
+server/node_modules
+server/runtime
+server/incidents.json
+server/test
+coverage
+*.log
+*-adminsdk-*.json

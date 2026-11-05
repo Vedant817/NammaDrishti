@@ -88,7 +88,7 @@ const PersonalizedFeed = ({
           placeholder={t.sidebar.searchPlaceholder}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search incidents"
+          aria-label={t.ui["Search incidents"]}
         />
         {searchQuery && (
           <button

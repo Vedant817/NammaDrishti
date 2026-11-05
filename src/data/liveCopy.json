@@ -22,7 +22,9 @@
       "moderation": "Moderation",
       "notifyEnabled": "Background alerts enabled for this area",
       "notifyUnavailable": "Alerts unavailable. HTTPS and notification permission are required.",
-      "noReportedHazards": "No reported hazards"
+      "noReportedHazards": "No reported hazards",
+      "riverContext": "Regional river-flow model",
+      "riverLimit": "Daily 5 km river-discharge model. This is not underpass depth, street flooding or a road-safety forecast."
     },
     "kn": {
       "overview": "ಬೆಂಗಳೂರು ಅವಲೋಕನ",
@@ -46,7 +48,9 @@
       "moderation": "ವರದಿ ಪರಿಶೀಲನೆ",
       "notifyEnabled": "ಈ ಪ್ರದೇಶಕ್ಕೆ ಹಿನ್ನೆಲೆ ಎಚ್ಚರಿಕೆ ಸಕ್ರಿಯವಾಗಿದೆ",
       "notifyUnavailable": "ಎಚ್ಚರಿಕೆ ಲಭ್ಯವಿಲ್ಲ. HTTPS ಮತ್ತು ಅಧಿಸೂಚನೆ ಅನುಮತಿ ಅಗತ್ಯ.",
-      "noReportedHazards": "ವರದಿಯಾದ ಅಪಾಯಗಳಿಲ್ಲ"
+      "noReportedHazards": "ವರದಿಯಾದ ಅಪಾಯಗಳಿಲ್ಲ",
+      "riverContext": "ಪ್ರಾದೇಶಿಕ ನದಿ ಹರಿವಿನ ಮಾದರಿ",
+      "riverLimit": "ಪ್ರತಿದಿನದ 5 ಕಿ.ಮೀ. ನದಿ ಹರಿವಿನ ಮಾದರಿ. ಇದು ಅಂಡರ್‌ಪಾಸ್ ಆಳ, ರಸ್ತೆ ಪ್ರವಾಹ ಅಥವಾ ರಸ್ತೆ ಸುರಕ್ಷತೆಯ ಮುನ್ಸೂಚನೆ ಅಲ್ಲ."
     },
     "hi": {
       "overview": "बेंगलुरु का अवलोकन",
@@ -70,7 +74,9 @@
       "moderation": "रिपोर्ट समीक्षा",
       "notifyEnabled": "इस क्षेत्र के लिए पृष्ठभूमि अलर्ट चालू हैं",
       "notifyUnavailable": "अलर्ट उपलब्ध नहीं हैं। HTTPS और सूचना अनुमति आवश्यक है।",
-      "noReportedHazards": "रिपोर्ट किए खतरे नहीं हैं"
+      "noReportedHazards": "रिपोर्ट किए खतरे नहीं हैं",
+      "riverContext": "क्षेत्रीय नदी प्रवाह मॉडल",
+      "riverLimit": "दैनिक 5 किमी नदी प्रवाह मॉडल। यह अंडरपास की गहराई, सड़क पर बाढ़ या सड़क सुरक्षा का पूर्वानुमान नहीं है।"
     }
   },
   "ui": {
@@ -183,7 +189,10 @@
       "reason": "Reason for this moderation action (at least 5 characters)",
       "hide": "Hide report",
       "restore": "Restore report",
-      "audit": "Moderation audit log"
+      "audit": "Moderation audit log",
+      "passwordHint": "Use at least 8 characters.",
+      "working": "Please wait…",
+      "resend": "Resend verification email"
     },
     "kn": {
       "title": "ನಾಗರಿಕ ಖಾತೆ",
@@ -199,7 +208,10 @@
       "reason": "ಈ ಪರಿಶೀಲನಾ ಕ್ರಮಕ್ಕೆ ಕಾರಣ (ಕನಿಷ್ಠ 5 ಅಕ್ಷರ)",
       "hide": "ವರದಿ ಮರೆಮಾಡಿ",
       "restore": "ವರದಿ ಮರುಸ್ಥಾಪಿಸಿ",
-      "audit": "ಪರಿಶೀಲನಾ ದಾಖಲೆ"
+      "audit": "ಪರಿಶೀಲನಾ ದಾಖಲೆ",
+      "passwordHint": "ಕನಿಷ್ಠ 8 ಅಕ್ಷರಗಳನ್ನು ಬಳಸಿ.",
+      "working": "ದಯವಿಟ್ಟು ನಿರೀಕ್ಷಿಸಿ…",
+      "resend": "ದೃಢೀಕರಣ ಇಮೇಲ್ ಮತ್ತೆ ಕಳುಹಿಸಿ"
     },
     "hi": {
       "title": "नागरिक खाता",
@@ -215,7 +227,10 @@
       "reason": "समीक्षा कार्रवाई का कारण (कम से कम 5 अक्षर)",
       "hide": "रिपोर्ट छिपाएँ",
       "restore": "रिपोर्ट वापस लाएँ",
-      "audit": "समीक्षा का रिकॉर्ड"
+      "audit": "समीक्षा का रिकॉर्ड",
+      "passwordHint": "कम से कम 8 अक्षर रखें।",
+      "working": "कृपया प्रतीक्षा करें…",
+      "resend": "सत्यापन ईमेल दोबारा भेजें"
     }
   }
 }

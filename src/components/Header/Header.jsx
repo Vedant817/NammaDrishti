@@ -6,7 +6,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import "./Header.css";
 
 const Header = ({ weather, isLiveConnected = false, offlineQueueCount = 0 }) => {
-  const [account, setAccount] = useState(false);
+  const [account, setAccount] = useState(() => new URLSearchParams(window.location.search).get("account") === "1");
   const [notice, setNotice] = useState(null);
   const { lang, setLang, t } = useLanguage();
   return (
@@ -20,12 +20,12 @@ const Header = ({ weather, isLiveConnected = false, offlineQueueCount = 0 }) => 
       <div className="city-location"><span className="city-location-rule" aria-hidden="true" /><span>{t.city}<small>12.97° N / 77.59° E</small></span></div>
       <div className="header-meta-group">
         <button type="button" onClick={() => setAccount(true)}>{t.live.account}</button>
-        <button type="button" onClick={async () => { if (!("Notification" in window) || await Notification.requestPermission() !== "granted") return setNotice(t.live.notifyUnavailable); if (!navigator.geolocation) return setNotice(t.live.notifyUnavailable); navigator.geolocation.getCurrentPosition(p => enableBackgroundAlerts({lat:p.coords.latitude,lng:p.coords.longitude}).then(() => setNotice(t.live.notifyEnabled)).catch(() => setNotice(t.live.notifyUnavailable)), () => setNotice(t.live.notifyUnavailable), {maximumAge:0,timeout:8000}); }}>{t.live.notifications}</button>
+        <button type="button" onClick={async () => { if (!("Notification" in window)) return setNotice(t.live.notifyUnavailable); if (await Notification.requestPermission() !== "granted") return setNotice(t.ui["Notification permission denied"]); if (!navigator.geolocation) return setNotice(t.live.notifyUnavailable); navigator.geolocation.getCurrentPosition(p => enableBackgroundAlerts({lat:p.coords.latitude,lng:p.coords.longitude}).then(() => setNotice(t.live.notifyEnabled)).catch(() => setNotice(t.live.notifyUnavailable)), () => setNotice(t.live.notifyUnavailable), {maximumAge:0,timeout:8000}); }}>{t.live.notifications}</button>
         {notice && <span role="status">{notice}</span>}
         <span className={`connection-status ${isLiveConnected ? "connected" : ""}`}><Radio size={14} aria-hidden="true" />{isLiveConnected ? t.live.connected : t.live.reconnecting}</span>
         {weather && Number.isFinite(weather.temp) && <span className="weather-reading" title={`${weather.source || "Open-Meteo"} · ${weather.observedAt || ""}`}><CloudRain size={17} aria-hidden="true" /><strong>{Math.round(weather.temp)}°</strong><span>{weather.isOffline ? t.live.stale : Number.isFinite(weather.precipitationAmountMm) ? `${weather.precipitationAmountMm} mm / ${weather.intervalSeconds / 60} min` : t.live.weatherUnavailable}</span></span>}
         {offlineQueueCount > 0 && <span className="offline-sync-chip">{offlineQueueCount} waiting to sync</span>}
-        <label className="language-control"><span className="sr-only">Select Language</span><select aria-label="Select Language" value={lang} onChange={e => setLang(e.target.value)}><option value="en">English</option><option value="kn">ಕನ್ನಡ</option><option value="hi">हिंदी</option></select></label>
+        <label className="language-control"><span className="sr-only">{t.ui["Select Language"]}</span><select aria-label={t.ui["Select Language"]} value={lang} onChange={e => setLang(e.target.value)}><option value="en">English</option><option value="kn">ಕನ್ನಡ</option><option value="hi">हिंदी</option></select></label>
       </div>
     </header>
     </>

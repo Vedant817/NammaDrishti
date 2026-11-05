@@ -1,5 +1,7 @@
 # Acceptance record — 2026-11-05
 
+The newer Vercel deployment evidence and resolved/open gates are in [DEPLOYMENT.md](DEPLOYMENT.md). The matrix below records the earlier PR baseline.
+
 ## Verified in this change
 
 - Production frontend build succeeds after migration from CRA to Vite. Explicit frontend environment allowlist excludes Admin/provider secrets.

@@ -11,6 +11,7 @@ const { hasAuthorityAccess, voterKeyFor } = require('./services/accessControl');
 const { getHexIndex, getHexRing } = require('./services/spatialHex.js');
 const { createRateLimiter } = require('./services/rateLimiter.js');
 const { processMediaUpload, MEDIA_DIR } = require('./services/mediaService.js');
+const { publicIncident } = require('./services/publicIncident');
 
 const app = express();
 const server = http.createServer(app);
@@ -63,14 +64,21 @@ app.get('/api/geocode', sourceLimiter, async (req, res) => {
 app.get('/api/traffic', sourceLimiter, async (req, res) => {
   try { res.json(await liveData.traffic()); } catch { res.status(503).json({ status: 'unavailable', segments: [] }); }
 });
+app.get('/api/flood-context', sourceLimiter, async(req,res)=>{try{res.json(await liveData.floodContext());}catch{res.status(503).json({status:'unavailable',forecast:[]});}});
 app.get('/api/flood-observations', sourceLimiter, async (req, res) => {
   try { res.json(await liveData.observations()); } catch { res.status(503).json({ status: 'unavailable', observations: [] }); }
 });
 
-const firebaseStore = require.main === module && process.env.NODE_ENV !== 'test' && process.env.FIREBASE_PROJECT_ID
+const serverRuntime = require.main === module || process.env.VERCEL === '1';
+const firebaseStore = serverRuntime && process.env.NODE_ENV !== 'test' && process.env.FIREBASE_PROJECT_ID
   ? require('./services/firebaseStore').createFirebaseStore(process.env.FIREBASE_PROJECT_ID)
   : null;
+if (process.env.VERCEL === '1' && !firebaseStore) throw new Error('Hosted backend requires Firebase configuration.');
 const records = require('./services/records').createRecords({ db: firebaseStore?.db, directory: process.env.STATE_DIR || (process.env.DATA_FILE ? path.dirname(process.env.DATA_FILE) : undefined) });
+function defer(work) {
+  const safe = work.catch(() => console.error('[Background] Task failed; durable job retained'));
+  if (process.env.VERCEL === '1') require('@vercel/functions').waitUntil(safe);
+}
 const pushService = require('./services/pushService').createPushService(records);
 const pushTimer = setInterval(() => pushService.process(incidents).catch(() => console.error('[Push] Delivery queue unavailable')), 15000);
 pushTimer.unref();
@@ -96,7 +104,15 @@ function serializeStorage(task) {
 // owns this index; multiple replicas require a transactional repository instead.
 app.use('/api', async (req, res, next) => {
   if (!firebaseStore) return next();
+  if (process.env.VERCEL === '1') {
+    try { await ready; }
+    catch { return res.status(503).json({ error: 'Incident storage unavailable.' }); }
+  }
   if (!storageReady) return res.status(503).json({ error: 'Incident storage is initializing.' });
+  if (process.env.VERCEL === '1' && Date.now() - lastMaintenance > 60000) {
+    lastMaintenance = Date.now();
+    defer(maintenance());
+  }
   if (req.method !== 'GET' && req.method !== 'OPTIONS') {
     try {
       const match = /^Bearer (.+)$/.exec(req.headers.authorization || '');
@@ -321,7 +337,7 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/incidents', (req, res) => {
   const { type, urgency, ward, verified, hex } = req.query;
-  let filtered = incidents.filter(i => !i.moderationHidden);
+  let filtered = incidents.map(publicIncident).filter(Boolean);
 
   if (type && type !== 'All') {
     filtered = filtered.filter((i) => i.type.toLowerCase() === type.toLowerCase());
@@ -341,7 +357,7 @@ app.get('/api/incidents', (req, res) => {
     filtered = filtered.filter((i) => ring.includes(i.hexIndex));
   }
 
-  res.json(filtered);
+  res.json(filtered.map(publicIncident).filter(Boolean));
 });
 
 // Hexagonal spatial partition endpoint (queries hex cell and its 8 neighbor rings)
@@ -354,7 +370,7 @@ app.get('/api/incidents/hex/:hexId', (req, res) => {
     hexId,
     neighborhoodRing: Array.from(targetHexes),
     totalCount: localizedIncidents.length,
-    incidents: localizedIncidents,
+    incidents: localizedIncidents.map(publicIncident).filter(Boolean),
   });
 });
 
@@ -376,7 +392,7 @@ app.get('/api/incidents/spatial/neighborhood', (req, res) => {
     centerHex,
     activeRings: ring,
     count: neighborhoodIncidents.length,
-    incidents: neighborhoodIncidents,
+    incidents: neighborhoodIncidents.map(publicIncident).filter(Boolean),
   });
 });
 
@@ -454,7 +470,7 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
     const existing = incidents.find((i) => i.id === id);
     if (existing?.moderationHidden) return res.status(409).json({error:"This report is under moderation."});
     if (existing) {
-      return res.status(200).json(existing);
+      return res.status(200).json(publicIncident(existing));
     }
   }
 
@@ -537,22 +553,22 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
     }
 
     // Broadcast cluster update to all clients and to the spatial hex room
-    pushService.enqueue(clusterMatch).catch(() => console.error('[Push] Enqueue failed'));
-  io.emit('incident:clustered', {
-      ...clusterMatch,
+    defer(pushService.enqueue(clusterMatch).then(() => pushService.process(incidents)));
+    io.emit('incident:clustered', {
+      ...publicIncident(clusterMatch),
       id: clusterMatch.id,
       clusterId: clusterMatch.id,
       verificationCount: clusterMatch.verificationCount,
       verificationScore: clusterMatch.verificationScore,
       clusterCount: clusterMatch.clusterCount,
       isVerified: clusterMatch.isVerified,
-      latestUpdate: clusterMatch.updates[0],
-      updates: clusterMatch.updates,
+      latestUpdate: publicIncident(clusterMatch).updates?.[0],
+      updates: publicIncident(clusterMatch).updates || [],
     });
-    io.to(`hex:${clusterMatch.hexIndex || hexIndex}`).emit('incident:spatial_update', clusterMatch);
+    io.to(`hex:${clusterMatch.hexIndex || hexIndex}`).emit('incident:spatial_update', publicIncident(clusterMatch));
 
     return res.status(200).json({
-      ...clusterMatch,
+      ...publicIncident(clusterMatch),
       isClustered: true,
       message: 'Merged with nearby active hazard report within 200m corridor.',
     });
@@ -595,12 +611,12 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
   }
 
   // Real-time broadcast to all connected WebSocket clients and hex room
-  pushService.enqueue(newIncident).catch(() => console.error('[Push] Enqueue failed'));
-  io.emit('incident:created', newIncident);
-  io.emit('incident:new', newIncident);
-  io.to(`hex:${hexIndex}`).emit('incident:spatial_update', newIncident);
+  defer(pushService.enqueue(newIncident).then(() => pushService.process(incidents)));
+  io.emit('incident:created', publicIncident(newIncident));
+  io.emit('incident:new', publicIncident(newIncident));
+  io.to(`hex:${hexIndex}`).emit('incident:spatial_update', publicIncident(newIncident));
 
-  res.status(201).json(newIncident);
+  res.status(201).json(publicIncident(newIncident));
 });
 
 // 3. PROXIMITY-WEIGHTED VERIFICATION ENDPOINT
@@ -762,7 +778,7 @@ app.post('/api/sos/dispatch', sosLimiter, async (req, res) => {
     const event=await emergencyOutbox.enqueue(lat,lng,req.citizen?.uid);
     io.to('emergency:control_room').emit('emergency:sos',event);
     res.json({success:true,dispatchId:event.id,status:event.status,message:'Location saved. Call 112; emergency-service delivery is not confirmed.',directDial:'112'});
-    emergencyOutbox.process().catch(()=>{});
+    defer(emergencyOutbox.process());
   }catch {res.status(503).json({error:'Location could not be saved. Call 112.'});}
 });
 app.get('/api/sos/dispatches',async(req,res)=>{
@@ -819,15 +835,30 @@ app.post('/api/moderation/:id', requireModerator, async(req,res)=>{
     item.moderationHidden=req.body.action==='hide';
     if(!await persistIncidents()){if(previousHidden===undefined)delete item.moderationHidden;else item.moderationHidden=previousHidden;res.status(503).json({error:'Storage unavailable'});return;}
     await records.put('moderationAudit',audit.id,{...audit,status:'committed'});
-    io.emit('initial:data',incidents.filter(i=>!i.moderationHidden));res.json({success:true});
+    io.emit('initial:data',incidents.map(publicIncident).filter(Boolean));res.json({success:true});
   }));}catch {res.status(503).json({error:'Storage busy'});}
 });
 app.get('/api/operations', requireModerator, async(req,res)=>res.json({uptimeSeconds:process.uptime(),storageReady,sourceMetrics:liveData.metrics,replicaMode:firebaseStore?'fenced-writer-with-live-snapshots':'single-process',sources:{traffic:process.env.TOMTOM_API_KEY?'configured':'unconfigured',assistant:process.env.GEMINI_API_KEY&&process.env.GEMINI_MODEL?'configured':'summary',flood:process.env.FLOOD_OBSERVATIONS_URL?'configured':'unconfigured',sos:process.env.EMERGENCY_DISPATCH_WEBHOOK_URL?'configured':'location-only'}}));
 
+async function maintenance() {
+  await ready;
+  if (firebaseStore && storageReady) await serializeStorage(() => coordinated(cleanupExpiredIncidents));
+  await emergencyOutbox.process();
+  await pushService.process(incidents);
+}
+app.get('/api/maintenance', async (req, res) => {
+  const expected = process.env.CRON_SECRET;
+  const supplied = (req.headers.authorization || '').replace(/^Bearer /, '');
+  if (!expected || Buffer.byteLength(expected) !== Buffer.byteLength(supplied) || !require('crypto').timingSafeEqual(Buffer.from(expected), Buffer.from(supplied))) return res.status(401).json({ error: 'Maintenance authorization required.' });
+  try { await maintenance(); res.json({ success: true }); }
+  catch { res.status(503).json({ error: 'Maintenance unavailable.' }); }
+});
+let lastMaintenance = 0;
+
 // Production SPA Static File Serving
 const buildPath = path.join(__dirname, '../build');
 const publicPath = path.join(__dirname, '../public');
-const staticDir = fs.existsSync(buildPath) ? buildPath : (fs.existsSync(publicPath) ? publicPath : null);
+const staticDir = process.env.VERCEL === '1' ? null : fs.existsSync(buildPath) ? buildPath : (fs.existsSync(publicPath) ? publicPath : null);
 
 if (staticDir) {
   app.use(express.static(staticDir));
@@ -842,7 +873,7 @@ if (staticDir) {
 // Socket.io connection lifecycle
 io.on('connection', (socket) => {
   // Push full snapshot of current incidents to newly connected citizen client
-  storageQueue.then(() => { if (socket.connected && storageReady) socket.emit('initial:data', incidents.filter(i => !i.moderationHidden)); });
+  ready.then(() => storageQueue).then(() => { if (socket.connected && storageReady) socket.emit('initial:data', incidents.map(publicIncident).filter(Boolean)); });
 
   // Subscribe client to specific H3-style hexagonal spatial room cells
   socket.on('subscribe:hex', (hexIds) => {
@@ -884,6 +915,10 @@ module.exports = {
   processMediaUpload,
 };
 
+// Exported Vercel servers initialize storage without opening a second listener.
+const ready = firebaseStore ? firebaseStore.load().then(items => { incidents = items; storageReady = true; firebaseStore.subscribe(items => { storageReady = true; serializeStorage(() => { incidents = items; io.emit('initial:data', items.map(publicIncident).filter(Boolean)); }).catch(() => {}); }, () => { storageReady = false; }); }) : Promise.resolve();
+ready.catch(() => console.error('[Startup] Cloud storage unavailable'));
+
 // Start Server if executed directly
 if (require.main === module) {
   if (process.env.NODE_ENV === 'production' && !firebaseStore) {
@@ -891,7 +926,6 @@ if (require.main === module) {
     process.exit(1);
   }
   const PORT = process.env.PORT || 5001;
-  const ready = firebaseStore ? firebaseStore.load().then(items => { incidents = items; storageReady = true; firebaseStore.subscribe(items => { storageReady = true; serializeStorage(() => { incidents = items; io.emit('initial:data', items.filter(i => !i.moderationHidden)); }).catch(() => {}); }, () => { storageReady = false; }); }) : Promise.resolve();
   ready.then(() => server.listen(PORT, () => {
     console.log(`\n==================================================`);
     console.log(`🚀 NammaDrishti Civic Platform Engine Live (${firebaseStore ? 'Firestore + Firebase Auth' : 'local JSON'})`);

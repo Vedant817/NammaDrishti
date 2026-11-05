@@ -77,6 +77,8 @@ test('review regressions: access control, input validation and cluster integrity
     const incident = persisted.find(item => item.id === created.id);
     assert.equal(incident.waterDepth, 'Deep');
     assert.equal(incident.urgency, 'High');
-    assert.ok(!incident.reporters.includes('fourth'));
+    assert.equal(incident.reporters, undefined, 'public API must not reveal contributor identities');
+    const internal = require('../index').getIncidents().find(item => item.id === created.id);
+    assert.ok(!internal.reporters.includes('fourth'), 'failed write must roll back the in-memory contributor set');
   });
 });

@@ -11,7 +11,7 @@ function normalizeWeather(data,now=Date.now()) {
   const c=data.current, time=c&&Date.parse(`${c.time}Z`);
   if(!c||!Number.isFinite(time)||!Number.isFinite(c.interval)||c.interval<=0||!Number.isFinite(c.precipitation)||c.precipitation<0) throw new Error('Invalid weather observation');
   const stale=now-time>1800000||time>now+300000;
-  return {source:'Open-Meteo model',sourceUrl:'https://open-meteo.com/',observedAt:new Date(time).toISOString(),fetchedAt:new Date(now).toISOString(),intervalSeconds:c.interval,precipitationAmountMm:c.precipitation,precipitation:c.precipitation*3600/c.interval,precipitationRateMmPerHour:c.precipitation*3600/c.interval,temp:Number.isFinite(c.temperature_2m)?c.temperature_2m:null,humidity:c.relative_humidity_2m,windSpeed:c.wind_speed_10m,weatherCode:c.weather_code,stale,isOffline:stale,loading:false,lastUpdated:new Date(time).toISOString(),description:'Model estimate',floodRisk:'Not assessed'};
+  return {source:'Open-Meteo model',sourceUrl:'https://open-meteo.com/',observedAt:new Date(time).toISOString(),fetchedAt:new Date(now).toISOString(),intervalSeconds:c.interval,precipitationAmountMm:c.precipitation,precipitation:c.precipitation*3600/c.interval,precipitationRateMmPerHour:c.precipitation*3600/c.interval,temp:Number.isFinite(c.temperature_2m)?c.temperature_2m:null,humidity:c.relative_humidity_2m,windSpeed:c.wind_speed_10m,windSpeedUnit:data.current_units?.wind_speed_10m||'km/h',temperatureUnit:'°C',weatherCode:c.weather_code,stale,isOffline:stale,loading:false,lastUpdated:new Date(time).toISOString(),description:'Model estimate',floodRisk:'Not assessed'};
 }
 function createLiveData({fetchJson=jsonFetch,now=Date.now,reserveGeocode=null,pause=ms=>new Promise(r=>setTimeout(r,ms))}={}) {
   const cache=new Map(),pending=new Map(),metrics={requests:0,failures:0,lastFailureAt:null};
@@ -59,6 +59,15 @@ function createLiveData({fetchJson=jsonFetch,now=Date.now,reserveGeocode=null,pa
           }catch{return {...p,unavailable:true};}
         }));
         return {status:segments.some(s=>!s.unavailable)?'available':'unavailable',source:'TomTom',sourceUrl:'https://www.tomtom.com/',segments};
+      });
+    },
+    floodContext() {
+      return cached('river-model',3600000,async()=>{
+        const raw=await fetchJson('https://flood-api.open-meteo.com/v1/flood?latitude=12.9716&longitude=77.5946&daily=river_discharge&forecast_days=3');
+        if(!insideCity(raw.latitude,raw.longitude)||raw.daily_units?.river_discharge!=='m³/s'||!Array.isArray(raw.daily?.time)||!Array.isArray(raw.daily?.river_discharge)||raw.daily.time.length!==raw.daily.river_discharge.length)throw new Error('Invalid river model data');
+        const forecast=raw.daily.time.map((date,i)=>({date,discharge:raw.daily.river_discharge[i]})).filter(p=>/^\d{4}-\d{2}-\d{2}$/.test(p.date)&&Number.isFinite(p.discharge)&&p.discharge>=0);
+        if(!forecast.length)throw new Error('River model unavailable');
+        return {status:'available',source:'Open-Meteo / Copernicus GloFAS',sourceUrl:'https://open-meteo.com/en/docs/flood-api',kind:'regional-river-model',resolutionKm:5,unit:'m³/s',latitude:raw.latitude,longitude:raw.longitude,fetchedAt:new Date(now()).toISOString(),forecast};
       });
     },
     observations() {

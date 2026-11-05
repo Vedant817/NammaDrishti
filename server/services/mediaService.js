@@ -15,6 +15,12 @@ async function processMediaUpload({ imageBase64, mimeType }) {
   const image = await sharp(input, { limitInputPixels: 16000000 }).rotate().resize(1200,1200,{fit:'inside',withoutEnlargement:true}).webp({quality:75}).toBuffer();
   const hash = crypto.createHash('sha256').update(image).digest('hex');
   const filename = `${hash}.webp`;
+  if (process.env.NODE_ENV !== 'test' && process.env.BLOB_READ_WRITE_TOKEN) {
+    const { put } = await import('@vercel/blob');
+    const object = await put(`hazards/${filename}`, image, { access: 'public', contentType: 'image/webp', addRandomSuffix: false, allowOverwrite: true, token: process.env.BLOB_READ_WRITE_TOKEN });
+    return { provider: 'Vercel Blob', mediaUrl: object.url, filename, hash, byteSize: image.length, mimeType: 'image/webp' };
+  }
+  if (process.env.VERCEL === '1') throw new Error('Durable photo storage is not configured');
   await fs.mkdir(MEDIA_DIR,{recursive:true});
   const files = await fs.readdir(MEDIA_DIR);
   // Fixed object budget, no silent eviction of referenced citizen evidence.

@@ -4,6 +4,10 @@ A Bengaluru civic reporting map built with React, Vite, Express, Socket.IO and F
 
 Reports and model weather estimates can be incomplete. Absence of reports does not establish that a road is clear. Call **112** for emergency assistance; saving or sharing a location does not confirm emergency-service dispatch.
 
+Public site: https://nammadrishti.vercel.app/ · [Citizen account](https://nammadrishti.vercel.app/?account=1)
+
+The Vercel-only deployment and latest hosted/browser evidence are recorded in [DEPLOYMENT.md](DEPLOYMENT.md). Hosted realtime uses a sanitized, read-only Firestore projection; standalone Node retains Socket.IO.
+
 ## Run locally
 
 Use Node 22.12+ or 24, then:

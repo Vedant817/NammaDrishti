@@ -1,0 +1,13 @@
+{
+  "framework": "vite",
+  "installCommand": "npm ci && npm ci --prefix server --omit=dev",
+  "buildCommand": "npm run build",
+  "outputDirectory": "build",
+  "regions": ["bom1"],
+  "functions": { "api/backend.js": { "maxDuration": 300, "includeFiles": "server/**", "excludeFiles": "{server/test/**,server/runtime/**,server/incidents.json}" } },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/backend" },
+    { "source": "/((?!assets/|sw.js|manifest.json|favicon.ico|logo192.png|logo512.png).*)", "destination": "/index.html" }
+  ],
+  "crons": [{ "path": "/api/maintenance", "schedule": "0 3 * * *" }]
+}

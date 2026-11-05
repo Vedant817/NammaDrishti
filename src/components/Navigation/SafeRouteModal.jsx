@@ -298,11 +298,11 @@ const SafeRouteModal = ({
               <div className="route-metrics-bar">
                 <div className="route-metric">
                   <span className="metric-val">{routeResult.distanceKm} km</span>
-                  <span className="metric-lbl">Distance</span>
+                  <span className="metric-lbl">{t.ui["Distance"]}</span>
                 </div>
                 <div className="route-metric">
                   <span className="metric-val">{routeResult.durationMin} mins</span>
-                  <span className="metric-lbl">Estimated time (without traffic)</span>
+                  <span className="metric-lbl">{t.ui["Estimated time (without traffic)"]}</span>
                 </div>
                 <div className="route-metric">
                   <span
@@ -316,7 +316,7 @@ const SafeRouteModal = ({
                   >
                     {routeResult.status !== "ready" ? (routeResult.status || "checking") : (routeResult.conflicts || []).length === 0 ? t.live.noReportedHazards : `${routeResult.conflicts.length} ${t.live.nearbyReports}`}
                   </span>
-                  <span className="metric-lbl">Reports nearby</span>
+                  <span className="metric-lbl">{t.ui["Reports nearby"]}</span>
                 </div>
               </div>
 
