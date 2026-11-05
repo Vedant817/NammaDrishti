@@ -37,13 +37,15 @@ function createOfficialAlerts({fetchJson, fetchText, now = Date.now}) {
       if (!Array.isArray(rows) || rows.length > 5000) throw new Error('Invalid official alert feed');
       // Use the summary only to find candidates. Status, text, relevance and
       // validity are checked again against the authoritative CAP document.
-      const candidates = [...new Map(rows.filter(row=>(cityMention.test(`${text(row.area_description)} ${text(row.warning_message)}`)||/Karnataka/i.test(text(row.alert_source))) && /^\d{10,20}$/.test(String(row.identifier))).map(row=>[String(row.identifier),row])).values()];
+      const candidates = [...new Map(rows.filter(row=>(cityMention.test(`${text(row.area_description)} ${text(row.warning_message)}`)||/Karnataka|Bengaluru|Bangalore/i.test(text(row.alert_source))) && /^\d{10,20}$/.test(String(row.identifier))).map(row=>[String(row.identifier),row])).values()];
       const results = [];
       for (let i = 0; i < Math.min(candidates.length, 12); i += 3) {
         results.push(...await Promise.allSettled(candidates.slice(i, i + 3).map(async row => {
           const sourceUrl = BASE + 'FetchXMLFile?identifier=' + encodeURIComponent(String(row.identifier));
           const xml=await fetchText(sourceUrl),parsed=parseCap(xml,now()),document=capDocument(xml);
-          const control=document.status==='Actual'&&document.scope==='Public'&&validInstant(document.sent)&&Date.parse(document.sent)<=now()&& (document.msgType==='Cancel'||document.msgType==='Update'&&parsed);
+          // An update replaces its referenced warnings even when its new area
+          // excludes Bengaluru and therefore has no displayable replacement.
+          const control=document.status==='Actual'&&document.scope==='Public'&&validInstant(document.sent)&&Date.parse(document.sent)<=now()&&['Cancel','Update'].includes(document.msgType);
           const retired=control?text(document.references,10000).split(/\s+/).map(ref=>ref.split(',')[1]).filter(Boolean):[];
           return {alert:parsed&&{...parsed,source:'NDMA SACHET',sourceUrl},retired};
         })));

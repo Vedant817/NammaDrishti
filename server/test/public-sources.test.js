@@ -21,10 +21,12 @@ test('official feed coalesces calls, reports partial failures and expires warnin
   const [a,b]=await Promise.all([feed(),feed()]);assert.equal(calls,1);assert.equal(a.status,'partial');assert.equal(b.alerts.length,1);
   clock+=21000;assert.equal((await feed()).alerts.length,0);
 });
-test('an actual public CAP cancellation suppresses the referenced warning',async()=>{
-  const warning=cap(),cancellation=cap({msgType:'Cancel'}).replace('<cap:identifier>fixture-only</cap:identifier>','<cap:identifier>cancellation</cap:identifier><cap:references>fixture-sender,fixture-only,2026-11-05T13:30:00Z</cap:references>');
-  const feed=createOfficialAlerts({now:()=>now,fetchJson:async()=>[{identifier:'1793887083506019',warning_message:'Bengaluru'},{identifier:'1793887083506020',alert_source:'Karnataka SDMA'}],fetchText:async url=>url.endsWith('20')?cancellation:warning});
-  assert.equal((await feed()).alerts.length,0);
+test('CAP cancellations and updates excluding Bengaluru retire referenced warnings',async()=>{
+  for(const change of [{msgType:'Cancel'},{msgType:'Update',city:'Chennai'}]){
+    const warning=cap(),replacement=cap(change).replace('<cap:identifier>fixture-only</cap:identifier>','<cap:identifier>replacement</cap:identifier><cap:references>fixture-sender,fixture-only,2026-11-05T13:30:00Z</cap:references>');
+    const feed=createOfficialAlerts({now:()=>now,fetchJson:async()=>[{identifier:'1793887083506019',warning_message:'Bengaluru'},{identifier:'1793887083506020',alert_source:'IMD Bengaluru'}],fetchText:async url=>url.endsWith('20')?replacement:warning});
+    assert.equal((await feed()).alerts.length,0);
+  }
 });
 test('India date advances at 18:30 UTC and river cache cannot serve yesterday as today',async()=>{
   let clock=Date.parse('2026-11-05T18:29:59Z'),calls=0;
