@@ -127,11 +127,13 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
 }
 
 // DYNAMIC TTL DECAY EXPIRATION POLICIES (in hours)
+// Aligned with the documented NammaPulse roadmap (TODO.md §2):
+// Accidents 2h • Waterlogging 4h • Traffic 3h • Potholes/Infrastructure 72h
 const TTL_HOURS_BY_TYPE = {
   Traffic: 3, // Rapid clearing congestion
-  Accident: 6, // Vehicle clearance & recovery
-  Waterlogging: 12, // Monsoon receding time
-  Infrastructure: 48, // Pothole / BWSSB pipe repair
+  Accident: 2, // Vehicle clearance & recovery
+  Waterlogging: 4, // Monsoon receding time
+  Infrastructure: 72, // Pothole / BWSSB pipe repair
 };
 
 // Lifecycle Worker: cleans up expired incidents and broadcasts updates
@@ -192,8 +194,8 @@ function cleanupExpiredIncidents() {
   return expiredIncidents.map((e) => e.incident);
 }
 
-// Run cleanup every 5 minutes
-const cleanupInterval = setInterval(cleanupExpiredIncidents, 5 * 60 * 1000);
+// Run cleanup every 60 seconds (documented lifecycle ticker cadence)
+const cleanupInterval = setInterval(cleanupExpiredIncidents, 60 * 1000);
 if (cleanupInterval.unref) cleanupInterval.unref();
 
 // Periodically ingest official BTP and BBMP civic advisories every 15 minutes
@@ -229,6 +231,12 @@ const mediaLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 15,
   message: 'Media upload rate limit reached. Please wait before uploading more photos.',
+});
+
+const sosLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 5,
+  message: 'Emergency SOS dispatch rate limit reached. If this is a real emergency, please call 112 directly.',
 });
 
 // REST ENDPOINTS
@@ -375,6 +383,19 @@ app.post('/api/incidents', reportLimiter, (req, res) => {
   const lng = Number(position.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return res.status(400).json({ error: 'Invalid geographic position coordinates (lat, lng must be valid finite numbers).' });
+  }
+
+  // Media source hygiene: only HTTPS/HTTP URLs (<=2KB) or inline base64 image data URLs are accepted.
+  // Blocks javascript:, file:, path traversal, and executable injection payloads.
+  if (mediaUrl !== undefined && mediaUrl !== null) {
+    if (typeof mediaUrl !== 'string' || mediaUrl.length > 3_000_000) {
+      return res.status(400).json({ error: 'Invalid media attachment: payload exceeds the 3MB inline limit.' });
+    }
+    const isHttpUrl = /^https?:\/\/[^\s]+$/i.test(mediaUrl) && mediaUrl.length <= 2048;
+    const isImageDataURL = /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(mediaUrl);
+    if (!isHttpUrl && !isImageDataURL) {
+      return res.status(400).json({ error: 'Invalid media attachment: only http(s) URLs or base64 image data URLs are permitted.' });
+    }
   }
 
   // Deduplicate if client supplied specific ID
@@ -723,7 +744,7 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
 const emergencyDispatches = [];
 
 // 5. EMERGENCY SOS DISPATCH ENDPOINT (Secured dispatch room & privacy protection)
-app.post('/api/sos/dispatch', (req, res) => {
+app.post('/api/sos/dispatch', sosLimiter, (req, res) => {
   const { lat, lng, timestamp } = req.body || {};
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
     return res.status(400).json({ error: 'Valid GPS coordinates (lat, lng) are required for emergency dispatch.' });
@@ -929,12 +950,19 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {});
 });
 
-// Export server, app, and internal functions for automated testing
+// Export server, app, and internal functions for automated testing.
+// `incidents` is exposed through a live getter so consumers never retain a
+// stale array reference after the lifecycle worker reassigns the store.
 module.exports = {
   app,
   server,
   io,
-  incidents,
+  get incidents() {
+    return incidents;
+  },
+  getIncidents() {
+    return incidents;
+  },
   persistIncidents,
   cleanupExpiredIncidents,
   getDistanceKm,

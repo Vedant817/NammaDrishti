@@ -456,6 +456,17 @@ const CustomMapContainer = ({
                   <h4 className="popup-title">{event.title}</h4>
                   <p className="popup-desc">{event.description}</p>
 
+                  {(event.waterDepth || event.vehiclePassability) && (
+                    <div className="popup-water-depth-badge" style={{ margin: '6px 0', padding: '4px 8px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.15)', color: '#06B6D4', fontSize: '0.78rem', fontWeight: 600 }}>
+                      🌊 Depth: {event.waterDepth || 'Measured'} {event.vehiclePassability ? `• 🚫 ${event.vehiclePassability}` : ''}
+                    </div>
+                  )}
+                  {event.clusterCount > 1 && (
+                    <div className="popup-cluster-badge" style={{ margin: '4px 0', padding: '2px 8px', borderRadius: '4px', background: 'rgba(139, 92, 246, 0.15)', color: '#A78BFA', fontSize: '0.72rem', fontWeight: 600, display: 'inline-block' }}>
+                      🔗 {event.clusterCount} merged citizen reports
+                    </div>
+                  )}
+
                   <div className="popup-ward-row">
                     <span className="ward-label">Ward:</span> {event.ward || "Bengaluru"}
                   </div>
