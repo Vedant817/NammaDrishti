@@ -130,6 +130,7 @@ app.use('/api', async (req, res, next) => {
   if (process.env.VERCEL === '1' && Date.now() - lastMaintenance > 60000) {
     lastMaintenance = Date.now();
     defer(maintenance());
+    defer(backupService.run({trigger:'opportunistic'}).catch(()=>console.error('[Backup] Due snapshot unavailable')));
   }
   if (req.method !== 'GET' && req.method !== 'OPTIONS') {
     try {
@@ -861,7 +862,7 @@ app.post('/api/moderation/:id', requireModerator, async(req,res)=>{
     io.emit('initial:data',incidents.map(publicIncident).filter(Boolean));res.json({success:true});
   }));}catch {res.status(503).json({error:'Storage busy'});}
 });
-app.get('/api/operations', requireModerator, async(req,res)=>res.json({uptimeSeconds:process.uptime(),storageReady,sourceMetrics:liveData.metrics,backup:await backupService.status(),replicaMode:firebaseStore?'fenced-writer-with-live-snapshots':'single-process',sources:{traffic:process.env.TOMTOM_API_KEY?'configured':'unconfigured',assistant:process.env.GEMINI_API_KEY&&process.env.GEMINI_MODEL?'configured':'summary',flood:process.env.FLOOD_OBSERVATIONS_URL?'configured':'unconfigured',sos:process.env.EMERGENCY_DISPATCH_WEBHOOK_URL?'configured':'location-only'}}));
+app.get('/api/operations', requireModerator, async(req,res)=>{try{res.json({uptimeSeconds:process.uptime(),storageReady,sourceMetrics:liveData.metrics,backup:await backupService.status(),replicaMode:firebaseStore?'fenced-writer-with-live-snapshots':'single-process',sources:{traffic:process.env.TOMTOM_API_KEY?'configured':'unconfigured',assistant:process.env.GEMINI_API_KEY&&process.env.GEMINI_MODEL?'configured':'summary',flood:process.env.FLOOD_OBSERVATIONS_URL?'configured':'unconfigured',sos:process.env.EMERGENCY_DISPATCH_WEBHOOK_URL?'configured':'location-only'}});}catch{res.status(503).json({error:'Operations status unavailable.'});}});
 
 async function maintenance() {
   await ready;
@@ -873,7 +874,7 @@ app.get('/api/maintenance', async (req, res) => {
   const expected = process.env.CRON_SECRET;
   const supplied = (req.headers.authorization || '').replace(/^Bearer /, '');
   if (!expected || Buffer.byteLength(expected) !== Buffer.byteLength(supplied) || !require('crypto').timingSafeEqual(Buffer.from(expected), Buffer.from(supplied))) return res.status(401).json({ error: 'Maintenance authorization required.' });
-  try { await maintenance(); const backup=await backupService.run(); res.json({ success: true, backup }); }
+  try { const result=await require('./services/maintenanceService').runMaintenanceAndBackup(maintenance,()=>backupService.run({trigger:'maintenance'}));res.status(result.success?200:503).json(result); }
   catch { res.status(503).json({ error: 'Maintenance unavailable.' }); }
 });
 let lastMaintenance = 0;
