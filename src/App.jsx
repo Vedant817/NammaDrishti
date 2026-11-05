@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import CityPulseDashboard from './components/Dashboard/CityPulseDashboard';
 import { LanguageProvider } from './context/LanguageContext';
 import './App.css';
+import './components/Dashboard/FriendlyInterface.css';
 
 function App() {
   useEffect(() => {

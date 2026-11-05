@@ -2,6 +2,12 @@
 
 This record separates local assertions, live hosted API tests, browser checks and external acceptance gaps. No test establishes complete official coverage or road safety. Data counts change as providers update; they are observations from the test run, not fixed product totals.
 
+## Everyday UI update
+
+Navigation now starts with Today, Reports and Help. Today offers a compact summary with links to detailed traffic, warnings and rainfall. Report filters live with Reports; map layers and notification settings are collapsed until requested. Map selection offers an explicit Report here action rather than interrupting browsing with a form. New navigation/guidance supports English, Kannada and Hindi. Desktop and small-screen CSS retain large controls, readable text and keyboard focus.
+
+This UI update passed 26 frontend tests and the production build. Regression tests cover navigation, reporting and route dialogs, non-interrupting map selection, layer toggles, translation key parity and missing weather remaining unknown. The hosted browser evidence below belongs to the preceding feature audit; a new browser layout review was not performed for this UI-only request.
+
 ## Current source acceptance
 
 `ACCEPTANCE_API_URL=https://nammadrishti.vercel.app/api npm run test:live-sources` passed against the hosted site. A run at 15:39 UTC reported Bengaluru date 2026-11-05, weather observed at 15:30 UTC, all four junction samples, one valid government warning, 554 provider incidents, three current/future river dates, five geocoding results, a valid traffic PNG, configured push and unauthorized moderation denial. Later browser counts changed normally with provider updates.

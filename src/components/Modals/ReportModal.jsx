@@ -1,4 +1,5 @@
 import { useDialog } from "../../hooks/useDialog";
+import { useInterfaceCopy } from '../../hooks/useInterfaceCopy';
 // src/components/Modals/ReportModal.jsx
 import React, { useState, useEffect } from "react";
 import Button from "../Common/Button";
@@ -17,6 +18,7 @@ const ReportModal = ({
   const dialogRef = useDialog(onClose);
   const { getPosition } = useGeolocation();
   const { t } = useLanguage();
+  const copy=useInterfaceCopy();
 
   const reportT = {
     modalTitle: t?.report?.modalTitle || t?.reportModal?.title || "Report Civic or Traffic Incident",
@@ -167,9 +169,9 @@ const ReportModal = ({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Report a hazard" tabIndex={-1} className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={copy.report} tabIndex={-1} className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>{reportT.modalTitle}</h3>
+          <h3>{copy.report}</h3>
           <button type="button" className="close-btn" aria-label={t.ui["Close dialog"]} onClick={onClose}>
             ✕
           </button>

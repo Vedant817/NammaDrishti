@@ -1,0 +1,25 @@
+.today-panel { display:flex; flex-direction:column; gap:20px; }
+.today-date { font-size:12px; color:var(--text-muted); margin-bottom:7px; }
+.today-intro h2 { font:500 32px/1.1 var(--font-display); margin-bottom:10px; color:var(--text-primary); }
+.today-intro>p:last-child { color:var(--text-secondary); font-size:15px; line-height:1.55; }
+.today-plan { display:flex; align-items:center; gap:12px; padding:16px; min-height:64px; width:100%; text-align:left; border:0; border-radius:8px; background:var(--brand-accent); color:#fff; }
+.today-plan>span { flex:1; font-size:17px; font-weight:600; }
+.today-plan small { display:block; margin-top:5px; font-size:12px; line-height:1.45; font-weight:400; color:#fff; opacity:.95; }
+.today-conditions { border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden; }
+.today-condition { width:100%; display:flex; align-items:center; gap:12px; padding:17px 14px; background:var(--bg-surface); border:0; border-bottom:1px solid var(--border-subtle); color:var(--text-primary); text-align:left; }
+.today-condition:last-child { border-bottom:0; }
+.today-condition:hover { background:var(--bg-elevated); }
+.today-condition>svg:first-child { color:var(--brand-accent); }
+.today-condition>span { flex:1; min-width:0; }
+.today-condition strong,.today-condition span>span,.today-condition small { display:block; }
+.today-condition strong { font-size:15px; margin-bottom:4px; }
+.today-condition span>span,.today-condition small { color:var(--text-secondary); font-size:13px; line-height:1.5; }
+.today-condition--warning { background:#FFF7E8; }
+.today-condition--warning>svg:first-child { color:#946211; }
+.today-caution { font-size:12px; line-height:1.5; color:var(--text-muted); }
+.today-report { padding:16px; background:var(--bg-elevated); border-radius:8px; }
+.today-report p { margin:6px 0 10px; color:var(--text-secondary); font-size:13px; }
+.today-report button,.today-guide button { display:inline-flex; align-items:center; gap:8px; background:var(--bg-surface); color:var(--brand-accent); border:1px solid var(--border-light); border-radius:5px; padding:10px 12px; min-height:44px; font-weight:600; }
+.today-guide { font-size:14px; color:var(--text-secondary); }
+.today-guide summary { cursor:pointer; min-height:44px; padding:10px 0; color:var(--brand-accent); font-weight:600; }
+.today-guide p { margin:8px 0; line-height:1.6; }

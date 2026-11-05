@@ -5,7 +5,7 @@ import { Plus, Route, MessageSquare } from "lucide-react";
 // src/components/Dashboard/CityPulseDashboard.jsx
 import React, { useState, useEffect, useRef } from "react";
 import Header from "../Header/Header";
-import FilterPanel from "../Filters/FilterPanel";
+import {useInterfaceCopy} from "../../hooks/useInterfaceCopy";
 import MapContainer from "../Map/MapContainer";
 import Sidebar from "../Sidebar/Sidebar";
 import ReportModal from "../Modals/ReportModal";
@@ -13,7 +13,6 @@ import ChatbotModal from "../Chatbot/ChatbotModal";
 import SafeRouteModal from "../Navigation/SafeRouteModal";
 import { useEventData } from "../../hooks/useEventData";
 import { useWeatherTelemetry } from "../../hooks/useWeatherTelemetry";
-import { useLanguage } from "../../context/LanguageContext";
 import { useProximityAlert } from "../../hooks/useProximityAlert";
 import "./CityPulseDashboard.css";
 
@@ -42,14 +41,14 @@ const CityPulseDashboard = () => {
   const { weather } = useWeatherTelemetry();
   const { traffic, clock } = useTrafficData();
   const { context: publicContext, clock: sourceClock } = usePublicContext();
-  const { t } = useLanguage();
+  const copy=useInterfaceCopy();
 
   const [activeFilter, setActiveFilter] = useState("All");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [showChatbotModal, setShowChatbotModal] = useState(false);
   const [showRouteModal, setShowRouteModal] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState("traffic");
+  const [sidebarTab, setSidebarTab] = useState("today");
   const [reportPin, setReportPin] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [navigationRoute, setNavigationRoute] = useState(null);
@@ -120,7 +119,6 @@ const CityPulseDashboard = () => {
 
   const handleMapPinSelected = (coords) => {
     setReportPin(coords);
-    setShowReportModal(true);
   };
 
   const handleOpenReportModal = () => {
@@ -206,23 +204,11 @@ const CityPulseDashboard = () => {
         offlineQueueCount={offlineQueueCount}
       />
 
-      <FilterPanel
-        activeFilter={activeFilter}
-        onFilterChange={handleFilterChange}
-        events={events}
-        incidentCounts={{
-          All: events.length,
-          Traffic: events.filter((e) => e.type === "Traffic").length,
-          Waterlogging: events.filter((e) => e.type === "Waterlogging").length,
-          Accident: events.filter((e) => e.type === "Accident").length,
-          Infrastructure: events.filter((e) => e.type === "Infrastructure").length,
-        }}
-      />
-
       {/* Main split viewport: Map (interactive) + Sidebar (Feed/Helplines/Diagnostic) */}
       <div className="main-content">
         <main className="map-section" role="region" aria-label="Interactive Map">
           <MapContainer
+            reportPin={reportPin}
             providerIncidents={publicContext.traffic}
             clock={clock}
             events={filteredEvents}
@@ -238,6 +224,7 @@ const CityPulseDashboard = () => {
             initialCamera={initialCamera}
           />
 
+          {reportPin && !showReportModal && <div className="map-selection-notice" role="status"><span>{copy.selected}</span><button type="button" onClick={handleOpenReportModal}>{copy.reportHere}</button><button type="button" onClick={()=>setReportPin(null)}>{copy.clear}</button></div>}
           <div className="map-floating-actions floating-action-buttons">
             <button
               type="button"
@@ -246,7 +233,7 @@ const CityPulseDashboard = () => {
               title="Report Civic Hazard"
             >
               <Plus size={17} aria-hidden="true" />
-              <span>{t.actions?.reportHazard || "Report Hazard"}</span>
+              <span>{copy.report}</span>
             </button>
             <button
               type="button"
@@ -255,7 +242,7 @@ const CityPulseDashboard = () => {
               title="Plan a route around reported hazards"
             >
               <Route size={17} aria-hidden="true" />
-              <span>{t.actions?.safeRoute || "Safe Route"}</span>
+              <span>{copy.plan}</span>
             </button>
             <button
               type="button"
@@ -264,12 +251,16 @@ const CityPulseDashboard = () => {
               title="Open NammaDrishti AI Assistant"
             >
               <MessageSquare size={17} aria-hidden="true" />
-              <span>{t.actions?.aiAssistant || "NammaDrishti AI"}</span>
+              <span>{copy.ask}</span>
             </button>
           </div>
         </main>
 
         <Sidebar
+          weather={weather}
+          onPlan={()=>setShowRouteModal(true)}
+          onReport={handleOpenReportModal}
+          onFilterChange={handleFilterChange}
           publicContext={publicContext}
           sourceClock={sourceClock}
           traffic={traffic}
@@ -281,7 +272,7 @@ const CityPulseDashboard = () => {
           onVerifyEvent={handleVerifyEvent}
           onResolveEvent={handleResolveEvent}
           activeTab={sidebarTab}
-          onTabChange={setSidebarTab}
+          onTabChange={tab=>{setSidebarTab(tab);if(tab!=='feed')setActiveFilter('All');}}
           activeFilter={activeFilter}
           rainIntensity={weather?.precipitation || 0}
           isWeatherOffline={weather?.isOffline || false}

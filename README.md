@@ -8,7 +8,9 @@ Public site: https://nammadrishti.vercel.app/ · [Citizen account](https://namma
 
 The Vercel-only deployment and latest hosted/browser evidence are recorded in [DEPLOYMENT.md](DEPLOYMENT.md). Hosted realtime uses a sanitized, read-only Firestore projection; standalone Node retains Socket.IO.
 
-The **Public alerts** tab combines active NDMA SACHET government warnings and TomTom road incidents, with source links, validity windows and Bengaluru dates. See [SOURCE_RESEARCH.md](SOURCE_RESEARCH.md) for the source investigation and [FEATURE_ACCEPTANCE.md](FEATURE_ACCEPTANCE.md) for feature-by-feature evidence and limits.
+From **Today**, choose **Official warnings** to read active NDMA SACHET warnings and TomTom road incidents, with source links, validity windows and Bengaluru dates. See [SOURCE_RESEARCH.md](SOURCE_RESEARCH.md) for the source investigation and [FEATURE_ACCEPTANCE.md](FEATURE_ACCEPTANCE.md) for feature-by-feature evidence and limits.
+
+Start with **Today** for roads and rain, **Reports** to browse or share a problem, and **Help** for instructions and emergency contacts. **Map layers** controls extra map information. Selecting a map spot offers **Report here** without opening a form automatically. **Plan a trip** and **Report a problem** use the same names in their buttons and forms.
 
 ## Run locally
 

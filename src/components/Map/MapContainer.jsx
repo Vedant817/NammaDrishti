@@ -1,3 +1,4 @@
+import {useInterfaceCopy} from '../../hooks/useInterfaceCopy';
 import { API_BASE } from '../../services/api';
 import { CloudRain, Route, Layers } from "lucide-react";
 // src/components/Map/MapContainer.jsx
@@ -92,13 +93,14 @@ const CustomMapContainer = ({
   initialCamera = null,
 }) => {
   const { t } = useLanguage();
+  const copy=useInterfaceCopy();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
   const [showRoadIncidents,setShowRoadIncidents]=useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   // RainViewer frame timeline: past observations only
   const [radarError, setRadarError] = useState(null);
-  const [showUnderpasses, setShowUnderpasses] = useState(true);
+  const [showUnderpasses, setShowUnderpasses] = useState(false);
   const [mapZoom, setMapZoom] = useState(12);
   const [tileStatus, setTileStatus] = useState('loading');
   const tileEpoch = Math.floor(clock / 120000);
@@ -227,7 +229,10 @@ const CustomMapContainer = ({
   return (
     <div className="map-wrapper">
       {/* Floating Modern Map Controls */}
-      <div className="map-toolbar">
+      <div className="map-toolbar map-toolbar--simple">
+        <details className="map-layer-menu" onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary').focus();}}}>
+          <summary><Layers size={17} aria-hidden="true"/>{copy.layers}</summary>
+          <div className="map-layer-options"><p>{copy.layerHint}</p>
         <button
           type="button"
           className={`toolbar-btn ${showRadar ? "active-blue" : ""}`}
@@ -240,7 +245,7 @@ const CustomMapContainer = ({
           }}
           aria-pressed={showRadar} title={t.ui["Toggle rain radar"]}
         >
-          <CloudRain size={16} aria-hidden="true" /> {showRadar ? t.actions.hideRadar : t.actions.liveRadar}
+          <CloudRain size={16} aria-hidden="true" /> {copy.rain}
         </button>
 
         <button
@@ -249,7 +254,7 @@ const CustomMapContainer = ({
           onClick={() => setShowTraffic(!showTraffic)}
           aria-pressed={showTraffic} title="Toggle citywide traffic flow"
         >
-          <Route size={16} aria-hidden="true" /> {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
+          <Route size={16} aria-hidden="true" /> {copy.traffic}
         </button>
 
         <button
@@ -258,12 +263,14 @@ const CustomMapContainer = ({
           onClick={() => setShowHeatmap(!showHeatmap)}
           aria-pressed={showHeatmap} title="Toggle reported hazard density"
         >
-          <Layers size={16} aria-hidden="true" /> {showHeatmap ? (t.actions?.hideHeatmap || "Hide Heatmap") : (t.actions?.heatmap || "Risk Heatmap")}
+          <Layers size={16} aria-hidden="true" /> {copy.clusters}
         </button>
 
-        <button type="button" className={`toolbar-btn ${showUnderpasses ? 'active-blue' : ''}`} aria-pressed={showUnderpasses} onClick={() => setShowUnderpasses(value => !value)}>Underpasses</button>
-        <button type="button" className={`toolbar-btn ${showRoadIncidents ? 'active-amber' : ''}`} aria-pressed={showRoadIncidents} onClick={()=>setShowRoadIncidents(value=>!value)}>Road incidents</button>
+        <button type="button" className={`toolbar-btn ${showUnderpasses ? 'active-blue' : ''}`} aria-pressed={showUnderpasses} onClick={() => setShowUnderpasses(value => !value)}>{copy.underpasses}</button>
+        <button type="button" className={`toolbar-btn ${showRoadIncidents ? 'active-amber' : ''}`} aria-pressed={showRoadIncidents} onClick={()=>setShowRoadIncidents(value=>!value)}>{copy.incidents}</button>
 
+          </div>
+        </details>
         {/* GEV-style radar timeline: play the past radar observations */}
         {showRadar && radarData && radarFrames.length > 0 && (
           <div className="radar-timeline">

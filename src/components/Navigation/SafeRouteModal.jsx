@@ -1,4 +1,5 @@
 import { useLanguage } from '../../context/LanguageContext';
+import { useInterfaceCopy } from '../../hooks/useInterfaceCopy';
 import { useDialog } from "../../hooks/useDialog";
 // src/components/Navigation/SafeRouteModal.jsx
 import React, { useState, useRef, useEffect } from "react";
@@ -113,6 +114,7 @@ const SafeRouteModal = ({
 }) => {
   const { t } = useLanguage();
   const resolvedHazards = activeHazards && activeHazards.length > 0 ? activeHazards : (hazards || []);
+  const copy=useInterfaceCopy();
   const dialogRef = useDialog(onClose);
   const [startText, setStartText] = useState("");
   const [startPlace, setStartPlace] = useState(null);
@@ -207,12 +209,12 @@ const SafeRouteModal = ({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t.ui["Plan a route"]} tabIndex={-1} className="safe-route-modal-content" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={copy.plan} tabIndex={-1} className="safe-route-modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="safe-route-header">
           <div className="safe-route-title">
             <span className="route-icon">🧭</span>
             <div>
-              <h3>{t.ui["Plan a route"]}</h3>
+              <h3>{copy.plan}</h3>
               <span className="route-subtitle">{t.ui["Check reported hazards along the way"]}</span>
             </div>
           </div>

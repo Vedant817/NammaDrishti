@@ -6,7 +6,9 @@ import PersonalizedFeed from "./PersonalizedFeed";
 import CityRecap from "./CityRecap";
 import TrafficPanel from './TrafficPanel';
 import PublicSourcesPanel from './PublicSourcesPanel';
-import { activeAlerts, freshSource } from '../../utils/sourceTime';
+import TodayPanel from './TodayPanel';
+import FilterPanel from '../Filters/FilterPanel';
+import {useInterfaceCopy} from '../../hooks/useInterfaceCopy';
 import { EMERGENCY_CONTACTS } from "../../data/constants";
 import { useLanguage } from "../../context/LanguageContext";
 import "./Sidebar.css";
@@ -14,11 +16,12 @@ import "./Sidebar.css";
 
 
 const Sidebar = ({
+  weather, onPlan, onReport, onFilterChange,
   publicContext = {official:{status:'loading',alerts:[]},traffic:{status:'loading',incidents:[]}},
   sourceClock = Date.now(),
   traffic = { status: 'loading', segments: [] },
   clock = Date.now(),
-  activeTab = "feed",
+  activeTab = "today",
   onTabChange,
   events = [],
   allEvents = null,
@@ -32,6 +35,7 @@ const Sidebar = ({
   userLocation = null,
 }) => {
   const { t } = useLanguage();
+  const copy=useInterfaceCopy();
   const [delivery, setDelivery] = useState(null);
   const [sosStatus, setSosStatus] = useState(null);
   const [acquiringGps, setAcquiringGps] = useState(false);
@@ -100,38 +104,22 @@ const Sidebar = ({
 
   return (
     <aside className="sidebar-container">
-      <div className="sidebar-tab-nav">
-        <button type="button" className={`sidebar-tab-btn ${activeTab === 'traffic' ? 'active' : ''}`} aria-pressed={activeTab === 'traffic'} onClick={() => onTabChange('traffic')}>Traffic</button>
-        <button type="button" className={`sidebar-tab-btn ${activeTab === 'sources' ? 'active' : ''}`} aria-pressed={activeTab === 'sources'} onClick={() => onTabChange('sources')}>Public alerts</button>
-        <button
-          type="button"
-          className={`sidebar-tab-btn ${activeTab === "feed" ? "active" : ""}`}
-          aria-pressed={activeTab === "feed"} onClick={() => onTabChange("feed")}
-        >
-          {t.tabs.feed}
-        </button>
-        <button
-          type="button"
-          className={`sidebar-tab-btn ${activeTab === "recap" ? "active" : ""}`}
-          aria-pressed={activeTab === "recap"} onClick={() => onTabChange("recap")}
-        >
-          {t.tabs.recap}
-        </button>
-        <button
-          type="button"
-          className={`sidebar-tab-btn ${activeTab === "helpline" ? "active" : ""}`}
-          aria-pressed={activeTab === "helpline"} onClick={() => onTabChange("helpline")}
-        >
-          {t.tabs.helpline}
-        </button>
-      </div>
+      <nav className="sidebar-tab-nav" aria-label={copy.today+' / '+copy.reports+' / '+copy.help}>
+        {[['today',copy.today],['feed',copy.reports],['helpline',copy.help]].map(([id,label])=>{
+          const active=id==='today'? !['feed','helpline'].includes(activeTab):activeTab===id;
+          return <button key={id} type="button" className={`sidebar-tab-btn ${active?'active':''}`} aria-pressed={active} onClick={()=>onTabChange(id)}>{label}</button>;
+        })}
+      </nav>
 
       <div className="sidebar-scrollable-body">
+        {!['today','feed','helpline'].includes(activeTab) && <button type="button" className="back-to-today" onClick={()=>onTabChange('today')}>← {copy.back}</button>}
+        {activeTab==='today' && <TodayPanel weather={weather} traffic={traffic} context={publicContext} clock={sourceClock} events={allEvents||events} onNavigate={onTabChange} onPlan={onPlan} onReport={onReport}/>}
+        {activeTab==='feed' && <><div className="reports-intro"><h2>{copy.reports}</h2><p>{copy.reportsIntro}</p><button type="button" onClick={onReport}>{copy.report}</button></div><FilterPanel activeFilter={activeFilter} onFilterChange={onFilterChange} events={allEvents||events}/></>}
+        {activeTab==='helpline' && <details className="today-guide"><summary>{copy.guide}</summary><p>{copy.guideMap}</p><p>{copy.guideRoute}</p><p>{copy.guideData}</p></details>}
+
         {activeTab === 'sources' && <PublicSourcesPanel context={publicContext} clock={sourceClock} onSelectLocation={onEventSelect}/>}
-        {activeTab === 'traffic' && <button type="button" className="source-alert-link" onClick={()=>onTabChange('sources')}>Public alerts · {freshSource(publicContext.official,sourceClock)?`${activeAlerts(publicContext.official,sourceClock).length} active government warnings`:'government source checking or unavailable'} · road incident feed</button>}
         {activeTab === 'traffic' && <TrafficPanel traffic={traffic} clock={clock} onSelectLocation={onEventSelect} onOverview={() => onTabChange('recap')} />}
-        {activeTab === 'feed' && events.length === 0 && <p className="traffic-report-note">Community reports only. For provider traffic speeds, <button type="button" onClick={() => onTabChange('traffic')}>open Traffic</button>.</p>}
-        {delivery && <p role="status">{delivery} · {t.live.call112}</p>}
+        {delivery && <p role="status">{delivery==='LOCATION_RECORDED'?copy.locationSaved:delivery==='SAVE_FAILED'?copy.locationSaveFailed:copy.locationQueued} {t.live.call112}</p>}
         {activeTab === "feed" && (
           <PersonalizedFeed
             events={events}
@@ -167,7 +155,7 @@ const Sidebar = ({
                 <a className="sos-network" href="tel:112">{t.ui["Call 112"]}</a>
               </div>
               <h5>{t.sidebar?.sosTitle || "One-Tap Bengaluru Emergency SOS Dispatch"}</h5>
-              <p>{t.sidebar?.sosDesc || "Instantly broadcast your GPS location to BTP & BBMP control and generate emergency WhatsApp dispatch."}</p>
+              <p>{t.sidebar?.sosDesc || "Save your location and choose someone to share it with. For emergency assistance, call 112."}</p>
 
               <button
                 type="button"
