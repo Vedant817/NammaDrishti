@@ -1,5 +1,6 @@
 import { API_BASE } from "../../services/api";
 import { useLanguage } from '../../context/LanguageContext';
+import { useInterfaceCopy } from '../../hooks/useInterfaceCopy';
 import { useDialog } from "../../hooks/useDialog";
 import { authenticatedFetch as fetch } from "../../services/firebaseService";
 // src/components/Chatbot/ChatbotModal.jsx
@@ -17,6 +18,7 @@ const QUICK_PROMPTS = [
 
 
 const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) => {
+  const copy=useInterfaceCopy();
   const activeEvents = useMemo(() => {
     return Array.isArray(currentEvents) ? currentEvents : (Array.isArray(events) ? events : []);
   }, [currentEvents, events]);
@@ -206,6 +208,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
               {isListening ? "🎙️..." : "🎤"}
             </button>
             <input
+              aria-label={copy.ask}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -218,7 +221,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
               onClick={() => handleSendMessage()}
               disabled={!input.trim()}
             >
-              Send
+              {copy.send}
             </button>
           </div>
         </div>

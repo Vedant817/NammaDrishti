@@ -96,6 +96,7 @@ function defer(work) {
   const safe = work.catch(() => console.error('[Background] Task failed; durable job retained'));
   if (process.env.VERCEL === '1') require('@vercel/functions').waitUntil(safe);
 }
+const backupService = require('./services/backupService').createBackupService({db:firebaseStore?.db});
 const pushService = require('./services/pushService').createPushService(records);
 const pushTimer = setInterval(() => pushService.process(incidents).catch(() => console.error('[Push] Delivery queue unavailable')), 15000);
 pushTimer.unref();
@@ -827,7 +828,12 @@ app.post('/api/push/subscribe', sosLimiter, async(req,res)=>{
   try {res.json({id:await pushService.subscribe(req.citizen.uid,subscription,position)});}catch(e){res.status(400).json({error:e.message});}
 });
 app.post('/api/push/unsubscribe', async(req,res)=>{
-  try {const id=req.body.id;if(typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))return res.status(400).json({error:'Invalid subscription ID'});const sub=await records.get('pushSubscriptions',id);if(!req.citizen?.uid||sub?.uid!==req.citizen.uid)return res.status(404).json({error:'Subscription not found'});await records.remove('pushSubscriptions',id);res.json({success:true});}catch {res.status(503).json({error:'Storage unavailable'});}
+  try {const id=typeof req.body.endpoint==='string'&&req.body.endpoint.length<=2048?require('crypto').createHash('sha256').update(req.body.endpoint).digest('hex'):req.body.id;if(typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))return res.status(400).json({error:'Invalid subscription ID'});const sub=await records.get('pushSubscriptions',id);if(!req.citizen?.uid||sub?.uid!==req.citizen.uid)return res.status(404).json({error:'Subscription not found'});await records.remove('pushSubscriptions',id);res.json({success:true});}catch {res.status(503).json({error:'Storage unavailable'});}
+});
+app.post('/api/push/test', sosLimiter, async(req,res)=>{
+  if(!req.citizen?.uid)return res.status(401).json({error:'Firebase sign-in required'});
+  try{await pushService.test(req.citizen.uid,req.body?.endpoint);res.json({accepted:true});}
+  catch{res.status(400).json({error:'Test delivery unavailable. Verify this device subscription and wait a minute before retrying.'});}
 });
 
 async function requireModerator(req,res,next) {
@@ -855,7 +861,7 @@ app.post('/api/moderation/:id', requireModerator, async(req,res)=>{
     io.emit('initial:data',incidents.map(publicIncident).filter(Boolean));res.json({success:true});
   }));}catch {res.status(503).json({error:'Storage busy'});}
 });
-app.get('/api/operations', requireModerator, async(req,res)=>res.json({uptimeSeconds:process.uptime(),storageReady,sourceMetrics:liveData.metrics,replicaMode:firebaseStore?'fenced-writer-with-live-snapshots':'single-process',sources:{traffic:process.env.TOMTOM_API_KEY?'configured':'unconfigured',assistant:process.env.GEMINI_API_KEY&&process.env.GEMINI_MODEL?'configured':'summary',flood:process.env.FLOOD_OBSERVATIONS_URL?'configured':'unconfigured',sos:process.env.EMERGENCY_DISPATCH_WEBHOOK_URL?'configured':'location-only'}}));
+app.get('/api/operations', requireModerator, async(req,res)=>res.json({uptimeSeconds:process.uptime(),storageReady,sourceMetrics:liveData.metrics,backup:await backupService.status(),replicaMode:firebaseStore?'fenced-writer-with-live-snapshots':'single-process',sources:{traffic:process.env.TOMTOM_API_KEY?'configured':'unconfigured',assistant:process.env.GEMINI_API_KEY&&process.env.GEMINI_MODEL?'configured':'summary',flood:process.env.FLOOD_OBSERVATIONS_URL?'configured':'unconfigured',sos:process.env.EMERGENCY_DISPATCH_WEBHOOK_URL?'configured':'location-only'}}));
 
 async function maintenance() {
   await ready;
@@ -867,7 +873,7 @@ app.get('/api/maintenance', async (req, res) => {
   const expected = process.env.CRON_SECRET;
   const supplied = (req.headers.authorization || '').replace(/^Bearer /, '');
   if (!expected || Buffer.byteLength(expected) !== Buffer.byteLength(supplied) || !require('crypto').timingSafeEqual(Buffer.from(expected), Buffer.from(supplied))) return res.status(401).json({ error: 'Maintenance authorization required.' });
-  try { await maintenance(); res.json({ success: true }); }
+  try { await maintenance(); const backup=await backupService.run(); res.json({ success: true, backup }); }
   catch { res.status(503).json({ error: 'Maintenance unavailable.' }); }
 });
 let lastMaintenance = 0;

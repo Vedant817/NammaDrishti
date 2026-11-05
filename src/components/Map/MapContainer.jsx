@@ -310,10 +310,10 @@ const CustomMapContainer = ({
         )}
 
         {showRadar && <span role="status">{radarError || (currentRadarFrame && clock - currentRadarFrame.time * 1000 > 1800000 ? "Radar observation stale" : "Observed radar · coverage may be incomplete")}</span>}
-        {showTraffic && <div className="map-layer-status" role="status">{mapZoom < 10 ? 'Zoom in to see traffic (level 10 or closer)' : tileStatus === 'error' ? 'Traffic map incomplete · some tiles failed' : tileStatus === 'loading' ? 'Loading traffic map…' : 'TomTom traffic · green: moving · amber: slower · red: congested'}</div>}
-        {showHeatmap && <div className="map-layer-status" role="status">{events.length ? `${events.length} community reports · not a measured risk forecast` : 'No community reports to draw. Road conditions remain unknown.'}</div>}
-        {showUnderpasses && <div className="map-layer-status">Hollow blue circles: underpass locations · flooding unverified</div>}
-        {navigationRoute && <span role="status">Route: {navigationRoute.status || "ready"} · static ETA</span>}
+        {showTraffic && <div className="map-layer-status" role="status">{mapZoom < 10 ? copy.zoomTraffic : tileStatus === 'error' ? copy.trafficIncomplete : tileStatus === 'loading' ? copy.loading : copy.flowLegend}</div>}
+        {showHeatmap && <div className="map-layer-status" role="status">{events.length ? `${events.length} · ${copy.reportClustersHint}` : copy.noReports}</div>}
+        {showUnderpasses && <div className="map-layer-status">{copy.underpassHint}</div>}
+        {navigationRoute && <span role="status">{navigationRoute.status === 'ready' ? copy.routeTime : navigationRoute.status === 'checking' ? copy.routeChecking : copy.routeIncomplete}</span>}
         {navigationRoute && (
           <button
             type="button"
@@ -325,7 +325,7 @@ const CustomMapContainer = ({
             }}
             title="Clear active navigation route from map"
           >
-            ✕ Clear Route
+            ✕ {copy.clearRoute}
           </button>
         )}
 
@@ -440,14 +440,10 @@ const CustomMapContainer = ({
             <Popup className="clean-popup">
               <div className="popup-body">
                 <h4>
-                  {navigationRoute.hasConflicts
-                    ? "⚠️ Caution: High Hazard Route"
-                    : "No reported hazards on this route"}
+                  {navigationRoute.status !== 'ready' ? copy.routeIncomplete : navigationRoute.hasConflicts ? copy.routeConflicts : copy.routeClear}
                 </h4>
                 <p>
-                  {navigationRoute.hasConflicts
-                    ? "Route intersects active waterlogged underpass or severe choke point."
-                    : "Reports can be incomplete. Check local conditions; travel time excludes live traffic."}
+                  {copy.routeChecked}
                 </p>
               </div>
             </Popup>

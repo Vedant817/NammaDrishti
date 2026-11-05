@@ -13,5 +13,5 @@ test('traffic uses road tiles rather than hardcoded corridor lines and underpass
   fireEvent.click(screen.getByRole('button', { name: 'Traffic' }));
   expect(screen.getAllByTestId('tile-layer')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Report clusters' }));
-  expect(screen.getByRole('status')).toHaveTextContent('No community reports to draw');
+  expect(screen.getByRole('status')).toHaveTextContent('No community reports yet');
 });

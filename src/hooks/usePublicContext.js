@@ -15,8 +15,10 @@ export function usePublicContext() {
       }catch{if(active)setContext(prev=>({...prev,[key]:{status:'unavailable',alerts:[],incidents:[]}}));}
     }
     function refresh(){read('official-alerts','official');read('traffic-incidents','traffic');}
+    const resume=()=>{if(document.visibilityState==='visible'){setClock(Date.now());refresh();}};
+    document.addEventListener('visibilitychange',resume);
     refresh();const timer=setInterval(refresh,60000),age=setInterval(()=>setClock(Date.now()),15000);
-    return()=>{active=false;controller.abort();clearInterval(timer);clearInterval(age);};
+    return()=>{document.removeEventListener('visibilitychange',resume);active=false;controller.abort();clearInterval(timer);clearInterval(age);};
   },[]);
   return {context,clock};
 }

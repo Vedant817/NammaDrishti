@@ -18,8 +18,9 @@ import "./SafeRouteModal.css";
 
 // Explicit place search backed by the shared geocoding proxy.
 // Users must either select a suggestion or press Enter to geocode the typed text.
-const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
+const PlaceInput = ({ value, place, onChange, onPick, placeholder, label }) => {
   const { t } = useLanguage();
+  const copy=useInterfaceCopy();
   const [suggestions, setSuggestions] = useState([]);
   const [searching, setSearching] = useState(false);
   const queryRef = useRef(value);
@@ -63,8 +64,8 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
     setSearching(true); setSearchError(null);
     try {
       const results = await suggestBengaluruPlaces(query);
-      if (queryRef.current === query) { setSuggestions(results); if (!results.length) setSearchError('No matching place. Use another landmark.'); }
-    } catch (error) { if (queryRef.current === query) setSearchError(error.message); }
+      if (queryRef.current === query) { setSuggestions(results); if (!results.length) setSearchError(copy.placeMissing); }
+    } catch (error) { if (queryRef.current === query) setSearchError(copy.placeMissing); }
     finally { if (queryRef.current === query) setSearching(false); }
   };
   const handleKeyDown = e => { if (e.key === 'Enter') { e.preventDefault(); search(); } };
@@ -74,6 +75,7 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
   return (
     <div className="route-place-wrap" ref={boxRef}>
       <input
+        aria-label={label}
         type="text"
         className="route-select"
         value={value}
@@ -86,7 +88,7 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
       {searchError && <span role="status">{searchError}</span>}
       {searching && <span className="route-search-hint">🔍…</span>}
       {showDropdown && (
-        <div className="route-suggestions" role="listbox">
+        <div className="route-suggestions" aria-label={label}>
           {suggestions.map((p) => (
             <button
               type="button"
@@ -107,6 +109,7 @@ const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
 const SafeRouteModal = ({
   onClose,
   activeRoute,
+  coverage = "incomplete",
   activeHazards = [],
   hazards = [],
   onApplyRouteToMap,
@@ -132,14 +135,14 @@ const SafeRouteModal = ({
     if (pickedPlace) return pickedPlace;
     const resolved = await geocodeBengaluruPlace(text);
     if (!resolved) {
-      throw new Error(
-        `Could not locate the ${fieldName} with live Bengaluru geocoding. Pick a suggestion or use a different landmark.`
-      );
+      throw new Error(copy.placeMissing);
     }
     return resolved;
   };
 
   const handleCalculateRoute = async () => {
+    if(loading)return;
+    setLoading(true);
     setRoutingError(null);
     setRouteResult(null);
 
@@ -155,7 +158,8 @@ const SafeRouteModal = ({
       const resolvedEnd = await resolveEndpoint(endText, endPlace, "destination");
       endCoords = { lat: resolvedEnd.lat, lng: resolvedEnd.lng, label: resolvedEnd.label };
     } catch (resolveErr) {
-      setRoutingError(resolveErr.message);
+      setRoutingError(copy.placeMissing);
+      setLoading(false);
       return;
     }
 
@@ -163,7 +167,8 @@ const SafeRouteModal = ({
       Math.abs(startCoords.lat - endCoords.lat) < 0.0001 &&
       Math.abs(startCoords.lng - endCoords.lng) < 0.0001
     ) {
-      setRoutingError("Origin and destination resolve to the same location. Please choose distinct transit points.");
+      setRoutingError(copy.samePlace);
+      setLoading(false);
       return;
     }
 
@@ -180,7 +185,7 @@ const SafeRouteModal = ({
 
       setRouteResult({
         ...routeData,
-        status: "checking",
+        status: coverage === "current" ? "ready" : "incomplete",
         startCoords,
         endCoords,
       });
@@ -189,14 +194,14 @@ const SafeRouteModal = ({
         onApplyRouteToMap({
           ...routeData,
           startCoords, endCoords, autoDetour,
-          checkedAt: Date.now(), status: "ready",
+          checkedAt: Date.now(), coverage, status: coverage === "current" ? "ready" : "incomplete",
           coordinates: routeData.coordinates,
           hasConflicts: (routeData.conflicts || []).length > 0,
         });
       }
     } catch (err) {
       setRoutingError(
-        "Transit corridor calculation failed or OSRM service is temporarily unreachable. Please exercise caution and verify local road status."
+        copy.routeFailure
       );
       setRouteResult(null);
       if (onApplyRouteToMap) {
@@ -226,7 +231,7 @@ const SafeRouteModal = ({
         <div className="safe-route-body">
           <div className="safe-route-controls">
             <div className="route-input-group">
-              <label>{t.ui["Origin"]}</label>
+              <label>{copy.origin}</label>
               {useCurrentGps && userLocation ? (
                 <div className="route-place-badge">
                   <span className="route-place-text">
@@ -236,6 +241,7 @@ const SafeRouteModal = ({
               ) : (
                 <div className="origin-toggle-row">
                   <PlaceInput
+                    label={copy.origin}
                     value={startText}
                     place={startPlace}
                     onChange={setStartText}
@@ -257,8 +263,9 @@ const SafeRouteModal = ({
             </div>
 
             <div className="route-input-group">
-              <label>{t.ui["Destination"]}</label>
+              <label>{copy.destination}</label>
               <PlaceInput
+                label={copy.destination}
                 value={endText}
                 place={endPlace}
                 onChange={setEndText}
@@ -311,12 +318,12 @@ const SafeRouteModal = ({
                     className="metric-val"
                     style={{
                       color:
-                        (routeResult.conflicts || []).length === 0
+                        (routeResult.conflicts || []).length === 0 && routeResult.status === "ready"
                           ? "var(--status-verified)"
                           : "var(--status-traffic)",
                     }}
                   >
-                    {routeResult.status !== "ready" ? (routeResult.status || "checking") : (routeResult.conflicts || []).length === 0 ? t.live.noReportedHazards : `${routeResult.conflicts.length} ${t.live.nearbyReports}`}
+                    {routeResult.status !== "ready" ? (routeResult.status === "checking" ? copy.routeChecking : copy.unavailable) : (routeResult.conflicts || []).length === 0 ? t.live.noReportedHazards : `${routeResult.conflicts.length} ${t.live.nearbyReports}`}
                   </span>
                   <span className="metric-lbl">{t.ui["Reports nearby"]}</span>
                 </div>
@@ -326,25 +333,26 @@ const SafeRouteModal = ({
                 <div className="route-detour-banner">
                   <span className="detour-icon">🛡️</span>
                   <div>
-                    <strong>Dynamic Flood / Hazard Detour Activated</strong>
+                    <strong>{copy.detour}</strong>
                     <p>
-                      Corridor rerouted around {routeResult.bypassedHazard?.title || "a reported road hazard"}. {Number.isFinite(routeResult.addedMinutes) ? `Estimated change: ${routeResult.addedMinutes} min.` : 'Added travel time is unknown.'}
+                      {routeResult.bypassedHazard?.title}<br/>{Number.isFinite(routeResult.addedMinutes) ? `${routeResult.addedMinutes > 0 ? "+" : ""}${routeResult.addedMinutes} min` : copy.etaUnknown}
                     </p>
                   </div>
                 </div>
               )}
 
-              {routeResult.status !== 'ready' ? <p role="status">Route condition check is {routeResult.status || 'checking'}. Previous results may be outdated.</p> : (routeResult.conflicts || []).length === 0 ? (
+              {routeResult.status !== 'ready' ? <p role="status">{routeResult.status === 'incomplete' ? copy.routeIncomplete : routeResult.status === 'checking' ? copy.routeChecking : copy.routeFailure}</p> : null}
+              {(routeResult.conflicts || []).length === 0 && routeResult.status === 'ready' ? (
                 <div className="route-safe-banner">
                   <span>✓</span>
                   <div>
-                    <strong>No reported hazards nearby</strong>
-                    <p>No matching citizen reports near this path. Check Public alerts for provider road closures. Conditions may be incomplete; ETA excludes live traffic.</p>
+                    <strong>{copy.routeClear}</strong>
+                    <p>{copy.routeChecked}</p>
                   </div>
                 </div>
-              ) : (
+              ) : (routeResult.conflicts || []).length > 0 ? (
                 <div className="route-conflicts-list">
-                  <h5>⚠️ Road Hazards Along Transit Route:</h5>
+                  <h5>{copy.routeConflicts}</h5>
                   {routeResult.conflicts.map((c) => (
                     <div key={c.hazard.id} className="route-conflict-item">
                       <span className="conflict-type">{c.hazard.type}</span>
@@ -363,7 +371,7 @@ const SafeRouteModal = ({
                     </div>
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </div>

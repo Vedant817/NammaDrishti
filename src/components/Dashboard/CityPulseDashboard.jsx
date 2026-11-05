@@ -1,3 +1,4 @@
+import { routeContext } from '../../services/routeContext';
 import { useReactiveRoute } from '../../hooks/useReactiveRoute';
 import { useTrafficData } from '../../hooks/useTrafficData';
 import { usePublicContext } from '../../hooks/usePublicContext';
@@ -52,7 +53,8 @@ const CityPulseDashboard = () => {
   const [reportPin, setReportPin] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [navigationRoute, setNavigationRoute] = useState(null);
-  useReactiveRoute(navigationRoute, setNavigationRoute, events, isLiveConnected);
+  const routeSources = routeContext(events, publicContext.traffic, sourceClock);
+  useReactiveRoute(navigationRoute, setNavigationRoute, routeSources.hazards, isLiveConnected, routeSources.coverage);
   const [userLocation, setUserLocation] = useState(null);
 
   // Deep-link camera: one-shot fly for ?view=... (only until the user interacts)
@@ -174,7 +176,7 @@ const CityPulseDashboard = () => {
     if (routeData.hasConflicts) {
       showToast("⚠️ Caution: Navigation corridor intersects reported hazards. Check the route.");
     } else {
-      showToast("Route added. No reported hazards nearby.");
+      showToast(routeSources.coverage === "current" ? copy.routeClear : copy.routeIncomplete);
     }
   };
 
@@ -310,8 +312,9 @@ const CityPulseDashboard = () => {
           activeRoute={navigationRoute}
           isOpen={showRouteModal}
           onClose={() => setShowRouteModal(false)}
-          hazards={events}
-          activeHazards={events}
+          hazards={routeSources.hazards}
+          coverage={routeSources.coverage}
+          activeHazards={routeSources.hazards}
           userLocation={userLocation}
           onApplyRouteToMap={handleApplyRoute}
         />

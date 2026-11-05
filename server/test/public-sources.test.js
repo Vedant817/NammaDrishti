@@ -45,3 +45,9 @@ test('provider denies access distinctly from an empty working incident feed',asy
   try{assert.equal((await createLiveData({fetchJson:async()=>{throw Object.assign(new Error('denied'),{status:403});}}).trafficIncidents()).status,'access-denied');}
   finally{if(previous===undefined)delete process.env.TOMTOM_API_KEY;else process.env.TOMTOM_API_KEY=previous;}
 });
+
+test('a provider road crossing the city box retains its entire geometry',()=>{
+ const geometry={type:'LineString',coordinates:[[77.1,13],[78,13]]};
+ const result=normalizeIncidents({incidents:[{geometry,properties:{id:'crossing',iconCategory:8,timeValidity:'present'}}]},now);
+ assert.equal(result.incidents.length,1);assert.deepEqual(result.incidents[0].geometry,geometry);assert.ok(result.incidents[0].position.lng>=77.3);
+});

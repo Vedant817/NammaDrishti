@@ -31,6 +31,7 @@ export const LanguageProvider = ({ children }) => {
   });
 
   useEffect(() => {
+    document.documentElement.lang = ['en','kn','hi'].includes(lang) ? lang : 'en';
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem("nammadrishti_lang", lang);

@@ -15,7 +15,7 @@ async function main(){const cli=require(path.join(process.env.FIREBASE_CLI_ROOT 
  assert.ok(!(await (await fetch(base+'/incidents')).json()).some(i=>i.id===id));
  assert.equal((await request('/incidents',report)).status,409);
  assert.equal((await request('/moderation/'+id,{action:'restore',reason:'Acceptance fixture restored'})).status,200);
- const opsResponse=await fetch(base+'/operations',{headers:{Authorization:'Bearer '+token}});assert.equal(opsResponse.status,200);const ops=await opsResponse.json();assert.equal(ops.storageReady,true);
+ const opsResponse=await fetch(base+'/operations',{headers:{Authorization:'Bearer '+token}});assert.equal(opsResponse.status,200);const ops=await opsResponse.json();assert.equal(ops.storageReady,true);if(process.env.TEST_BACKUP==='1'){assert.equal(ops.backup?.configured,true);assert.equal(ops.backup.status,'complete');assert.ok(Date.now()-ops.backup.completedAt<86400000,'Backup must have completed in the last day');}
  for(const language of ['en','kn','hi']){const response=await request('/assistant/chat',{message:'What is the weather now?',language});assert.equal(response.status,200);const data=await response.json();assert.equal(typeof data.reply,'string');if(language==='kn')assert.match(data.reply,/[\u0c80-\u0cff]/);if(language==='hi')assert.match(data.reply,/[\u0900-\u097f]/);}
  const modelResponse=await request('/assistant/chat',{message:'How do I report a pothole?',language:'en'});assert.equal(modelResponse.status,200);const model=await modelResponse.json();
  let media='not requested';
