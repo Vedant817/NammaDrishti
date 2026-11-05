@@ -13,11 +13,17 @@ process.env.NODE_ENV = 'test';
  * 7. Performs on-ground proximity-weighted consensus verification
  * 8. Simulates multi-citizen clearance voting with Sybil-defense consensus
  * 9. Evaluates safe navigation corridor hazard detection
- * 10. Validates Bengaluru monsoon underpass flood diagnostics
+ * 10. Validates weather interval and unknown flood-condition semantics
  * 11. Queries the NammaDrishti AI assistant with contextual traffic/rain prompts
  */
 
 const http = require('http');
+const assert = require('node:assert/strict');
+const fs = require('fs'), path = require('path'), os = require('os');
+const testDirectory = fs.mkdtempSync(path.join(os.tmpdir(),'nd-journey-'));
+process.env.DATA_FILE = path.join(testDirectory,'incidents.json');
+process.env.STATE_DIR = testDirectory;
+process.env.MEDIA_DIR = path.join(testDirectory,'media');
 const { app, server } = require('../server/index');
 
 const PORT = 5099;
@@ -54,31 +60,6 @@ function distanceToSegmentKm(pLat, pLng, aLat, aLng, bLat, bLng) {
   return calculateDistance(pLat, pLng, projLat, projLng);
 }
 
-function evaluateUnderpassRisk(underpass, currentRainIntensityMm) {
-  const intensity = Number(currentRainIntensityMm) || 0;
-  if (intensity >= underpass.criticalThresholdMmPerHour) {
-    return {
-      level: 'Critical Submersion Risk',
-      action: 'Avoid Underpass. Automated or manual barricades recommended.',
-      color: '#EF4444',
-      isFloodedLikely: true,
-    };
-  } else if (intensity >= underpass.criticalThresholdMmPerHour * 0.6) {
-    return {
-      level: 'Waterlogging Warning',
-      action: 'Moderate ponding expected. Two-wheelers exercise extreme caution.',
-      color: '#F59E0B',
-      isFloodedLikely: false,
-    };
-  }
-  return {
-    level: 'Clear / Normal Flow',
-    action: 'Automated pump stations operational. Passable for all traffic.',
-    color: '#10B981',
-    isFloodedLikely: false,
-  };
-}
-
 async function runHeavyUserSimulation() {
   console.log('🚀 Starting NammaDrishti Heavy User Journey Simulation...\n');
 
@@ -92,12 +73,14 @@ async function runHeavyUserSimulation() {
     // 2. Heavy User Action: Fetch all live incidents
     const incidentsRes = await fetch(`${BASE_URL}/api/incidents`);
     const incidents = await incidentsRes.json();
-    console.log(`✓ 2. Loaded ${incidents.length} active Bengaluru civic incidents from live storage.`);
+    assert.equal(incidentsRes.status,200);assert.ok(Array.isArray(incidents));
+    console.log(`✓ 2. Loaded ${incidents.length} local fixture incidents from the test store.`);
 
     // 3. Heavy User Action: Spatial Hex Neighborhood Query
     // User is located near Silk Board (lat: 12.9171, lng: 77.6238)
     const hoodRes = await fetch(`${BASE_URL}/api/incidents/spatial/neighborhood?lat=12.9171&lng=77.6238`);
     const hoodData = await hoodRes.json();
+    assert.equal(hoodRes.status,200);assert.ok(Array.isArray(hoodData.activeRings));
     console.log(`✓ 3. Spatial Radar: Retrieved ${hoodData.count} localized hazards for hex cell ${hoodData.centerHex} (Ring count: ${hoodData.activeRings.length})`);
 
     // 4. Heavy User Action: Upload compressed incident photo evidence
@@ -112,6 +95,7 @@ async function runHeavyUserSimulation() {
       }),
     });
     const mediaData = await mediaRes.json();
+    assert.equal(mediaRes.status,201);assert.match(mediaData.mediaUrl,/\.webp$/);
     console.log(`✓ 4. Evidence Media Pipeline: Processed photo upload -> ${mediaData.mediaUrl} (${mediaData.provider})`);
 
     // 5. Heavy User Action: Report an urgent waterlogging hazard
@@ -135,6 +119,7 @@ async function runHeavyUserSimulation() {
       body: JSON.stringify(reportPayload),
     });
     const createdIncident = await createRes.json();
+    assert.equal(createRes.status,201);assert.ok(createdIncident.id);
     console.log(`✓ 5. Incident Broadcast: Created hazard [${createdIncident.id}] at hex: ${createdIncident.hexIndex}`);
 
     // 6. Coordinate safety guard test
@@ -150,6 +135,7 @@ async function runHeavyUserSimulation() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(invalidPayload),
     });
+    assert.equal(badRes.status,400);
     if (badRes.status === 400) {
       console.log('✓ 6. Coordinate safety guard verified: Malformed lat/lng rejected with HTTP 400.');
     }
@@ -162,6 +148,7 @@ async function runHeavyUserSimulation() {
       body: JSON.stringify({ voterPosition: { lat: simLat + 0.001, lng: simLng }, voterId: 'commuter_onground' }),
     });
     const onGroundData = await onGroundVerify.json();
+    assert.equal(onGroundVerify.status,200);assert.equal(onGroundData.groundVerified,false);
     console.log(`✓ 7. Proximity-Weighted Consensus: On-ground verification accepted with 1.0x weight (Score: ${onGroundData.verificationScore}, Ground: ${onGroundData.groundVerified}).`);
 
     // 8. Heavy User Action: Clearance consensus workflow with multi-citizen Sybil guard
@@ -171,6 +158,7 @@ async function runHeavyUserSimulation() {
       body: JSON.stringify({ voterId: 'commuter_citizen_1' }),
     });
     const resolveVote1 = await resolveVote1Res.json();
+    assert.equal(resolveVote1Res.status,200);assert.equal(resolveVote1.cleared,false);
     console.log(`✓ 8a. Clearance vote 1: ${resolveVote1.message} (Cleared: ${resolveVote1.cleared})`);
 
     const resolveVote2Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, {
@@ -179,6 +167,7 @@ async function runHeavyUserSimulation() {
       body: JSON.stringify({ voterId: 'commuter_citizen_2' }),
     });
     const resolveVote2 = await resolveVote2Res.json();
+    assert.equal(resolveVote2Res.status,200);assert.equal(resolveVote2.cleared,true);
     console.log(`✓ 8b. Clearance vote 2: ${resolveVote2.message} (Cleared: ${resolveVote2.cleared})`);
 
     // 9. Heavy User Action: Safe Route Hazard Avoidance Simulation
@@ -188,10 +177,14 @@ async function runHeavyUserSimulation() {
     const distToCorridor = distanceToSegmentKm(hazardNearRoute.lat, hazardNearRoute.lng, p1[0], p1[1], p2[0], p2[1]);
     console.log(`✓ 9. Safe Route Spatial Engine: Hazard distance to highway segment: ${distToCorridor.toFixed(2)} km (< 0.45 km threshold -> Caution flagged)`);
 
-    // 10. Heavy User Action: Bengaluru Underpass Flood Threshold Diagnostic
-    const panathurUnderpass = { name: 'Panathur Railway Underpass', criticalThresholdMmPerHour: 22.0 };
-    const underpassStatus = evaluateUnderpassRisk(panathurUnderpass, 30.5);
-    console.log(`✓ 10. Monsoon Diagnostic Engine: Panathur underpass evaluated at 30.5 mm/h rain -> [${underpassStatus.level}] - ${underpassStatus.action}`);
+    // Check the actual weather normalizer; rainfall never establishes road depth.
+    const { normalizeWeather } = require('../server/services/liveData');
+    const instant = Date.parse('2026-11-05T08:00:00Z');
+    const reading = normalizeWeather({current:{time:'2026-11-05T08:00',interval:900,precipitation:0.2}}, instant);
+    assert.equal(reading.precipitationAmountMm, 0.2);
+    assert.equal(reading.precipitationRateMmPerHour, 0.8);
+    assert.equal(reading.floodRisk, 'Not assessed');
+    console.log('✓ 10. Actual weather contract: interval conversion correct; flood depth and road safety remain unassessed.');
 
     // 11. Heavy User Action: Conversational Assistant Query
     const aiRes = await fetch(`${BASE_URL}/api/assistant/chat`, {
@@ -200,11 +193,13 @@ async function runHeavyUserSimulation() {
       body: JSON.stringify({ message: 'What is the traffic situation at Silk Board and how is the weather radar?' }),
     });
     const aiData = await aiRes.json();
+    assert.equal(aiRes.status,200);assert.equal(typeof aiData.reply,'string');
     console.log(`✓ 11. NammaDrishti AI Assistant Query processed (${aiData.reply.substring(0, 90)}...)`);
 
-    console.log('\n🎉 ALL 11 HEAVY USER JOURNEYS COMPLETED AND VERIFIED 100% SUCCESSFUL!\n');
+    console.log('\n🎉 Local API journey checks completed. This is not hosted, browser or provider acceptance.\n');
   } finally {
-    server.close();
+    await new Promise(resolve=>server.close(resolve));
+    fs.rmSync(testDirectory,{recursive:true,force:true});
   }
 }
 

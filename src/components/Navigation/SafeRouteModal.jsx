@@ -1,4 +1,5 @@
 import { useLanguage } from '../../context/LanguageContext';
+import { useInterfaceCopy } from '../../hooks/useInterfaceCopy';
 import { useDialog } from "../../hooks/useDialog";
 // src/components/Navigation/SafeRouteModal.jsx
 import React, { useState, useRef, useEffect } from "react";
@@ -113,6 +114,7 @@ const SafeRouteModal = ({
 }) => {
   const { t } = useLanguage();
   const resolvedHazards = activeHazards && activeHazards.length > 0 ? activeHazards : (hazards || []);
+  const copy=useInterfaceCopy();
   const dialogRef = useDialog(onClose);
   const [startText, setStartText] = useState("");
   const [startPlace, setStartPlace] = useState(null);
@@ -207,12 +209,12 @@ const SafeRouteModal = ({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={t.ui["Plan a route"]} tabIndex={-1} className="safe-route-modal-content" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={copy.plan} tabIndex={-1} className="safe-route-modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="safe-route-header">
           <div className="safe-route-title">
             <span className="route-icon">🧭</span>
             <div>
-              <h3>{t.ui["Plan a route"]}</h3>
+              <h3>{copy.plan}</h3>
               <span className="route-subtitle">{t.ui["Check reported hazards along the way"]}</span>
             </div>
           </div>
@@ -326,18 +328,18 @@ const SafeRouteModal = ({
                   <div>
                     <strong>Dynamic Flood / Hazard Detour Activated</strong>
                     <p>
-                      Corridor automatically rerouted around {routeResult.bypassedHazard?.title || "active road hazard"} (+{routeResult.addedMinutes || 2} min).
+                      Corridor rerouted around {routeResult.bypassedHazard?.title || "a reported road hazard"}. {Number.isFinite(routeResult.addedMinutes) ? `Estimated change: ${routeResult.addedMinutes} min.` : 'Added travel time is unknown.'}
                     </p>
                   </div>
                 </div>
               )}
 
-              {(routeResult.conflicts || []).length === 0 ? (
+              {routeResult.status !== 'ready' ? <p role="status">Route condition check is {routeResult.status || 'checking'}. Previous results may be outdated.</p> : (routeResult.conflicts || []).length === 0 ? (
                 <div className="route-safe-banner">
                   <span>✓</span>
                   <div>
                     <strong>No reported hazards nearby</strong>
-                    <p>No active waterlogging or major accidents reported near this path.</p>
+                    <p>No matching citizen reports near this path. Check Public alerts for provider road closures. Conditions may be incomplete; ETA excludes live traffic.</p>
                   </div>
                 </div>
               ) : (

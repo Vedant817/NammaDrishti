@@ -1,5 +1,7 @@
 # Hosting and acceptance update — 2026-11-05
 
+Latest full feature/API audit: [FEATURE_ACCEPTANCE.md](FEATURE_ACCEPTANCE.md). Added current NDMA SACHET CAP warnings and TomTom road incidents; fixed IST-day rollover, reused Blob object paths that produced hosted 404s, and the OSRM fallback URL. Current source research and access gaps are in [SOURCE_RESEARCH.md](SOURCE_RESEARCH.md).
+
 Public site: https://nammadrishti.vercel.app/
 Account registration and sign-in: https://nammadrishti.vercel.app/?account=1
 
@@ -36,6 +38,12 @@ Vercel executes background work with `waitUntil`, an authenticated daily mainten
 
 Required hosted settings are Firebase public web configuration, private `FIREBASE_SERVICE_ACCOUNT_JSON`, `TOMTOM_API_KEY`, VAPID keys/subject, `CRON_SECRET`, `REACT_APP_REALTIME_TRANSPORT=firestore`, and the connected Blob store. Secrets are never frontend build variables. Firebase authorizes the two stable owned Vercel domains. Backups must include Blob objects separately from JSON records; hosted off-site scheduling and a complete recovery drill remain open.
 
-Moderator access: the requested moderator account was not registered when checked. The user must register and verify the email; only then will the moderator claim be assigned. The account panel provides verification resend and role refresh. No verification bypass was applied.
+Moderator access: after the requested account completed email verification, the moderator claim was granted and read back successfully. No verification bypass was applied. The account panel provides verification resend and role refresh.
 
 Final local validation: 15 frontend tests, 35 backend tests, the user journey, 8 sandbox scenarios and 24 stress checks pass. Root and backend audits report zero vulnerabilities.
+
+## Traffic display repair — 2026-11-05
+
+The map previously drew only four TomTom point samples plus four static corridor lines. It now overlays live TomTom relative-flow tiles across Bengaluru through a bounded server-side proxy. Static corridor lines were removed. The default Traffic sidebar presents the four samples with speeds, confidence, retrieval time and locate actions, clearly separated from community report counts. Eleven approximate underpass locations are visible as an independent layer, with unknown-condition wording. An empty report-density layer explains why nothing is drawn. Overview shows regional-river loading/failure states and refreshes automatically.
+
+Hosted acceptance: the existing key returned a valid 256px PNG with nontransparent road pixels; all 16 traffic tiles in the desktop viewport loaded successfully. The Traffic panel showed four real speed readings. Overview loaded current rainfall for the catalog and the regional river forecast. The 390px layout had no horizontal document overflow. These checks do not establish street-level flood sensors or complete traffic coverage on every road. Local frontend and backend regression suites cover layer toggles, stale sample suppression, tile bounds, caching, provider failure and response validation.

@@ -402,38 +402,20 @@ async function runBrutalStressSuite() {
     });
     recordFinding(
       'Senior Frontend & UX',
-      'Extreme Monsoon Telemetry (350 mm/hr)',
+      'Untrusted client weather does not become trusted telemetry',
       `AI response generated smoothly without crash: "${extremeWeatherQuery.data?.reply?.slice(0, 45)}..."`,
-      extremeWeatherQuery.status === 200 && typeof extremeWeatherQuery.data?.reply === 'string'
+      extremeWeatherQuery.status === 200 && typeof extremeWeatherQuery.data?.reply === 'string' && !extremeWeatherQuery.data.reply.includes('350')
     );
 
     // 4b: Translation dictionary key parity (EN, KN, HI)
-    const translationsRaw = fs.readFileSync(path.join(__dirname, '../src/data/translations.js'), 'utf8');
-    const requiredKeys = ['brandName', 'brandTagline', 'activeHazards', 'filters', 'actions', 'reportModal'];
-    const knValid = requiredKeys.every((k) => translationsRaw.includes(k));
-    const hiValid = translationsRaw.includes('hi:');
-    recordFinding(
-      'Senior Frontend & UX',
-      'Translation dictionary key parity',
-      `Kannada: ${knValid ? 'all tested keys present' : 'Missing keys'}, Hindi: ${hiValid ? 'all tested keys present' : 'Missing keys'}`,
-      knValid && hiValid
-    );
+    const labels = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/data/uiExtras.json'),'utf8'));
+    const enKeys = Object.keys(labels.en).sort().join('|');
+    const parity = ['kn','hi'].every(language => Object.keys(labels[language]).sort().join('|') === enKeys);
+    recordFinding('Frontend source contracts','Cached translation key parity','Actual JSON label keys match English, Kannada and Hindi; this is not linguistic review.',parity);
 
-    // 4c: Citizen Reputation Gamification Engine Node/SSR Safety
-    let pointsAwarded = 30;
-    try {
-      if (typeof localStorage === 'undefined') {
-        pointsAwarded = 30;
-      }
-    } catch {
-      pointsAwarded = 0;
-    }
-    recordFinding(
-      'Senior Frontend & UX',
-      'Reputation Service Headless & Node SSR Safety',
-      `Points awarded safely: ${pointsAwarded} points, Tier evaluated without localStorage ReferenceError`,
-      pointsAwarded >= 30
-    );
+    const reputation = await import(require('url').pathToFileURL(path.join(__dirname,'../src/utils/reputationService.js')).href);
+    const profile = reputation.recordReputationEvent('REPORT_SUBMITTED');
+    recordFinding('Frontend source contracts','Actual reputation module without browser storage',`Returned ${profile.points} points after a submitted report.`,profile.points === 30 && profile.reportsSubmitted === 1 && reputation.getCitizenTier(150).id === 'guardian');
 
     // ========================================================================
     // QA ENGINEER 5: SENIOR API, NETWORK & RATE LIMITER QA ENGINEER
@@ -520,7 +502,7 @@ async function runBrutalStressSuite() {
   const failedCount = findings.filter((f) => !f.passed).length;
 
   console.log('================================================================');
-  console.log(`🏁 5 SENIOR QA ENGINEERS STRESS RESULTS: ${passedCount} PASSED, ${failedCount} DEFECTS`);
+  console.log(`🏁 LOCAL AUTOMATED STRESS RESULTS: ${passedCount} PASSED, ${failedCount} DEFECTS`);
   console.log('================================================================\n');
 
   if (failedCount > 0) {

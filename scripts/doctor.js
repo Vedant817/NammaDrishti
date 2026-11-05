@@ -58,11 +58,11 @@ const probeJson = async (url, label) => {
 };
 
 const checkNode = () => {
-  const major = Number(process.versions.node.split('.')[0]);
-  if (Number.isFinite(major) && major >= 22) {
+  const [major,minor] = process.versions.node.split('.').map(Number);
+  if (major>=22&&major<25&&(major!==22||minor>=12)) {
     ok('Node runtime', `v${process.versions.node}`);
   } else {
-    fail('Node runtime', `Node ${process.versions.node} detected; 22+ required for global fetch`);
+    fail('Node runtime', `Node ${process.versions.node} detected; Node 22.12 through 24 required by this build`);
   }
 };
 
@@ -102,11 +102,12 @@ const checkIncidentStore = () => {
 const checkOpenMeteo = async () => {
   try {
     const data = await probeJson(
-      'https://api.open-meteo.com/v1/forecast?latitude=12.9716&longitude=77.5946&current=precipitation',
+      'https://api.open-meteo.com/v1/forecast?latitude=12.9716&longitude=77.5946&current=precipitation&timezone=GMT',
       'Open-Meteo'
     );
-    const mm = data && data.current && data.current.precipitation;
-    ok('Open-Meteo monsoon telemetry', `current precipitation ${mm} mm (keyless)`);
+    const reading=require('../server/services/liveData').normalizeWeather(data);
+    if(reading.isOffline)throw new Error('Observation is stale or future dated');
+    ok('Open-Meteo model weather', `${reading.precipitationAmountMm} mm / ${reading.intervalSeconds/60} min, observed ${reading.observedAt}`);
   } catch (err) {
     warn('Open-Meteo monsoon telemetry', err.message);
   }
@@ -116,9 +117,10 @@ const checkRainViewer = async () => {
   try {
     const data = await probeJson('https://api.rainviewer.com/public/weather-maps.json', 'RainViewer');
     const past = (data.radar && data.radar.past) || [];
-    const nowcast = (data.radar && data.radar.nowcast) || [];
     if (past.length === 0) throw new Error('frame catalog empty');
-    ok('RainViewer radar timeline', `${past.length} observed + ${nowcast.length} nowcast frames (keyless)`);
+    const newest=Math.max(...past.map(frame=>frame.time))*1000;
+    if(!Number.isFinite(newest)||Date.now()-newest>1800000||newest>Date.now()+300000)throw new Error('Observed frame catalog stale or future dated');
+    ok('RainViewer radar timeline', `${past.length} past frames; coverage still requires a tile check`);
   } catch (err) {
     warn('RainViewer radar timeline', err.message);
   }
@@ -160,7 +162,7 @@ const checkLocalBackend = async () => {
     checkOpenMeteo(),
     checkRainViewer(),
     checkOsrmMirror('https://router.project-osrm.org', '.org'),
-    checkOsrmMirror('https://router.project-osrm.de', '.de'),
+    checkOsrmMirror('https://routing.openstreetmap.de/routed-car', 'FOSSGIS'),
     checkLocalBackend(),
   ]);
 

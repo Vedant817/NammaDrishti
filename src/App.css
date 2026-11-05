@@ -1,8 +1,8 @@
 /* Civic map interface. Components use the shared tokens in index.css. */
 .App { text-align:left; }
 .sidebar-container { width:360px; flex-shrink:0; background:var(--bg-surface); }
-.sidebar-tab-nav { background:var(--bg-surface); padding:0 20px; gap:18px; }
-.sidebar-tab-btn { flex:initial; min-height:58px; padding:14px 0; background:none; border:0; border-bottom:2px solid transparent; border-radius:0; font-size:14px; color:var(--text-secondary); }
+.sidebar-tab-nav { background:var(--bg-surface); padding:0 12px; gap:8px; }
+.sidebar-tab-btn { flex:1 0 auto; min-height:58px; padding:14px 0; background:none; border:0; border-bottom:2px solid transparent; border-radius:0; font-size:13px; color:var(--text-secondary); }
 .sidebar-tab-btn.active { color:var(--brand-accent); border-bottom-color:var(--brand-accent); background:none; }
 .sidebar-scrollable-body { padding:24px 20px; }
 .feed-content { display:flex; flex-direction:column; gap:22px; }
@@ -74,3 +74,8 @@
 .report-form .location-action-bar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
 .incident-title-btn { color:inherit; font:inherit; text-align:left; background:none; border:0; padding:0; }
 @media(max-width:750px) { .toolbar-btn { min-height:44px; } }
+@media(max-width:750px) {
+  .map-toolbar { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .map-toolbar > .toolbar-btn { min-width:0; white-space:normal; justify-content:center; font-size:10px; padding:5px; gap:3px; }
+  .map-toolbar > [role="status"], .map-toolbar > .map-layer-status, .map-toolbar > .radar-timeline, .map-toolbar > .toolbar-hint { grid-column:1 / -1; }
+}

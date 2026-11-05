@@ -1,3 +1,4 @@
+import {useInterfaceCopy} from '../../hooks/useInterfaceCopy';
 import { API_BASE } from '../../services/api';
 import { CloudRain, Route, Layers } from "lucide-react";
 // src/components/Map/MapContainer.jsx
@@ -15,7 +16,8 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useLanguage } from "../../context/LanguageContext";
-import { calculateDistance } from "../../services/routingService";
+import { BENGALURU_UNDERPASSES } from "../../data/bengaluruUnderpasses";
+import { activeTrafficIncidents } from '../../utils/sourceTime';
 import "./MapContainer.css";
 
 // Fix standard Leaflet default icon path issues in React
@@ -31,6 +33,21 @@ L.Icon.Default.mergeOptions({
 
 // Center of Bengaluru
 const BENGALURU_CENTER = [12.9716, 77.5946];
+
+const MapResizeController = () => {
+  const map = useMap();
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') {
+      const resize = () => map.invalidateSize({ pan: false });
+      window.addEventListener('resize', resize);
+      return () => window.removeEventListener('resize', resize);
+    }
+    const observer = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
+};
 
 // Component to dynamically pan and zoom to selected event / deep-linked view.
 // Deduplicates identical targets so unrelated re-renders can't re-trigger a fly.
@@ -49,8 +66,9 @@ const MapViewController = ({ center, zoom }) => {
 };
 
 // Component to capture user map clicks for reporting
-const MapEventsHandler = ({ onMapClick }) => {
+const MapEventsHandler = ({ onMapClick, onZoom }) => {
   useMapEvents({
+    zoomend(e) { onZoom(e.target.getZoom()); },
     click(e) {
       if (onMapClick && e.latlng) {
         onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
@@ -62,6 +80,8 @@ const MapEventsHandler = ({ onMapClick }) => {
 
 const CustomMapContainer = ({
   events = [],
+  providerIncidents = {status:'loading',incidents:[]},
+  clock = Date.now(),
   selectedEvent = null,
   onEventSelect = null,
   onMapClick = null,
@@ -73,19 +93,18 @@ const CustomMapContainer = ({
   initialCamera = null,
 }) => {
   const { t } = useLanguage();
+  const copy=useInterfaceCopy();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
+  const [showRoadIncidents,setShowRoadIncidents]=useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   // RainViewer frame timeline: past observations only
   const [radarError, setRadarError] = useState(null);
-  const [traffic, setTraffic] = useState({ status: "loading", segments: [] });
-  const [clock, setClock] = useState(Date.now());
-  useEffect(() => {
-    let active = true;
-    const refresh = async () => { try { const r = await fetch(`${API_BASE}/traffic`, { signal: AbortSignal.timeout(10000) }); if (!r.ok) throw new Error(); const data = await r.json(); if (active) setTraffic(data); } catch { if (active) setTraffic({ status: "unavailable", segments: [] }); } };
-    refresh(); const timer = setInterval(refresh, 120000); const age = setInterval(() => setClock(Date.now()), 30000);
-    return () => { active = false; clearInterval(timer); clearInterval(age); };
-  }, []);
+  const [showUnderpasses, setShowUnderpasses] = useState(false);
+  const [mapZoom, setMapZoom] = useState(12);
+  const [tileStatus, setTileStatus] = useState('loading');
+  const tileEpoch = Math.floor(clock / 120000);
+  useEffect(() => { setTileStatus('loading'); }, [tileEpoch, showTraffic]);
   const [radarData, setRadarData] = useState(null); // { frames: [{time, path}], nowIndex }
   const [radarIndex, setRadarIndex] = useState(null);
   const [isPlayingRadar, setIsPlayingRadar] = useState(false);
@@ -152,78 +171,6 @@ const CustomMapContainer = ({
     return deltaMin < 0 ? `${displayClock} • ${-deltaMin}m ago` : `${displayClock} • +${deltaMin}m`;
   };
 
-  // Bengaluru arterial corridors (factual geometry) with live incident correlation.
-  // No fabricated speed/delayfiction: status comes only from live citizen reports.
-  const baseCorridors = [
-    {
-      id: "corridor_silk_board",
-      name: "Silk Board - BTM Corridor",
-      positions: [
-        [12.9171, 77.6238],
-        [12.919, 77.625],
-        [12.923, 77.627],
-        [12.928, 77.629],
-      ],
-    },
-    {
-      id: "corridor_orr_bellandur",
-      name: "Outer Ring Road (Bellandur - Marathahalli)",
-      positions: [
-        [12.926, 77.674],
-        [12.935, 77.685],
-        [12.945, 77.692],
-        [12.9592, 77.6974],
-      ],
-    },
-    {
-      id: "corridor_tin_factory",
-      name: "Tin Factory & KR Puram Flyover",
-      positions: [
-        [12.9972, 77.6672],
-        [13.002, 77.675],
-        [13.0075, 77.6959],
-      ],
-    },
-    {
-      id: "corridor_hebbal",
-      name: "Hebbal Flyover to Airport Expressway",
-      positions: [
-        [13.0358, 77.597],
-        [13.045, 77.598],
-        [13.055, 77.6],
-      ],
-    },
-  ];
-
-  // Correlate monitored corridors with active nearby hazard density.
-  const dynamicCorridors = baseCorridors.map((corridor) => {
-    const nearbyHazards = events.filter((evt) => {
-      if (!evt.position || !Number.isFinite(evt.position.lat) || !Number.isFinite(evt.position.lng)) {
-        return false;
-      }
-      return corridor.positions.some(
-        ([cLat, cLng]) => calculateDistance(evt.position.lat, evt.position.lng, cLat, cLng) <= 1.2
-      );
-    });
-
-    let status = "No Active Reports Nearby";
-    let color = "#64748b"; // Emerald green
-    if (nearbyHazards.length >= 2) {
-      status = `High Incident Density (${nearbyHazards.length} Active Incidents)`;
-      color = "#EF4444"; // Crimson red
-    } else if (nearbyHazards.length === 1) {
-      status = `Active Caution (${nearbyHazards[0].title})`;
-      color = "#F59E0B"; // Amber
-    }
-
-    return {
-      ...corridor,
-      status,
-      color,
-      hazardCount: nearbyHazards.length,
-    };
-  });
-
   // Modern SVG Pin Generator with semantic colors
   const createCustomIcon = (type, isSelected) => {
     const iconColors = {
@@ -282,7 +229,10 @@ const CustomMapContainer = ({
   return (
     <div className="map-wrapper">
       {/* Floating Modern Map Controls */}
-      <div className="map-toolbar">
+      <div className="map-toolbar map-toolbar--simple">
+        <details className="map-layer-menu" onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary').focus();}}}>
+          <summary><Layers size={17} aria-hidden="true"/>{copy.layers}</summary>
+          <div className="map-layer-options"><p>{copy.layerHint}</p>
         <button
           type="button"
           className={`toolbar-btn ${showRadar ? "active-blue" : ""}`}
@@ -295,16 +245,16 @@ const CustomMapContainer = ({
           }}
           aria-pressed={showRadar} title={t.ui["Toggle rain radar"]}
         >
-          <CloudRain size={16} aria-hidden="true" /> {showRadar ? t.actions.hideRadar : t.actions.liveRadar}
+          <CloudRain size={16} aria-hidden="true" /> {copy.rain}
         </button>
 
         <button
           type="button"
           className={`toolbar-btn ${showTraffic ? "active-amber" : ""}`}
           onClick={() => setShowTraffic(!showTraffic)}
-          aria-pressed={showTraffic} title={t.ui["Toggle road corridors"]}
+          aria-pressed={showTraffic} title="Toggle citywide traffic flow"
         >
-          <Route size={16} aria-hidden="true" /> {showTraffic ? t.actions.hideTraffic : t.actions.trafficFlow}
+          <Route size={16} aria-hidden="true" /> {copy.traffic}
         </button>
 
         <button
@@ -313,9 +263,14 @@ const CustomMapContainer = ({
           onClick={() => setShowHeatmap(!showHeatmap)}
           aria-pressed={showHeatmap} title="Toggle reported hazard density"
         >
-          <Layers size={16} aria-hidden="true" /> {showHeatmap ? (t.actions?.hideHeatmap || "Hide Heatmap") : (t.actions?.heatmap || "Risk Heatmap")}
+          <Layers size={16} aria-hidden="true" /> {copy.clusters}
         </button>
 
+        <button type="button" className={`toolbar-btn ${showUnderpasses ? 'active-blue' : ''}`} aria-pressed={showUnderpasses} onClick={() => setShowUnderpasses(value => !value)}>{copy.underpasses}</button>
+        <button type="button" className={`toolbar-btn ${showRoadIncidents ? 'active-amber' : ''}`} aria-pressed={showRoadIncidents} onClick={()=>setShowRoadIncidents(value=>!value)}>{copy.incidents}</button>
+
+          </div>
+        </details>
         {/* GEV-style radar timeline: play the past radar observations */}
         {showRadar && radarData && radarFrames.length > 0 && (
           <div className="radar-timeline">
@@ -355,7 +310,9 @@ const CustomMapContainer = ({
         )}
 
         {showRadar && <span role="status">{radarError || (currentRadarFrame && clock - currentRadarFrame.time * 1000 > 1800000 ? "Radar observation stale" : "Observed radar · coverage may be incomplete")}</span>}
-        {showTraffic && <span role="status">Traffic: {traffic.status}</span>}
+        {showTraffic && <div className="map-layer-status" role="status">{mapZoom < 10 ? 'Zoom in to see traffic (level 10 or closer)' : tileStatus === 'error' ? 'Traffic map incomplete · some tiles failed' : tileStatus === 'loading' ? 'Loading traffic map…' : 'TomTom traffic · green: moving · amber: slower · red: congested'}</div>}
+        {showHeatmap && <div className="map-layer-status" role="status">{events.length ? `${events.length} community reports · not a measured risk forecast` : 'No community reports to draw. Road conditions remain unknown.'}</div>}
+        {showUnderpasses && <div className="map-layer-status">Hollow blue circles: underpass locations · flooding unverified</div>}
         {navigationRoute && <span role="status">Route: {navigationRoute.status || "ready"} · static ETA</span>}
         {navigationRoute && (
           <button
@@ -378,12 +335,14 @@ const CustomMapContainer = ({
       </div>
 
       <MapContainer
+        preferCanvas={true}
         center={BENGALURU_CENTER}
         zoom={12}
         style={{ height: "100%", width: "100%" }}
         className="leaflet-container"
       >
-        <MapEventsHandler onMapClick={onMapClick} />
+        <MapEventsHandler onMapClick={onMapClick} onZoom={setMapZoom} />
+        <MapResizeController />
         {/* One-shot camera restore for ?view=lat,lng,z deep links (only when nothing is selected) */}
         {!selectedEvent && initialCamera && (
           <MapViewController center={initialCamera.center} zoom={initialCamera.zoom} />
@@ -424,7 +383,20 @@ const CustomMapContainer = ({
           />
         )}
 
-        {showTraffic && traffic.segments.filter(s => !s.unavailable && clock - Date.parse(s.fetchedAt) < 180000).map(s => <Polyline key={s.id} positions={s.positions} color={s.roadClosure || s.currentSpeed < s.freeFlowSpeed * 0.5 ? '#b42318' : '#176582'} weight={6}><Popup>{s.name}: {s.currentSpeed} km/h · free flow {s.freeFlowSpeed} km/h · confidence {s.confidence} · TomTom fetched {new Date(s.fetchedAt).toLocaleTimeString()} · closure {String(s.roadClosure)}</Popup></Polyline>)}
+        {showTraffic && <TileLayer
+          key={`traffic-${tileEpoch}`}
+          url={`${API_BASE}/traffic/tiles/{z}/{x}/{y}.png?v=${tileEpoch}`}
+          bounds={[[12.7, 77.3], [13.28, 77.88]]}
+          minZoom={10} maxNativeZoom={18} maxZoom={19}
+          opacity={0.9} zIndex={300} updateWhenIdle={true} keepBuffer={0}
+          attribution='Traffic &copy; <a href="https://www.tomtom.com/">TomTom</a>'
+          eventHandlers={{ tileerror: () => setTileStatus('error'), tileload: () => setTileStatus(value => value === 'error' ? value : 'ready') }}
+        />}
+        {(selectedEvent?.id?.startsWith('traffic_')||selectedEvent?.id?.startsWith('tomtom_')) && <CircleMarker center={[selectedEvent.position.lat, selectedEvent.position.lng]} radius={10} pathOptions={{ color: '#176582' }}><Popup>{selectedEvent.title} · TomTom</Popup></CircleMarker>}
+        {showRoadIncidents && activeTrafficIncidents(providerIncidents,clock).map(item=><CircleMarker key={item.id} center={[item.position.lat,item.position.lng]} radius={6} bubblingMouseEvents={false} pathOptions={{color:'#AD5139',fillOpacity:.65}}><Popup><strong>{item.category} · TomTom</strong><p>{item.title}</p><p>{item.from}{item.to?' → '+item.to:''}</p></Popup></CircleMarker>)}
+        {showUnderpasses && BENGALURU_UNDERPASSES.map(point => <CircleMarker key={point.id} bubblingMouseEvents={false} center={[point.lat, point.lng]} radius={7} pathOptions={{ color: '#176582', fillColor: '#fff', fillOpacity: 0.85, weight: 2 }}>
+          <Popup><strong>{point.name}</strong><p>Approximate underpass location. Current flooding and road clearance are unverified.</p></Popup>
+        </CircleMarker>)}
         {/* Citizen report density is distinct from measured traffic. */}
         {showHeatmap &&
           events.map((evt) => {
@@ -446,10 +418,10 @@ const CustomMapContainer = ({
                 <Popup className="clean-popup">
                   <div className="popup-body">
                     <span className="popup-type-tag" style={{ background: isHigh ? "#EF4444" : "#F59E0B", color: "#fff" }}>
-                      🔥 High Risk Density Zone
+                      Community report location
                     </span>
                     <h4 className="popup-title">{evt.title}</h4>
-                    <p className="popup-desc">Concentration index: {evt.verificationCount || 1} verified alerts.</p>
+                    <p className="popup-desc">Confirmations: {evt.verificationCount || 1}. Community report; not a sensor measurement.</p>
                   </div>
                 </Popup>
               </CircleMarker>
@@ -617,32 +589,6 @@ const CustomMapContainer = ({
           );
         })}
 
-        {/* Monitored Chokepoint Corridors */}
-        {showTraffic &&
-          dynamicCorridors.map((corridor) => (
-            <Polyline
-              key={corridor.id}
-              positions={corridor.positions}
-              color={corridor.color}
-              weight={6}
-              opacity={0.85}
-            >
-              <Popup className="traffic-clean-popup">
-                <div className="traffic-popup-body">
-                  <div className="traffic-badge" style={{ backgroundColor: corridor.color }}>
-                    {corridor.status}
-                  </div>
-                  <h5>{corridor.name}</h5>
-                  <div className="traffic-metrics">
-                    <span>Live Citizen Reports Nearby: <strong style={{ color: corridor.color }}>{corridor.hazardCount}</strong></span>
-                  </div>
-                  <span className="corridor-note" style={{ fontSize: "0.75rem", color: "#94A3B8", marginTop: "4px", display: "block" }}>
-                    * Status derived solely from live citizen reports within 1.2 km — no speed estimates are surfaced.
-                  </span>
-                </div>
-              </Popup>
-            </Polyline>
-          ))}
       </MapContainer>
     </div>
   );

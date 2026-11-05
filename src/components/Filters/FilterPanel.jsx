@@ -15,6 +15,7 @@ const FilterPanel = ({ activeFilter, onFilterChange, events = [] }) => {
   return (
     <div className="filter-panel-bar">
       <div className="filter-chips-list">
+        <span className="filter-source-label">{t.live.citizenData}</span>
         {filters.filter(filter => !["Event", "Rain"].includes(filter.id)).map((filter) => {
           const count = getCountForFilter(filter.id);
           const isActive = activeFilter === filter.id;

@@ -75,7 +75,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
 
       if (res.ok) {
         const data = await res.json();
-        setMessages((prev) => [...prev, { type: "bot", text: data.reply }]);
+        setMessages((prev) => [...prev, { type: "bot", text: data.reply, mode:data.mode }]);
         setIsTyping(false);
         speakText(data.reply);
         return;
@@ -85,7 +85,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
     }
 
     const fallbackResponse = processQueryLocally(text);
-    setMessages((prev) => [...prev, { type: "bot", text: fallbackResponse }]);
+    setMessages((prev) => [...prev, { type: "bot", text: fallbackResponse, mode:'cached-summary' }]);
     setIsTyping(false);
     speakText(fallbackResponse);
   }, [input, lang, processQueryLocally, speakText]);
@@ -180,6 +180,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
             {messages.map((message, index) => (
               <div key={index} className={`message ${message.type}`}>
                 <div className="message-content">
+                  {message.mode && <small>{message.mode==='gemini-grounded'?'AI answer using current reports':message.mode==='grounded-summary-provider-unavailable'?'Report summary · AI service unavailable':message.mode==='cached-summary'?'Offline summary · cached reports':'Source summary'}</small>}
                   {message.text.split("\n").map((line, i) => (
                     <p key={i}>{line}</p>
                   ))}
