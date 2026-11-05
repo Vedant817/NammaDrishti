@@ -31,6 +31,7 @@ fs.mkdirSync(SANDBOX_DIR, { recursive: true });
 
 // Seed the sandbox with baseline incidents
 const SEED_INCIDENTS = [
+  {id:'sandbox_expired_traffic_jam',type:'Traffic',title:'Expired fixture',position:{lat:13.0358,lng:77.597},createdAt:new Date(Date.now()-6*60*60*1000).toISOString(),verificationCount:1,reporters:['expiry_fixture']},
   {
     id: 'sandbox_silk_board_jam',
     type: 'Traffic',
@@ -297,7 +298,7 @@ async function runScenarioSandbox() {
         }
       }
 
-      console.log(`  ✓ 3b. Safe Detour Corridor Evaluated: 0 conflicts detected (<0.35km buffer). Commuter safely routed around flood.`);
+      console.log(`  ✓ 3b. Safe Detour Corridor Evaluated: 0 conflicts detected (<0.35km buffer). Fixture corridor does not intersect the supplied report; real road safety is not established.`);
       passedScenarios++;
     }
 
@@ -400,37 +401,12 @@ async function runScenarioSandbox() {
     totalScenarios++;
     console.log(`\n--- SCENARIO 6: Dynamic TTL Decay & Worker Persistence ---`);
     {
-      // Inject an old expired incident into memory and file
-      const expiredIncident = {
-        id: 'sandbox_expired_traffic_jam',
-        type: 'Traffic', // TTL: 4 hours
-        title: 'Old Traffic Bottleneck',
-        ward: 'Hebbal',
-        description: 'Stale report from yesterday.',
-        position: { lat: 13.0358, lng: 77.5970 },
-        createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(), // 6 hours old (> 4h TTL)
-        verificationScore: 1.0,
-        verificationCount: 1,
-      };
-
-      await fetch(`${BASE_URL}/api/incidents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(expiredIncident),
-      });
-
-      console.log(`  ✓ 6a. Stale incident injected (Age: 6 hours, TTL: 4 hours).`);
-
-      // Trigger TTL cleanup worker
+      // Seeded before server initialization, so creation cannot refresh the timestamp.
       const expiredList = cleanupExpiredIncidents();
-      const wasCleaned = expiredList.some((e) => e.id === expiredIncident.id);
-      console.log(`  ✓ 6b. Dynamic TTL Lifecycle Worker executed: ${expiredList.length} incident(s) expired and purged.`);
-
-      if (!wasCleaned) {
-        console.warn('  ⚠️ Note: Injected incident may have received newer timestamp during creation.');
-      } else {
-        console.log(`  ✓ 6c. Stale incident cleanly decayed and purged from disk storage.`);
-      }
+      if (!expiredList.some(e => e.id === 'sandbox_expired_traffic_jam')) throw new Error('Expired fixture was not purged');
+      const remaining = await (await fetch(`${BASE_URL}/api/incidents`)).json();
+      if (remaining.some(e => e.id === 'sandbox_expired_traffic_jam')) throw new Error('Expired fixture still visible');
+      console.log('  ✓ Seeded six-hour-old Traffic fixture purged; API no longer returns it.');
 
       passedScenarios++;
     }
@@ -496,7 +472,7 @@ async function runScenarioSandbox() {
     }
 
     console.log('\n================================================================');
-    console.log(`🎉 ALL ${passedScenarios} / ${totalScenarios} SANDBOX SCENARIOS PASSED WITH 100% SUCCESS!`);
+    console.log(`🎉 ALL ${passedScenarios} / ${totalScenarios} SANDBOX SCENARIOS PASSED (local fixtures; not production acceptance).`);
     console.log('================================================================\n');
 
   } finally {

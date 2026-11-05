@@ -16,6 +16,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useLanguage } from "../../context/LanguageContext";
 import { BENGALURU_UNDERPASSES } from "../../data/bengaluruUnderpasses";
+import { activeTrafficIncidents } from '../../utils/sourceTime';
 import "./MapContainer.css";
 
 // Fix standard Leaflet default icon path issues in React
@@ -78,6 +79,7 @@ const MapEventsHandler = ({ onMapClick, onZoom }) => {
 
 const CustomMapContainer = ({
   events = [],
+  providerIncidents = {status:'loading',incidents:[]},
   clock = Date.now(),
   selectedEvent = null,
   onEventSelect = null,
@@ -92,6 +94,7 @@ const CustomMapContainer = ({
   const { t } = useLanguage();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
+  const [showRoadIncidents,setShowRoadIncidents]=useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   // RainViewer frame timeline: past observations only
   const [radarError, setRadarError] = useState(null);
@@ -259,6 +262,7 @@ const CustomMapContainer = ({
         </button>
 
         <button type="button" className={`toolbar-btn ${showUnderpasses ? 'active-blue' : ''}`} aria-pressed={showUnderpasses} onClick={() => setShowUnderpasses(value => !value)}>Underpasses</button>
+        <button type="button" className={`toolbar-btn ${showRoadIncidents ? 'active-amber' : ''}`} aria-pressed={showRoadIncidents} onClick={()=>setShowRoadIncidents(value=>!value)}>Road incidents</button>
 
         {/* GEV-style radar timeline: play the past radar observations */}
         {showRadar && radarData && radarFrames.length > 0 && (
@@ -324,6 +328,7 @@ const CustomMapContainer = ({
       </div>
 
       <MapContainer
+        preferCanvas={true}
         center={BENGALURU_CENTER}
         zoom={12}
         style={{ height: "100%", width: "100%" }}
@@ -380,7 +385,8 @@ const CustomMapContainer = ({
           attribution='Traffic &copy; <a href="https://www.tomtom.com/">TomTom</a>'
           eventHandlers={{ tileerror: () => setTileStatus('error'), tileload: () => setTileStatus(value => value === 'error' ? value : 'ready') }}
         />}
-        {selectedEvent?.id?.startsWith('traffic_') && <CircleMarker center={[selectedEvent.position.lat, selectedEvent.position.lng]} radius={10} pathOptions={{ color: '#176582' }}><Popup>{selectedEvent.title} · sampled traffic location</Popup></CircleMarker>}
+        {(selectedEvent?.id?.startsWith('traffic_')||selectedEvent?.id?.startsWith('tomtom_')) && <CircleMarker center={[selectedEvent.position.lat, selectedEvent.position.lng]} radius={10} pathOptions={{ color: '#176582' }}><Popup>{selectedEvent.title} · TomTom</Popup></CircleMarker>}
+        {showRoadIncidents && activeTrafficIncidents(providerIncidents,clock).map(item=><CircleMarker key={item.id} center={[item.position.lat,item.position.lng]} radius={6} bubblingMouseEvents={false} pathOptions={{color:'#AD5139',fillOpacity:.65}}><Popup><strong>{item.category} · TomTom</strong><p>{item.title}</p><p>{item.from}{item.to?' → '+item.to:''}</p></Popup></CircleMarker>)}
         {showUnderpasses && BENGALURU_UNDERPASSES.map(point => <CircleMarker key={point.id} bubblingMouseEvents={false} center={[point.lat, point.lng]} radius={7} pathOptions={{ color: '#176582', fillColor: '#fff', fillOpacity: 0.85, weight: 2 }}>
           <Popup><strong>{point.name}</strong><p>Approximate underpass location. Current flooding and road clearance are unverified.</p></Popup>
         </CircleMarker>)}

@@ -1,11 +1,15 @@
 const POINTS = [{id:'silk',name:'Silk Board',lat:12.9171,lng:77.6238},{id:'orr',name:'ORR Bellandur',lat:12.935,lng:77.685},{id:'tin',name:'Tin Factory',lat:12.9972,lng:77.6672},{id:'hebbal',name:'Hebbal',lat:13.0358,lng:77.597}];
 const insideCity = (lat,lng) => Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=12.7&&lat<=13.28&&lng>=77.3&&lng<=77.88;
+const { cityDate, CITY_ZONE } = require('./sourceTime');
+async function textFetch(url, options={}) {
+  const res=await fetch(url,{...options,signal:AbortSignal.timeout(7000),redirect:'error'});
+  if(!res.ok) { await res.body?.cancel(); throw Object.assign(new Error(`Provider HTTP ${res.status}`),{status:res.status}); }
+  const chunks=[];let length=0;
+  for await(const chunk of res.body) { length+=chunk.length;if(length>2000000)throw new Error('Provider response too large');chunks.push(chunk); }
+  return Buffer.concat(chunks).toString('utf8');
+}
 async function jsonFetch(url, options={}) {
-  const res=await fetch(url,{...options,signal:AbortSignal.timeout(7000)});
-  if(!res.ok) throw new Error(`Provider HTTP ${res.status}`);
-  const body=await res.text();
-  if(body.length>2000000) throw new Error('Provider response too large');
-  return JSON.parse(body);
+  return JSON.parse(await textFetch(url,options));
 }
 function normalizeWeather(data,now=Date.now()) {
   const c=data.current, time=c&&Date.parse(`${c.time}Z`);
@@ -13,7 +17,7 @@ function normalizeWeather(data,now=Date.now()) {
   const stale=now-time>1800000||time>now+300000;
   return {source:'Open-Meteo model',sourceUrl:'https://open-meteo.com/',observedAt:new Date(time).toISOString(),fetchedAt:new Date(now).toISOString(),intervalSeconds:c.interval,precipitationAmountMm:c.precipitation,precipitation:c.precipitation*3600/c.interval,precipitationRateMmPerHour:c.precipitation*3600/c.interval,temp:Number.isFinite(c.temperature_2m)?c.temperature_2m:null,humidity:c.relative_humidity_2m,windSpeed:c.wind_speed_10m,windSpeedUnit:data.current_units?.wind_speed_10m||'km/h',temperatureUnit:'°C',weatherCode:c.weather_code,stale,isOffline:stale,loading:false,lastUpdated:new Date(time).toISOString(),description:'Model estimate',floodRisk:'Not assessed'};
 }
-function createLiveData({fetchJson=jsonFetch,now=Date.now,reserveGeocode=null,pause=ms=>new Promise(r=>setTimeout(r,ms))}={}) {
+function createLiveData({fetchJson=jsonFetch,fetchText=textFetch,now=Date.now,reserveGeocode=null,pause=ms=>new Promise(r=>setTimeout(r,ms))}={}) {
   const cache=new Map(),pending=new Map(),metrics={requests:0,failures:0,lastFailureAt:null};
   async function cached(key,ttl,task) {
     const hit=cache.get(key); if(hit&&now()-hit.at<ttl) return hit.value;
@@ -21,8 +25,20 @@ function createLiveData({fetchJson=jsonFetch,now=Date.now,reserveGeocode=null,pa
     const request=Promise.resolve().then(task).then(value=>{if(cache.size>=500)cache.delete(cache.keys().next().value);cache.set(key,{at:now(),value});return value;}).catch(e=>{metrics.failures++;metrics.lastFailureAt=new Date(now()).toISOString();throw e;}).finally(()=>pending.delete(key));
     metrics.requests++;pending.set(key,request);return request;
   }
+  const officialAlerts = require('./officialAlerts').createOfficialAlerts({fetchJson,fetchText,now});
   let queue=Promise.resolve(),nextAt=0,queued=0;
   return {metrics,
+    officialAlerts,
+    trafficIncidents() {
+      if(!process.env.TOMTOM_API_KEY)return Promise.resolve({status:'unconfigured',source:'TomTom',incidents:[]});
+      return cached('traffic-incidents',60000,async()=>{
+        const url=new URL('https://api.tomtom.com/traffic/services/5/incidentDetails');
+        url.search=new URLSearchParams({key:process.env.TOMTOM_API_KEY,bbox:'77.30,12.70,77.88,13.28',language:'en-GB',timeValidityFilter:'present',fields:'{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description},startTime,endTime,from,to,length,delay,timeValidity,lastReportTime}}}'});
+        let raw;
+        try{raw=await fetchJson(url.toString());}catch(error){if([401,403].includes(error.status))return {status:'access-denied',source:'TomTom',incidents:[]};throw error;}
+        return require('./trafficIncidents').normalizeIncidents(raw,now());
+      });
+    },
     weather(lat=12.9716,lng=77.5946) {
       if(!insideCity(lat,lng)) return Promise.reject(new Error('Coordinates outside Bengaluru'));
       return cached(`weather:${lat.toFixed(2)},${lng.toFixed(2)}`,120000,async()=>normalizeWeather(await fetchJson(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=GMT`),now()));
@@ -62,12 +78,13 @@ function createLiveData({fetchJson=jsonFetch,now=Date.now,reserveGeocode=null,pa
       });
     },
     floodContext() {
-      return cached('river-model',3600000,async()=>{
-        const raw=await fetchJson('https://flood-api.open-meteo.com/v1/flood?latitude=12.9716&longitude=77.5946&daily=river_discharge&forecast_days=3');
+      return cached(`river-model:${cityDate(now())}`,3600000,async()=>{
+        const raw=await fetchJson('https://flood-api.open-meteo.com/v1/flood?latitude=12.9716&longitude=77.5946&daily=river_discharge&forecast_days=3&timezone=Asia%2FKolkata');
         if(!insideCity(raw.latitude,raw.longitude)||raw.daily_units?.river_discharge!=='m³/s'||!Array.isArray(raw.daily?.time)||!Array.isArray(raw.daily?.river_discharge)||raw.daily.time.length!==raw.daily.river_discharge.length)throw new Error('Invalid river model data');
-        const forecast=raw.daily.time.map((date,i)=>({date,discharge:raw.daily.river_discharge[i]})).filter(p=>/^\d{4}-\d{2}-\d{2}$/.test(p.date)&&Number.isFinite(p.discharge)&&p.discharge>=0);
-        if(!forecast.length)throw new Error('River model unavailable');
-        return {status:'available',source:'Open-Meteo / Copernicus GloFAS',sourceUrl:'https://open-meteo.com/en/docs/flood-api',kind:'regional-river-model',resolutionKm:5,unit:'m³/s',latitude:raw.latitude,longitude:raw.longitude,fetchedAt:new Date(now()).toISOString(),forecast};
+        const today=cityDate(now());
+        const forecast=raw.daily.time.map((date,i)=>({date,discharge:raw.daily.river_discharge[i]})).filter(p=>/^\d{4}-\d{2}-\d{2}$/.test(p.date)&&p.date>=today&&Number.isFinite(p.discharge)&&p.discharge>=0);
+        if(!forecast.some(p=>p.date===today))throw new Error('River model does not include today');
+        return {status:'available',source:'Open-Meteo / Copernicus GloFAS',sourceUrl:'https://open-meteo.com/en/docs/flood-api',kind:'regional-river-model',resolutionKm:5,unit:'m³/s',latitude:raw.latitude,longitude:raw.longitude,timezone:CITY_ZONE,date:today,fetchedAt:new Date(now()).toISOString(),forecast};
       });
     },
     observations() {
@@ -81,4 +98,4 @@ function createLiveData({fetchJson=jsonFetch,now=Date.now,reserveGeocode=null,pa
     }
   };
 }
-module.exports={createLiveData,normalizeWeather,insideCity,jsonFetch};
+module.exports={createLiveData,normalizeWeather,insideCity,jsonFetch,textFetch};

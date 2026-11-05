@@ -5,6 +5,8 @@ import React, { useState } from "react";
 import PersonalizedFeed from "./PersonalizedFeed";
 import CityRecap from "./CityRecap";
 import TrafficPanel from './TrafficPanel';
+import PublicSourcesPanel from './PublicSourcesPanel';
+import { activeAlerts, freshSource } from '../../utils/sourceTime';
 import { EMERGENCY_CONTACTS } from "../../data/constants";
 import { useLanguage } from "../../context/LanguageContext";
 import "./Sidebar.css";
@@ -12,6 +14,8 @@ import "./Sidebar.css";
 
 
 const Sidebar = ({
+  publicContext = {official:{status:'loading',alerts:[]},traffic:{status:'loading',incidents:[]}},
+  sourceClock = Date.now(),
   traffic = { status: 'loading', segments: [] },
   clock = Date.now(),
   activeTab = "feed",
@@ -98,6 +102,7 @@ const Sidebar = ({
     <aside className="sidebar-container">
       <div className="sidebar-tab-nav">
         <button type="button" className={`sidebar-tab-btn ${activeTab === 'traffic' ? 'active' : ''}`} aria-pressed={activeTab === 'traffic'} onClick={() => onTabChange('traffic')}>Traffic</button>
+        <button type="button" className={`sidebar-tab-btn ${activeTab === 'sources' ? 'active' : ''}`} aria-pressed={activeTab === 'sources'} onClick={() => onTabChange('sources')}>Public alerts</button>
         <button
           type="button"
           className={`sidebar-tab-btn ${activeTab === "feed" ? "active" : ""}`}
@@ -122,6 +127,8 @@ const Sidebar = ({
       </div>
 
       <div className="sidebar-scrollable-body">
+        {activeTab === 'sources' && <PublicSourcesPanel context={publicContext} clock={sourceClock} onSelectLocation={onEventSelect}/>}
+        {activeTab === 'traffic' && <button type="button" className="source-alert-link" onClick={()=>onTabChange('sources')}>Public alerts · {freshSource(publicContext.official,sourceClock)?`${activeAlerts(publicContext.official,sourceClock).length} active government warnings`:'government source checking or unavailable'} · road incident feed</button>}
         {activeTab === 'traffic' && <TrafficPanel traffic={traffic} clock={clock} onSelectLocation={onEventSelect} onOverview={() => onTabChange('recap')} />}
         {activeTab === 'feed' && events.length === 0 && <p className="traffic-report-note">Community reports only. For provider traffic speeds, <button type="button" onClick={() => onTabChange('traffic')}>open Traffic</button>.</p>}
         {delivery && <p role="status">{delivery} · {t.live.call112}</p>}

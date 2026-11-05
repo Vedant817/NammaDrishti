@@ -15,7 +15,7 @@ async function answer({message,language,incidents,liveData}) {
   if(/rain|weather|radar|storm|ಮಳೆ|ಹವಾಮಾನ|बारिश|मौसम/.test(query))reply=weather&&!weather.isOffline?`${copy.weather}: ${weather.precipitationAmountMm} mm / ${weather.intervalSeconds/60} min · ${weather.observedAt}.`:copy.unavailable;
   if(/report|pothole|ವರದಿ|रिपोर्ट/.test(query))reply=copy.help;
   reply+=`\n${copy.caution}`;
-  let mode='grounded-summary',sources=matches.map(i=>({id:i.id,title:i.title}));
+  let mode='grounded-summary',providerStatus='not-requested',sources=matches.map(i=>({id:i.id,title:i.title}));
   if(weather)sources.push({title:weather.source,url:weather.sourceUrl,observedAt:weather.observedAt});
   // Weather facts use the fixed localized template: a model must not turn an
   // interval observation into a future forecast or change physical units.
@@ -25,9 +25,9 @@ async function answer({message,language,incidents,liveData}) {
       const parsed=JSON.parse(raw.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join(''));
       if(typeof parsed.reply!=='string'||parsed.reply.length>4000||!Array.isArray(parsed.incidentIds)||parsed.incidentIds.some(id=>!publicItems.some(i=>i.id===id)))throw new Error('Ungrounded model response');
       if(lang==='kn'&&!/[\u0c80-\u0cff]/.test(parsed.reply)||lang==='hi'&&!/[\u0900-\u097f]/.test(parsed.reply))throw new Error('Wrong response language');
-      reply=parsed.reply;mode='gemini-grounded';sources=[...sources,...publicItems.filter(i=>parsed.incidentIds.includes(i.id)).map(i=>({id:i.id,title:i.title}))];
-    }catch{mode='grounded-summary-provider-unavailable';}
+      reply=parsed.reply;mode='gemini-grounded';providerStatus='available';sources=[...sources,...publicItems.filter(i=>parsed.incidentIds.includes(i.id)).map(i=>({id:i.id,title:i.title}))];
+    }catch(error){mode='grounded-summary-provider-unavailable';providerStatus=Number.isInteger(error.status)?`HTTP ${error.status}`:'invalid-provider-response';}
   }
-  return {reply,mode,sources,timestamp:new Date().toISOString(),activeIncidentCount:publicItems.length};
+  return {reply,mode,providerStatus,sources,timestamp:new Date().toISOString(),activeIncidentCount:publicItems.length};
 }
 module.exports={answer};

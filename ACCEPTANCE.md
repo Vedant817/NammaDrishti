@@ -1,6 +1,6 @@
 # Acceptance record — 2026-11-05
 
-The newer Vercel deployment evidence and resolved/open gates are in [DEPLOYMENT.md](DEPLOYMENT.md). The matrix below records the earlier PR baseline.
+The current feature-by-feature evidence is in [FEATURE_ACCEPTANCE.md](FEATURE_ACCEPTANCE.md), with source research in [SOURCE_RESEARCH.md](SOURCE_RESEARCH.md). Hosting details are in [DEPLOYMENT.md](DEPLOYMENT.md). The matrix below records an earlier PR baseline and is not the current deployment status.
 
 ## Verified in this change
 

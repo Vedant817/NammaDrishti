@@ -113,17 +113,28 @@ export const detectRouteHazards = (routeCoordinates, activeHazards, hazardBuffer
 // the demo server rate-limits mid-storm (keyless-first, no API keys needed).
 const OSRM_MIRRORS = [
   "https://router.project-osrm.org",
-  "https://router.project-osrm.de",
+  "https://routing.openstreetmap.de/routed-car",
 ];
+let requestQueue=Promise.resolve(),nextRequestAt=0;
+const routeCache=new Map(),routePending=new Map();
+function scheduledRouteFetch(url) {
+  const task=requestQueue.then(async()=>{
+    const wait=Math.max(0,nextRequestAt-Date.now());
+    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+    nextRequestAt=Date.now()+1100;
+    return fetch(url,{signal:AbortSignal.timeout(6000)});
+  });
+  requestQueue=task.catch(()=>{});return task;
+}
 
 // Issue an OSRM route request across mirrors: 5xx responses and network errors
 // advance to the next mirror; an OSRM answer (even a NoRoute 4xx body) is final
 // and returned as-is, since bad input fails identically on every mirror.
-const osrmRouteRequest = async (routePath) => {
+const requestAcrossMirrors = async (routePath) => {
   for (let i = 0; i < OSRM_MIRRORS.length; i++) {
     const mirror = OSRM_MIRRORS[i];
     try {
-      const res = await fetch(`${mirror}${routePath}`, { signal: AbortSignal.timeout(6000) });
+      const res = await scheduledRouteFetch(`${mirror}${routePath}`);
       if (res.status >= 500 || res.status === 429) {
         if (i >= OSRM_MIRRORS.length - 1) {
           throw new Error(`OSRM routing failed with status ${res.status}`);
@@ -141,6 +152,15 @@ const osrmRouteRequest = async (routePath) => {
     }
   }
   throw new Error("All OSRM routing mirrors are unreachable.");
+};
+const osrmRouteRequest = async routePath => {
+  const cached=routeCache.get(routePath);
+  if(cached&&Date.now()-cached.at<60000)return cached.data;
+  if(routePending.has(routePath))return routePending.get(routePath);
+  const task=requestAcrossMirrors(routePath).then(data=>{
+    if(data.code==='Ok'){if(routeCache.size>=60)routeCache.delete(routeCache.keys().next().value);routeCache.set(routePath,{at:Date.now(),data});}return data;
+  }).finally(()=>routePending.delete(routePath));
+  routePending.set(routePath,task);return task;
 };
 
 // Fetch real driving route from OSRM public API

@@ -3,11 +3,13 @@ import { BENGALURU_UNDERPASSES } from '../../data/bengaluruUnderpasses';
 import { calculateDistance } from '../../services/routingService';
 import { API_BASE } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
+import { cityDate, cityTime } from '../../utils/sourceTime';
 const CityRecap = ({ events = [], onSelectLocation }) => {
   const { t } = useLanguage();
   const [river, setRiver] = useState({status:'loading'});
   const [readings, setReadings] = useState({});
   const [observations, setObservations] = useState([]);
+  const [clock,setClock]=useState(Date.now());
   useEffect(() => {
     let active = true;
     async function refresh() {
@@ -19,23 +21,23 @@ const CityRecap = ({ events = [], onSelectLocation }) => {
       if (active) setReadings(Object.fromEntries(results.filter(r => r.status === 'fulfilled').map(r => r.value)));
       try { const r = await fetch(`${API_BASE}/flood-observations`, { signal: AbortSignal.timeout(10000) }); const data = await r.json(); if (active) setObservations(data.observations || []); } catch { if (active) setObservations([]); }
     }
-    refresh(); const timer = setInterval(refresh, 120000);
-    return () => { active = false; clearInterval(timer); };
+    refresh(); const timer = setInterval(refresh, 120000),age=setInterval(()=>setClock(Date.now()),15000);
+    return () => { active = false; clearInterval(timer); clearInterval(age); };
   }, []);
   return <div className="recap-content">
     <div className="recap-header"><h4>{t.live.overview}</h4><span>{t.live.citizenData}</span></div>
     <div className="recap-grid">{['Traffic','Waterlogging','Accident','Infrastructure'].map(type => <div className="recap-stat-card" key={type}><span className="recap-num">{events.filter(e => e.type === type).length}</span><span>{t.filters[type]}</span></div>)}</div>
     {river.status !== 'available' && <section><h5>{t.live.riverContext}</h5><p role="status">{river.status === 'loading' ? 'Loading regional river forecast…' : 'Regional river forecast unavailable. Retrying automatically.'}</p></section>}
-    {river?.status === 'available' && <section><h5>{t.live.riverContext}</h5><p>{t.live.riverLimit}</p><p>{river.latitude.toFixed(3)}, {river.longitude.toFixed(3)} · {new Date(river.fetchedAt).toLocaleString()}</p>{river.forecast.map(f=><p key={f.date}>{f.date}: {f.discharge} m³/s</p>)}<a href={river.sourceUrl} target="_blank" rel="noreferrer">{river.source}</a></section>}
+    {river?.status === 'available' && <section><h5>{t.live.riverContext}</h5><p>{t.live.riverLimit}</p><p>{river.latitude.toFixed(3)}, {river.longitude.toFixed(3)} · {cityTime(river.fetchedAt)}</p>{river.date!==cityDate(clock)?<p role="status">River model is from a previous date. Refreshing automatically.</p>:river.forecast.filter(f=>f.date>=cityDate(clock)).map(f=><p key={f.date}>{f.date}: {f.discharge} m³/s</p>)}<a href={river.sourceUrl} target="_blank" rel="noreferrer">{river.source}</a></section>}
     <h5>{t.live.underpasses}</h5><p>{t.live.unverifiedCatalog}</p>
     <div className="underpass-watch-list">{BENGALURU_UNDERPASSES.map(p => {
       const reports = events.filter(e => e.type === 'Waterlogging' && e.position && calculateDistance(e.position.lat,e.position.lng,p.lat,p.lng) <= 1.2);
       const weather = readings[p.id];
-      const fresh = weather && !weather.isOffline && Date.now() - Date.parse(weather.observedAt) < 1800000;
-      const sensor = observations.filter(o => Date.now() - Date.parse(o.observedAt) < 900000 && calculateDistance(o.lat,o.lng,p.lat,p.lng) < 0.2);
+      const fresh = weather && !weather.isOffline && clock - Date.parse(weather.observedAt) < 1800000;
+      const sensor = observations.filter(o => clock - Date.parse(o.observedAt) < 900000 && calculateDistance(o.lat,o.lng,p.lat,p.lng) < 0.2);
       return <div className="underpass-card" key={p.id} style={{padding:10,borderBottom:'1px solid var(--border-color)'}}>
         <strong>{p.name}</strong><p>{reports.length ? `${reports.length} ${t.live.nearbyReports}` : t.live.unknownCondition}</p>
-        <small>{fresh ? `${t.live.modelRain}: ${weather.precipitationAmountMm} mm / ${weather.intervalSeconds / 60} min · ${new Date(weather.observedAt).toLocaleTimeString()}` : t.live.weatherUnavailable}</small>
+        <small>{fresh ? `${t.live.modelRain}: ${weather.precipitationAmountMm} mm / ${weather.intervalSeconds / 60} min · ${cityTime(weather.observedAt)}` : t.live.weatherUnavailable}</small>
         {sensor.map(o => <p key={`${o.source}-${o.observedAt}`}><a href={o.sourceUrl} target="_blank" rel="noreferrer">{o.source}</a>: {o.depthCm} cm · {new Date(o.observedAt).toLocaleString()}</p>)}
         <button type="button" onClick={() => onSelectLocation?.({ id:`underpass_${p.id}`,title:p.name,ward:p.zone,description:t.live.unknownCondition,position:{lat:p.lat,lng:p.lng} })}>{t.live.viewMap}</button>
       </div>;

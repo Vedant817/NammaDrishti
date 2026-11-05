@@ -1,4 +1,14 @@
 /* src/components/Sidebar/Sidebar.css */
+.sidebar-tab-nav { overflow-x:auto; }
+.sidebar-tab-btn { white-space:nowrap; }
+.public-sources-panel h3 { font-family:var(--font-display); font-size:1.6rem; }
+.public-sources-panel h4 { margin:18px 0 8px; }
+.public-sources-panel p { margin:8px 0; line-height:1.5; font-size:.88rem; }
+.public-sources-panel small { color:var(--text-secondary); }
+.public-source-card { padding:14px 0; border-bottom:1px solid var(--border-light); }
+.source-alert-link, .public-source-card button { background:var(--bg-elevated); border:1px solid var(--border-light); padding:10px; border-radius:4px; color:var(--text-primary); text-align:left; }
+.source-search { display:block; margin-top:12px; }
+.source-search input { display:block; width:100%; padding:10px; border:1px solid var(--border-light); border-radius:4px; margin-top:6px; }
 .traffic-panel h3 { font-family: var(--font-display); font-size: 1.6rem; margin: 0 0 8px; }
 .traffic-panel h4 { margin: 20px 0 8px; }
 .traffic-panel p, .traffic-report-note { font-size: .88rem; line-height: 1.5; color: var(--text-secondary); }

@@ -8,6 +8,8 @@ Public site: https://nammadrishti.vercel.app/ · [Citizen account](https://namma
 
 The Vercel-only deployment and latest hosted/browser evidence are recorded in [DEPLOYMENT.md](DEPLOYMENT.md). Hosted realtime uses a sanitized, read-only Firestore projection; standalone Node retains Socket.IO.
 
+The **Public alerts** tab combines active NDMA SACHET government warnings and TomTom road incidents, with source links, validity windows and Bengaluru dates. See [SOURCE_RESEARCH.md](SOURCE_RESEARCH.md) for the source investigation and [FEATURE_ACCEPTANCE.md](FEATURE_ACCEPTANCE.md) for feature-by-feature evidence and limits.
+
 ## Run locally
 
 Use Node 22.12+ or 24, then:
@@ -32,7 +34,7 @@ Local development without Firebase uses an empty JSON incident store. Production
 - Place searches require Search, Enter or report submission. Nominatim requests share a server cache and an application-wide gate in Firebase mode. No autocomplete. Operators can change the upstream endpoint without rebuilding the frontend.
 - Traffic speeds use an optional server-side TomTom adapter. Without access, measured traffic is unavailable. Citizen report density remains a separate source.
 - Underpass coordinates are unverified candidate locations. Unsourced equipment, depth and engineered-threshold claims have been removed. Per-location model estimates and nearby reports are distinguished from optional sourced depth observations.
-- Photos are decoded with bounded pixels and re-encoded as WebP, removing EXIF/GPS metadata. Incident documents store URLs. Persistent disk is the storage provider; mount `MEDIA_DIR` on durable storage and share it between replicas. A fixed object budget fails visibly when full. No paid Firebase Storage upgrade was made.
+- Photos are decoded with bounded pixels and re-encoded as WebP, removing EXIF/GPS metadata. Hosted production uses uniquely named, immutable Vercel Blob objects; local development uses persistent disk. Incident documents store URLs. No paid Firebase Storage upgrade was made.
 - Assistant summaries use server-owned reports and weather, ignoring client-supplied readings. Optional Gemini responses identify their mode and use bounded public report context. Without credentials, this is a grounded summary, not an LLM.
 - SOS locations use a private durable outbox, deadlines and bounded retries. The recipient must acknowledge the matching dispatch ID. An operator acknowledgment does not imply government dispatch. Location records expire after 24 hours. Optional webhook recipients must deduplicate `Idempotency-Key`.
 - Moderator accounts need the `moderator: true` Firebase custom claim and a non-anonymous identity. The Citizen account panel includes hide/restore, reason entry, audit history and operations metrics. The backend needs Firebase Auth viewer permission for revoked-token checks, in addition to datastore access.
@@ -46,6 +48,9 @@ npm run test:all
 npm run build
 npm audit
 npm audit --prefix server
+# Read-only hosted source/date checks:
+# Set ACCEPTANCE_API_URL=https://nammadrishti.vercel.app/api first.
+npm run test:live-sources
 node scripts/verify-firestore.js
 # Optional privileged acceptance: requires a Firebase CLI owner login.
 node scripts/verify-auth-moderation.js

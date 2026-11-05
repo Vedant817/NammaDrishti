@@ -1,5 +1,6 @@
 import { useReactiveRoute } from '../../hooks/useReactiveRoute';
 import { useTrafficData } from '../../hooks/useTrafficData';
+import { usePublicContext } from '../../hooks/usePublicContext';
 import { Plus, Route, MessageSquare } from "lucide-react";
 // src/components/Dashboard/CityPulseDashboard.jsx
 import React, { useState, useEffect, useRef } from "react";
@@ -40,6 +41,7 @@ const CityPulseDashboard = () => {
   const { events, isLiveConnected, offlineQueueCount, addEvent, verifyEvent, resolveEvent } = useEventData();
   const { weather } = useWeatherTelemetry();
   const { traffic, clock } = useTrafficData();
+  const { context: publicContext, clock: sourceClock } = usePublicContext();
   const { t } = useLanguage();
 
   const [activeFilter, setActiveFilter] = useState("All");
@@ -221,6 +223,7 @@ const CityPulseDashboard = () => {
       <div className="main-content">
         <main className="map-section" role="region" aria-label="Interactive Map">
           <MapContainer
+            providerIncidents={publicContext.traffic}
             clock={clock}
             events={filteredEvents}
             selectedEvent={selectedEvent}
@@ -267,6 +270,8 @@ const CityPulseDashboard = () => {
         </main>
 
         <Sidebar
+          publicContext={publicContext}
+          sourceClock={sourceClock}
           traffic={traffic}
           clock={clock}
           events={filteredEvents}

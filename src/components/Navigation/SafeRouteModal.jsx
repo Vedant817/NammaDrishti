@@ -326,18 +326,18 @@ const SafeRouteModal = ({
                   <div>
                     <strong>Dynamic Flood / Hazard Detour Activated</strong>
                     <p>
-                      Corridor automatically rerouted around {routeResult.bypassedHazard?.title || "active road hazard"} (+{routeResult.addedMinutes || 2} min).
+                      Corridor rerouted around {routeResult.bypassedHazard?.title || "a reported road hazard"}. {Number.isFinite(routeResult.addedMinutes) ? `Estimated change: ${routeResult.addedMinutes} min.` : 'Added travel time is unknown.'}
                     </p>
                   </div>
                 </div>
               )}
 
-              {(routeResult.conflicts || []).length === 0 ? (
+              {routeResult.status !== 'ready' ? <p role="status">Route condition check is {routeResult.status || 'checking'}. Previous results may be outdated.</p> : (routeResult.conflicts || []).length === 0 ? (
                 <div className="route-safe-banner">
                   <span>✓</span>
                   <div>
                     <strong>No reported hazards nearby</strong>
-                    <p>No active waterlogging or major accidents reported near this path.</p>
+                    <p>No matching citizen reports near this path. Check Public alerts for provider road closures. Conditions may be incomplete; ETA excludes live traffic.</p>
                   </div>
                 </div>
               ) : (

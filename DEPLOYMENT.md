@@ -1,5 +1,7 @@
 # Hosting and acceptance update — 2026-11-05
 
+Latest full feature/API audit: [FEATURE_ACCEPTANCE.md](FEATURE_ACCEPTANCE.md). Added current NDMA SACHET CAP warnings and TomTom road incidents; fixed IST-day rollover, reused Blob object paths that produced hosted 404s, and the OSRM fallback URL. Current source research and access gaps are in [SOURCE_RESEARCH.md](SOURCE_RESEARCH.md).
+
 Public site: https://nammadrishti.vercel.app/
 Account registration and sign-in: https://nammadrishti.vercel.app/?account=1
 
