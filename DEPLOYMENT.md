@@ -40,7 +40,7 @@ Required hosted settings are Firebase public web configuration, private `FIREBAS
 
 Moderator access: after the requested account completed email verification, the moderator claim was granted and read back successfully. No verification bypass was applied. The account panel provides verification resend and role refresh.
 
-Follow-up local validation: 33 frontend tests, 49 backend tests, the user journey, 8 sandbox scenarios and 24 stress checks pass. Root and backend audits report zero vulnerabilities.
+Follow-up local validation: 35 frontend tests, 49 backend tests, the user journey, 8 sandbox scenarios and 24 stress checks pass. Root and backend audits report zero vulnerabilities.
 
 ## Traffic display repair — 2026-11-05
 

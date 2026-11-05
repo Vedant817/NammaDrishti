@@ -6,9 +6,9 @@ async function registration() {
   try { return await Promise.race([navigator.serviceWorker.ready, new Promise((_, reject) => { timer=setTimeout(()=>reject(new Error('unavailable')),10000); })]); }
   finally { clearTimeout(timer); }
 }
-async function request(path, body) {
+async function request(path, body, {allowMissing=false}={}) {
   const response=await authenticatedFetch(`${API_BASE}/push/${path}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!response.ok)throw new Error('unavailable');
+  if(!response.ok){if(allowMissing&&response.status===404)return {absent:true};throw new Error('unavailable');}
   return response.json();
 }
 export async function backgroundAlertStatus() {
@@ -34,7 +34,8 @@ export async function enableBackgroundAlerts(position) {
 export async function disableBackgroundAlerts() {
   const worker=await registration(),subscription=await worker.pushManager.getSubscription();
   if(!subscription)return;
-  await request('unsubscribe',{endpoint:subscription.endpoint});
+  // A previous account may own the server record. This device must still be able to stop delivery.
+  await request('unsubscribe',{endpoint:subscription.endpoint},{allowMissing:true});
   if(!await subscription.unsubscribe())throw new Error('unavailable');
 }
 export async function testBackgroundAlert() {

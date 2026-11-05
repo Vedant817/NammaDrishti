@@ -22,3 +22,9 @@ test('turning alerts off preserves browser subscription if server removal fails'
  authenticatedFetch.mockResolvedValue({ok:true,json:async()=>({success:true})});
  await disableBackgroundAlerts();expect(subscription.unsubscribe).toHaveBeenCalledOnce();
 });
+
+test('a device can disable a subscription owned by a previous account or already removed on the server',async()=>{
+ const {subscription,worker}=setup();worker.pushManager.getSubscription.mockResolvedValue(subscription);
+ authenticatedFetch.mockResolvedValue({ok:false,status:404});
+ await disableBackgroundAlerts();expect(subscription.unsubscribe).toHaveBeenCalledOnce();
+});

@@ -22,10 +22,10 @@ export default function PublicSourcesPanel({context,clock,onSelectLocation}) {
     <p>{copy.roadIntro}</p>
     <h4>{copy.government} · NDMA SACHET</h4>
     <FeedStatus source={context.official} clock={clock} empty={!alerts.length}/>
-    {alerts.map(alert=>{const copy=alert.languages?.[lang]||alert;return <article className="public-source-card" key={alert.id}>
-      <strong>{alert.event} · {alert.severity}</strong><p>{copy.headline}</p>{copy.description&&<p>{copy.description}</p>}
+    {alerts.map(alert=>{const content=alert.languages?.[lang]||alert;return <article className="public-source-card" key={alert.id}>
+      <strong>{alert.event} · {alert.severity}</strong><p>{content.headline}</p>{content.description&&<p>{content.description}</p>}
       <p>{alert.area}</p><small>{copy.issued} {cityTime(alert.issuedAt)}<br/>{copy.valid} {cityTime(alert.effectiveAt)} – {cityTime(alert.expiresAt)}</small>
-      {copy.instruction&&<p>{copy.instruction}</p>}<a href={alert.sourceUrl} target="_blank" rel="noreferrer">{copy.officialLink} · {alert.sender}</a>
+      {content.instruction&&<p>{content.instruction}</p>}<a href={alert.sourceUrl} target="_blank" rel="noreferrer">{copy.officialLink} · {alert.sender}</a>
     </article>;})}
     <h4>{copy.roadIncidents} · TomTom</h4>
     <FeedStatus source={context.traffic} clock={clock} empty={!incidents.length}/>
