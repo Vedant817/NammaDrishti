@@ -1,0 +1,24 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies are installed inside the container
+node_modules
+server/node_modules
+
+# Local runtime state
+server/incidents.json
+server/incidents.json.tmp
+*.log
+npm-debug.log*
+
+# Docs and CI configs (not needed in the image)
+.github
+testsprite
+.eslintcache
+coverage
+build
+
+.env
+.env.*
+*-adminsdk-*.json

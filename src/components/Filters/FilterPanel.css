@@ -1,59 +1,8 @@
-/* src/components/Filters/FilterPanel.css */
-.filter-panel {
-    position: absolute;
-    top: 90px;
-    right: 30px;
-    background: white;
-    padding: 1rem;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    z-index: 1000;
-    max-width: 300px;
-  }
-  
-  .filter-panel h4 {
-    margin: 0 0 1rem 0;
-    color: #333;
-    font-size: 1rem;
-  }
-  
-  .filter-dropdown {
-    position: relative;
-    width: 100%;
-  }
-  
-  .filter-select {
-    width: 100%;
-    padding: 0.75rem 1rem;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    background-color: #fff;
-    font-size: 1rem;
-    color: #333;
-    appearance: none; /* Remove default browser styling */
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    cursor: pointer;
-    outline: none;
-    transition: all 0.3s ease;
-  }
-  
-  .filter-select:hover {
-    border-color: #4285F4;
-  }
-  
-  .filter-select:focus {
-    border-color: #4285F4;
-    box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
-  }
-  
-  /* Custom arrow for dropdown */
-  .filter-dropdown::after {
-    content: '▼';
-    position: absolute;
-    right: 15px;
-    top: 50%;
-    transform: translateY(-50%);
-    pointer-events: none;
-    color: #666;
-  }
+.filter-panel-bar { flex-shrink:0; padding:0 28px; background:var(--bg-surface); border-bottom:1px solid var(--border-subtle); overflow-x:auto; }
+.filter-chips-list { display:flex; align-items:center; gap:22px; min-width:max-content; }
+.filter-chip { position:relative; display:flex; align-items:center; gap:8px; padding:15px 0; border:0; border-bottom:2px solid transparent; border-radius:0; background:none; color:var(--text-secondary); font-size:13px; white-space:nowrap; min-height:48px; }
+.filter-chip:hover { color:var(--text-primary); } .filter-chip.active { color:var(--brand-accent); border-bottom-color:var(--brand-accent); font-weight:600; }
+.filter-chip-dot { width:6px; height:6px; background:var(--text-muted); border-radius:50%; }
+.category-traffic { background:var(--status-traffic); } .category-waterlogging { background:var(--status-flood); } .category-accident { background:var(--status-accident); } .category-infrastructure { background:var(--status-infra); }
+.filter-chip-count { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); padding:0 4px; }
+@media(max-width:650px) { .filter-panel-bar { padding:0 16px; } .filter-chips-list { gap:20px; } .filter-chip { padding:11px 0; font-size:12px; } }
