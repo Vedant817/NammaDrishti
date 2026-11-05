@@ -15,10 +15,12 @@ export function useTrafficData() {
         if (active) setTraffic(data);
       } catch { if (active) setTraffic({ status: 'unavailable', segments: [] }); }
     }
+    const resume=()=>{if(document.visibilityState==='visible'){setClock(Date.now());refresh();}};
+    document.addEventListener('visibilitychange',resume);
     refresh();
-    const refreshTimer = setInterval(refresh, 120000);
+    const refreshTimer = setInterval(refresh, 60000);
     const ageTimer = setInterval(() => setClock(Date.now()), 30000);
-    return () => { active = false; clearInterval(refreshTimer); clearInterval(ageTimer); };
+    return () => { document.removeEventListener('visibilitychange',resume);active = false; clearInterval(refreshTimer); clearInterval(ageTimer); };
   }, []);
   return { traffic, clock };
 }

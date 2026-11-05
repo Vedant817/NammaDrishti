@@ -48,8 +48,8 @@ const ReportModal = ({
     ward: "",
     position: initialCoordinates || null,
     mediaUrl: null,
-    waterDepth: "< 6 in (Ankle Deep)",
-    vehiclePassability: "Passable with Caution",
+    waterDepth: "",
+    vehiclePassability: "",
   });
 
   const [locationSource, setLocationSource] = useState(
@@ -149,8 +149,8 @@ const ReportModal = ({
     try {
       const res = await onSubmitReport({
         ...formData,
-        waterDepth: formData.type === "Waterlogging" ? formData.waterDepth : null,
-        vehiclePassability: formData.type === "Waterlogging" ? formData.vehiclePassability : null,
+        waterDepth: formData.type === "Waterlogging" ? formData.waterDepth || null : null,
+        vehiclePassability: formData.type === "Waterlogging" ? formData.vehiclePassability || null : null,
         position: resolvedCoords,
       });
       if (res && res.error) {
@@ -202,28 +202,30 @@ const ReportModal = ({
           {formData.type === "Waterlogging" && (
             <div className="form-row monsoon-telemetry-row" style={{ background: "rgba(6, 182, 212, 0.08)", padding: "10px", borderRadius: "6px", marginBottom: "14px", border: "1px solid rgba(6, 182, 212, 0.2)" }}>
               <div className="form-group flex-1">
-                <label htmlFor="report-depth" style={{ color: "#06B6D4", fontWeight: 600 }}>🌊 Inundation Depth</label>
+                <label htmlFor="report-depth" style={{ color: "#06B6D4", fontWeight: 600 }}>{copy.waterDepth}</label>
                 <select
                   id="report-depth"
                   value={formData.waterDepth}
                   onChange={(e) => setFormData({ ...formData, waterDepth: e.target.value })}
                 >
-                  <option value="< 6 in (Ankle Deep)">&lt; 6 in (Ankle Deep - Passable)</option>
-                  <option value="1 - 1.5 ft (Exhaust Level)">1 - 1.5 ft (Exhaust Level - 2W Danger)</option>
-                  <option value="> 2.0 ft (Engine Submersion)">&gt; 2.0 ft (Critical Submersion / Closed)</option>
+                  <option value="">{copy.unknown}</option>
+                  <option value="< 6 in (Ankle Deep)">{copy.depthAnkle}</option>
+                  <option value="1 - 1.5 ft (Exhaust Level)">{copy.depthExhaust}</option>
+                  <option value="> 2.0 ft (Engine Submersion)">{copy.depthDeep}</option>
                 </select>
               </div>
               <div className="form-group flex-1">
-                <label htmlFor="report-passability" style={{ color: "#06B6D4", fontWeight: 600 }}>🚫 Vehicle Passability</label>
+                <label htmlFor="report-passability" style={{ color: "#06B6D4", fontWeight: 600 }}>{copy.passability}</label>
                 <select
                   id="report-passability"
                   value={formData.vehiclePassability}
                   onChange={(e) => setFormData({ ...formData, vehiclePassability: e.target.value })}
                 >
-                  <option value="Passable with Caution">Passable with Caution</option>
-                  <option value="2-Wheelers Blocked">2-Wheelers Blocked</option>
-                  <option value="Cars Blocked / SUV Only">Cars Blocked / SUV Only</option>
-                  <option value="Completely Impassable">Completely Impassable / Blocked</option>
+                  <option value="">{copy.unknown}</option>
+                  <option value="Passable with Caution">{copy.reportedPassable}</option>
+                  <option value="2-Wheelers Blocked">{copy.twoWheelBlocked}</option>
+                  <option value="Cars Blocked / SUV Only">{copy.carsBlocked}</option>
+                  <option value="Completely Impassable">{copy.allBlocked}</option>
                 </select>
               </div>
             </div>
@@ -260,9 +262,9 @@ const ReportModal = ({
                 value={formData.urgency}
                 onChange={(e) => setFormData({ ...formData, urgency: e.target.value })}
               >
-                <option value="Low">Low (Informational)</option>
-                <option value="Medium">Medium (Delay ~15m)</option>
-                <option value="High">High (Severe Blockage / Danger)</option>
+                <option value="Low">{copy.lowUrgency}</option>
+                <option value="Medium">{copy.mediumUrgency}</option>
+                <option value="High">{copy.highUrgency}</option>
               </select>
             </div>
           </div>
@@ -299,8 +301,9 @@ const ReportModal = ({
           </div>
 
           <div className="form-group">
-            <label>{reportT.photoEvidence}</label>
+            <label htmlFor="report-photo">{reportT.photoEvidence}</label>
             <input
+              id="report-photo"
               type="file"
               accept="image/*"
               onChange={handleImageChange}

@@ -9,8 +9,8 @@ test('speed samples remain separate from report counts and stale readings are no
   ]}}/>);
   expect(screen.getByText('17 km/h')).toBeInTheDocument();
   expect(screen.queryByText('99 km/h')).not.toBeInTheDocument();
-  expect(screen.getByText('Unavailable')).toBeInTheDocument();
+  expect(screen.getByText('Update unavailable')).toBeInTheDocument();
   fireEvent.click(screen.getAllByText('Locate on map')[0]);
   expect(onSelectLocation).toHaveBeenCalledWith(expect.objectContaining({id:'traffic_silk',position:{lat:12.9171,lng:77.6238}}));
-  fireEvent.click(screen.getByText('Open overview')); expect(onOverview).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByText('Open weather overview')); expect(onOverview).toHaveBeenCalledOnce();
 });

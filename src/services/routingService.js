@@ -64,48 +64,40 @@ export const distanceToSegmentKm = (pLat, pLng, aLat, aLng, bLat, bLng) => {
   return calculateDistance(npLat, npLng, projLat, projLng);
 };
 
-// Check if any segment of a route corridor passes close to active hazards
+// Bounds reject unrelated roads before checking segment proximity.
+const bounds = points => points.reduce((b,p)=>[Math.min(b[0],p[0]),Math.min(b[1],p[1]),Math.max(b[2],p[0]),Math.max(b[3],p[1])],[Infinity,Infinity,-Infinity,-Infinity]);
+const overlaps = (a,b,pad) => a[0]<=b[2]+pad && a[2]>=b[0]-pad && a[1]<=b[3]+pad && a[3]>=b[1]-pad;
+const cross = (a,b,c)=>(b[1]-a[1])*(c[0]-a[0])-(b[0]-a[0])*(c[1]-a[1]);
+function segmentDistance(a,b,c,d) {
+  if (overlaps(bounds([a,b]),bounds([c,d]),0) && cross(a,b,c)*cross(a,b,d)<=0 && cross(c,d,a)*cross(c,d,b)<=0) return 0;
+  return Math.min(distanceToSegmentKm(...a,...c,...d),distanceToSegmentKm(...b,...c,...d),distanceToSegmentKm(...c,...a,...b),distanceToSegmentKm(...d,...a,...b));
+}
 export const detectRouteHazards = (routeCoordinates, activeHazards, hazardBufferKm = 0.45) => {
-  if (!routeCoordinates || routeCoordinates.length === 0) return [];
-  const encounteredHazards = [];
-
-  for (const hazard of activeHazards) {
-    if (
-      !hazard.position ||
-      !Number.isFinite(hazard.position.lat) ||
-      !Number.isFinite(hazard.position.lng)
-    ) {
-      continue;
-    }
-    const hLat = hazard.position.lat;
-    const hLng = hazard.position.lng;
-
-    let minDistance = Infinity;
-
-    // Check distance to all route segments to catch hazards between vertices
-    if (routeCoordinates.length === 1) {
-      minDistance = calculateDistance(hLat, hLng, routeCoordinates[0][0], routeCoordinates[0][1]);
-    } else {
-      for (let i = 0; i < routeCoordinates.length - 1; i++) {
-        const p1 = routeCoordinates[i];
-        const p2 = routeCoordinates[i + 1];
-        const segDist = distanceToSegmentKm(hLat, hLng, p1[0], p1[1], p2[0], p2[1]);
-        if (segDist < minDistance) {
-          minDistance = segDist;
-        }
-        if (minDistance <= hazardBufferKm) break;
+  const route = (routeCoordinates || []).filter(p=>Array.isArray(p)&&p.length>=2&&p.every(Number.isFinite));
+  if (!route.length) return [];
+  const routeBounds=bounds(route), segments=route.slice(1).map((p,i)=>[route[i],p,bounds([route[i],p])]);
+  if (!segments.length) segments.push([route[0],route[0],routeBounds]);
+  const conflicts=[];
+  for (const hazard of activeHazards || []) {
+    const g=hazard.geometry;
+    const points=g?.type==='LineString' ? g.coordinates?.map(p=>[p[1],p[0]]) : g?.type==='Point' ? [[g.coordinates[1],g.coordinates[0]]] : [[hazard.position?.lat,hazard.position?.lng]];
+    if (!points?.length || !points.every(p=>p.every(Number.isFinite))) continue;
+    // Provider roads use a narrow proximity corridor; this is not lane matching.
+    const buffer=hazard.provider ? Math.min(hazardBufferKm,0.035) : hazardBufferKm, pad=buffer/100;
+    if (!overlaps(routeBounds,bounds(points),pad)) continue;
+    let distance=Infinity;
+    for(let j=0;j<Math.max(1,points.length-1);j++) {
+      const c=points[j],d=points[j+1]||c,box=bounds([c,d]);
+      for (const [a,b,routeBox] of segments) {
+        if (!overlaps(routeBox,box,pad)) continue;
+        distance=Math.min(distance,segmentDistance(a,b,c,d));
+        if(distance<=buffer)break;
       }
+      if(distance<=buffer)break;
     }
-
-    if (minDistance <= hazardBufferKm) {
-      encounteredHazards.push({
-        hazard,
-        distanceKm: minDistance,
-      });
-    }
+    if(distance<=buffer)conflicts.push({hazard,distanceKm:distance});
   }
-
-  return encounteredHazards;
+  return conflicts;
 };
 
 // Public OSRM community mirrors, tried in order. `.org` is the official demo
@@ -256,7 +248,7 @@ export const fetchDetourRoute = async (start, end, activeHazards = []) => {
           conflicts: remainingConflicts,
           isDetour: true,
           bypassedHazard: worstHazard,
-          addedMinutes: Math.max(1, detourDuration - baseRoute.durationMin),
+          addedMinutes: detourDuration - baseRoute.durationMin,
         };
       }
     }

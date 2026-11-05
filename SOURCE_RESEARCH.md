@@ -37,3 +37,11 @@ Open-Meteo current estimates, RainViewer past frames, Nominatim explicit place s
 ## Reproduce live API acceptance
 
 Set `ACCEPTANCE_API_URL=https://nammadrishti.vercel.app/api`, then run `npm run test:live-sources`. This read-only test checks health, current weather age, actual speed samples, today's river dates, valid CAP windows, authorized incident access, geocoding, traffic PNGs, push configuration and unauthenticated moderation denial. Privileged fixture tests remain separate in `scripts/verify-auth-moderation.js`; fixtures are removed after the run.
+
+## Follow-up access review
+
+The [official IMD API reference](https://api.imd.gov.in/public/api_reference.html) documents station observations, AWS/ARG, nowcasts and warnings; [registration](https://api.imd.gov.in/public/) is available, but an approved observation key has not been supplied. The operational keyless SACHET warning feed remains connected. Do not infer underpass depth from station rainfall.
+
+A [July 2025 MBRDI/WRI/Villgro primary announcement](https://www.mbrdi.co.in/assets/docs/Open%20Data%20Fuels%20Bengaluru%E2%80%99s%20First-Ever%20End-to-End%20Public%20Transport%20App%20Solutions.pdf) identifies the [DULT Transport Data Hub](https://tdh.dult-karnataka.com/) and BMTC/BMRCL GTFS-backed Tummoc and Namma Yatri features. The hub returned HTTP 502 during this follow-up. This is an access lead, not verification of a usable anonymous live vehicle feed or permission to reuse a reverse-engineered mobile endpoint. The source panel now links the official hub. No outdated static schedule or unrelated city API was added as live Bengaluru transit.
+
+[Vercel private Blob storage](https://vercel.com/docs/vercel-blob/private-storage) is now used for cross-provider private database/photo snapshots; uploaded report photos remain in the existing public photo store. A live private-archive readback, anonymous-access rejection and isolated Firestore/new-photo restore passed. See RECOVERY.md for scope and recovery limits.

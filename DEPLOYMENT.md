@@ -36,14 +36,18 @@ Open-Meteo's keyless flood API returned live daily GloFAS river-discharge model 
 
 Vercel executes background work with `waitUntil`, an authenticated daily maintenance cron and opportunistic maintenance on requests. Retries can be delayed while the app is idle; this is not a continuously staffed emergency dispatch system. Call 112 for urgent assistance. Durable outboxes survive cold starts; the JSON local fallback is not used by hosted production.
 
-Required hosted settings are Firebase public web configuration, private `FIREBASE_SERVICE_ACCOUNT_JSON`, `TOMTOM_API_KEY`, VAPID keys/subject, `CRON_SECRET`, `REACT_APP_REALTIME_TRANSPORT=firestore`, and the connected Blob store. Secrets are never frontend build variables. Firebase authorizes the two stable owned Vercel domains. Backups must include Blob objects separately from JSON records; hosted off-site scheduling and a complete recovery drill remain open.
+Required hosted settings are Firebase public web configuration, private `FIREBASE_SERVICE_ACCOUNT_JSON`, `TOMTOM_API_KEY`, VAPID keys/subject, `CRON_SECRET`, `REACT_APP_REALTIME_TRANSPORT=firestore`, and the connected Blob store. Secrets are never frontend build variables. Firebase authorizes the two stable owned Vercel domains. A separate private Blob store supplies `BACKUP_READ_WRITE_TOKEN`; the daily maintenance cron snapshots Firestore records with referenced uploaded photo bytes and validates private readback. Seven-day retention and moderator-only backup status are configured. The isolated hosted database/new-photo recovery drill passed. See [RECOVERY.md](RECOVERY.md) for scope, restore commands, quota limits and the separate Auth/credential recovery requirement.
 
 Moderator access: after the requested account completed email verification, the moderator claim was granted and read back successfully. No verification bypass was applied. The account panel provides verification resend and role refresh.
 
-Final local validation: 15 frontend tests, 35 backend tests, the user journey, 8 sandbox scenarios and 24 stress checks pass. Root and backend audits report zero vulnerabilities.
+Follow-up local validation: 33 frontend tests, 49 backend tests, the user journey, 8 sandbox scenarios and 24 stress checks pass. Root and backend audits report zero vulnerabilities.
 
 ## Traffic display repair — 2026-11-05
 
 The map previously drew only four TomTom point samples plus four static corridor lines. It now overlays live TomTom relative-flow tiles across Bengaluru through a bounded server-side proxy. Static corridor lines were removed. The default Traffic sidebar presents the four samples with speeds, confidence, retrieval time and locate actions, clearly separated from community report counts. Eleven approximate underpass locations are visible as an independent layer, with unknown-condition wording. An empty report-density layer explains why nothing is drawn. Overview shows regional-river loading/failure states and refreshes automatically.
 
 Hosted acceptance: the existing key returned a valid 256px PNG with nontransparent road pixels; all 16 traffic tiles in the desktop viewport loaded successfully. The Traffic panel showed four real speed readings. Overview loaded current rainfall for the catalog and the regional river forecast. The 390px layout had no horizontal document overflow. These checks do not establish street-level flood sensors or complete traffic coverage on every road. Local frontend and backend regression suites cover layer toggles, stale sample suppression, tile bounds, caching, provider failure and response validation.
+
+## Route and notification follow-up
+
+Route checks combine citizen reports and fresh provider road geometry, including closures whose first vertex is far from the crossing. Provider coverage becoming unavailable, stale, partial or truncated prevents an all-clear result. Route travel times remain static OSRM estimates. The notification settings now show device status, permission guidance, disable and a rate-limited test action for an owned subscription. The user asked to leave notifications blocked, so actual device delivery is not claimed.

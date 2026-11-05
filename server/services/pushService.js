@@ -4,11 +4,31 @@ const PROVIDERS=['fcm.googleapis.com','updates.push.services.mozilla.com','web.p
 function validSubscription(value) {
   try { const u=new URL(value.endpoint); return u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&PROVIDERS.some(h=>u.hostname===h||u.hostname.endsWith('.'+h))&&value.endpoint.length<2048&&/^[A-Za-z0-9_-]{87}$/.test(value.keys.p256dh)&&/^[A-Za-z0-9_-]{22}$/.test(value.keys.auth); }catch{return false;}
 }
-function createPushService(records) {
+function createPushService(records,{send=webpush.sendNotification.bind(webpush)}={}) {
   const configured=Boolean(process.env.VAPID_PUBLIC_KEY&&process.env.VAPID_PRIVATE_KEY&&process.env.VAPID_SUBJECT);
   if(configured)webpush.setVapidDetails(process.env.VAPID_SUBJECT,process.env.VAPID_PUBLIC_KEY,process.env.VAPID_PRIVATE_KEY);
   let processing=false;const owner=randomUUID();
   return {configured,
+    async test(uid,endpoint) {
+      if(!configured || typeof endpoint!=='string')throw new Error('Push unavailable');
+      const id=createHash('sha256').update(endpoint).digest('hex');
+      const sub=await records.get('pushSubscriptions',id);
+      if(!sub || sub.uid!==uid)throw new Error('Subscription not found');
+      const now=Date.now();
+      if(sub.lastTestAt && now-sub.lastTestAt<60000)throw new Error('Wait one minute before testing again');
+      const lease=await records.claim('pushSubscriptions',id,owner,now);
+      if(!lease)throw new Error('Test in progress');
+      if(lease.uid!==uid)throw new Error('Subscription not found');
+      if(lease.lastTestAt && now-lease.lastTestAt<60000){await records.put('pushSubscriptions',id,{...lease,leaseUntil:0});throw new Error('Wait one minute before testing again');}
+      try {
+        await send(sub.subscription,JSON.stringify({body:'Test notification: nearby alerts can reach this device.',url:'/'}),{TTL:60,timeout:7000});
+        await records.put('pushSubscriptions',id,{...lease,lastTestAt:now,leaseUntil:0});
+      }catch(error){
+        if(error.statusCode===404||error.statusCode===410)await records.remove('pushSubscriptions',id);
+        else await records.put('pushSubscriptions',id,{...lease,lastTestAt:now,leaseUntil:0});
+        throw new Error('Test delivery unavailable');
+      }
+    },
     async subscribe(uid,subscription,position) {
       if(!configured)throw new Error('Push is not configured');
       if(!validSubscription(subscription))throw new Error('Unsupported push subscription');
@@ -17,7 +37,7 @@ function createPushService(records) {
       if(existing&&existing.uid!==uid)throw new Error('Subscription belongs to another account');
       const subscriptions=await records.list('pushSubscriptions');
       if(subscriptions.filter(s=>s.uid===uid).length>=3&&!existing)throw new Error('Subscription limit reached');
-      await records.put('pushSubscriptions',id,{id,uid,subscription,position,updatedAt:Date.now()});return id;
+      await records.put('pushSubscriptions',id,{...existing,id,uid,subscription,position,updatedAt:Date.now()});return id;
     },
     async enqueue(incident) {
       if(!configured||incident.urgency!=='High')return;
@@ -42,7 +62,7 @@ function createPushService(records) {
         if(!sub){await records.remove('pushOutbox',job.id);continue;}
         try {
           // Lock-screen privacy: no precise location, report text or personal data.
-          await webpush.sendNotification(sub.subscription,JSON.stringify({title:'NammaDrishti',body:'A high urgency road hazard was reported near your saved area.',url:`/?incident=${encodeURIComponent(item.id)}`}),{TTL:300,timeout:7000});
+          await send(sub.subscription,JSON.stringify({title:'NammaDrishti',body:'A high urgency road hazard was reported near your saved area.',url:`/?incident=${encodeURIComponent(item.id)}`}),{TTL:300,timeout:7000});
           await records.put('pushOutbox',job.id,{...claim,status:'sent',leaseUntil:0});
         }catch(e){
           if(e.statusCode===404||e.statusCode===410)await records.remove('pushSubscriptions',sub.id);

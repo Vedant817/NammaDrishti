@@ -3,7 +3,7 @@ import PublicSourcesPanel from './PublicSourcesPanel';
 test('source failure is not reported as zero live warnings or a clear road',()=>{
   render(<PublicSourcesPanel clock={Date.now()} context={{official:{status:'unavailable',alerts:[]},traffic:{status:'access-denied',incidents:[]}}}/>);
   expect(screen.getByText(/Source unavailable or stale/)).toBeInTheDocument();
-  expect(screen.getByText(/Provider denied access/)).toBeInTheDocument();
+  expect(screen.getByText(/Provider denied API access/)).toBeInTheDocument();
   expect(screen.queryByText(/No active records returned/)).not.toBeInTheDocument();
 });
 test('large road incident feeds are paged and searchable without dropping available results',()=>{
