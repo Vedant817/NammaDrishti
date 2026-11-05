@@ -15,7 +15,7 @@ function harness() {
   del:async urls=>{for(const url of [].concat(urls)){deleted.push(url);files.delete(url);}},
  };
  const service=createBackupService({db,blob,token:'fixture',mediaToken:'fixture',mediaHost:'owned.public.blob.vercel-storage.com',clock:()=>now});
- return {service,blob,files,deleted,get state(){return state;},set state(v){state=v;},get now(){return now;},set now(v){now=v;}};
+ return {service,db,blob,files,deleted,get state(){return state;},set state(v){state=v;},get now(){return now;},set now(v){now=v;}};
 }
 test('daily due policy handles IST rollover, future timestamps and stale completion',()=>{
  const now=Date.parse('2026-11-05T19:00Z'),recent=Date.parse('2026-11-05T18:00Z');
@@ -42,13 +42,13 @@ test('retention failure preserves the verified recovery point and is retried wit
  h.files.set(old,{url:old,pathname:'backups/v2/old.json.gz',uploadedAt:new Date(h.now-8*86400000).toISOString()});
  const remove=h.blob.del;h.blob.del=async()=>{throw new Error('delete outage');};
  const result=await h.service.run({trigger:'maintenance'});assert.equal(result.status,'complete');assert.equal(result.retentionStatus,'failed');assert.equal(h.state.status,'complete');
- h.blob.del=remove;const latest=h.state.url;assert.equal((await h.service.run({trigger:'maintenance'})).reason,'fresh');
+ h.blob.del=remove;h.now+=900001;const latest=h.state.url;assert.equal((await h.service.run({trigger:'maintenance'})).reason,'fresh');
  assert.equal(h.state.url,latest);assert.equal(h.files.size,1);assert.equal(h.state.retentionStatus,'complete');assert.equal(h.state.lastMaintenanceOutcome,'fresh');
 });
 test('lease loss during readback prevents publication and cannot overwrite a newer owner',async()=>{
  const h=harness(),get=h.blob.get;
  h.blob.get=async url=>{const result=await get(url);h.state={...h.state,owner:'newer-owner',status:'complete',url:'newer-verified',completedAt:h.now};return result;};
- await assert.rejects(h.service.run(),/lease lost/);assert.equal(h.state.url,'newer-verified');assert.equal(h.state.status,'complete');assert.equal(h.files.size,0);
+ await assert.rejects(h.service.run(),/lease lost/);assert.equal(h.state.url,'newer-verified');assert.equal(h.state.status,'complete');assert.equal(h.files.size,1);
 });
 test('failed upload cleanup is tracked and reconciled on a later due attempt',async()=>{
  const h=harness(),remove=h.blob.del,get=h.blob.get;
@@ -61,4 +61,26 @@ test('bounded readback cancels an oversized stream',async()=>{
  let closed=false;
  async function* stream(){try{yield Buffer.alloc(8);yield Buffer.alloc(8);}finally{closed=true;}}
  await assert.rejects(readBounded(stream(),10),/budget/);assert.equal(closed,true);
+});
+
+test('lost publication acknowledgement never deletes a committed verified archive',async()=>{
+ const h=harness(),transaction=h.db.runTransaction;let lose=true;
+ h.db.runTransaction=async task=>{const result=await transaction(task);if(lose&&h.state.status==='complete'){lose=false;throw new Error('commit acknowledgement lost');}return result;};
+ const result=await h.service.run();assert.equal(result.status,'complete');assert.equal(h.state.status,'complete');assert.ok(h.files.has(h.state.url));assert.equal(h.deleted.length,0);
+});
+test('a failed same-day forced snapshot retries after durable backoff expires',async()=>{
+ const h=harness(),get=h.blob.get;await h.service.run();const before=h.state.url;
+ h.blob.get=async()=>{throw new Error('outage');};await assert.rejects(h.service.run({force:true}));
+ h.blob.get=get;h.now+=900001;assert.equal((await h.service.run()).status,'complete');assert.notEqual(h.state.url,before);assert.equal((await h.service.status()).health,'healthy');
+});
+test('fresh snapshots coordinate retention retry scans across concurrent callers',async()=>{
+ const h=harness();await h.service.run();h.state={...h.state,retentionStatus:'failed',nextRetentionAt:0,retentionLeaseUntil:0};
+ let scans=0;const list=h.blob.list;h.blob.list=async options=>{if(options.prefix==='backups/v2/')scans++;return list(options);};
+ await Promise.all([h.service.run(),h.service.run(),h.service.run()]);assert.equal(scans,1);
+ await h.service.run();assert.equal(scans,1);
+});
+test('backup starts while maintenance is still pending',async()=>{
+ let release,calls=0;const pending=new Promise(resolve=>{release=resolve;});
+ const run=runMaintenanceAndBackup(()=>pending,async()=>{calls++;return {status:'complete'};});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,1);release();assert.equal((await run).success,true);
 });

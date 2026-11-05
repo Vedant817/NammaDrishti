@@ -52,8 +52,9 @@ function createBackupService({db,blob=require('@vercel/blob'),token=process.env.
         return {status:'backoff'};
       }
       if(!force&&!backupDue(state,now)) {
-        if(trigger==='maintenance') tx.set(ref,{...state,...maintenance,lastMaintenanceOutcome:'fresh'});
-        return {status:'fresh',latestUrl:state.url};
+        const needsRetention=!(state.retentionLeaseUntil>now)&&!(state.nextRetentionAt>now);
+        if(needsRetention||trigger==='maintenance')tx.set(ref,{...state,...maintenance,...(trigger==='maintenance'?{lastMaintenanceOutcome:'fresh'}:{}),...(needsRetention?{retentionOwner:owner,retentionLeaseUntil:now+300000,nextRetentionAt:now+900000}:{})});
+        return {status:'fresh',latestUrl:state.url,needsRetention};
       }
       tx.set(ref,{...state,...maintenance,owner,leaseUntil:now+300000,status:'running',lastAttemptAt:now,lastAttemptTrigger:trigger});
       return {status:'claimed'};
@@ -61,12 +62,17 @@ function createBackupService({db,blob=require('@vercel/blob'),token=process.env.
     if(claim.status==='backoff') return {status:'skipped',reason:'retry-delayed'};
     if(claim.status==='busy') return {status:'skipped',reason:'busy'};
     if(claim.status==='fresh') {
-      // A previous retention failure is retried even when today's archive is fresh.
-      try { await prune(claim.latestUrl,now); await db.runTransaction(async tx=>{const current=(await tx.get(ref)).data();if(current?.url===claim.latestUrl)tx.set(ref,{...current,retentionStatus:'complete'});}); }
-      catch { await db.runTransaction(async tx=>{const current=(await tx.get(ref)).data();if(current?.url===claim.latestUrl)tx.set(ref,{...current,retentionStatus:'failed'});}); }
+      if(claim.needsRetention) {
+        let retentionStatus='complete';
+        try { await prune(claim.latestUrl,now); } catch { retentionStatus='failed'; }
+        await db.runTransaction(async tx=>{
+          const current=(await tx.get(ref)).data();
+          if(current?.url===claim.latestUrl&&current.retentionOwner===owner)tx.set(ref,{...current,retentionStatus,retentionLeaseUntil:0,lastRetentionAt:clock(),nextRetentionAt:clock()+(retentionStatus==='complete'?20*3600000:900000)});
+        });
+      }
       return {status:'skipped',reason:'fresh'};
     }
-    let object,archivePath,committed=false;
+    let object,archivePath,committed=false,publicationAttempted=false;
     async function clearPending(pathname) {
       const current=(await ref.get()).data()||{};
       const page=await blob.list({token,prefix:pathname,limit:1000});
@@ -93,17 +99,26 @@ function createBackupService({db,blob=require('@vercel/blob'),token=process.env.
       const verified=JSON.parse(gunzipSync(await readBounded(read.stream,LIMIT*1.5),{maxOutputLength:LIMIT*3}).toString('utf8'));
       validate(verified);
       if(verified.digest!==archive.digest||verified.mediaDigest!==archive.mediaDigest) throw new Error('Backup verification mismatch');
+      publicationAttempted=true;
       await db.runTransaction(async tx=>{
         const current=(await tx.get(ref)).data();
         if(current?.owner!==owner || current.leaseUntil<=clock()) throw new Error('Backup lease lost');
-        tx.set(ref,{...current,leaseUntil:0,status:'complete',completedAt:clock(),lastCompletedTrigger:trigger,cleanupStatus:'complete',nextAttemptAt:0,pendingUploads:(current.pendingUploads||[]).filter(item=>item.path!==archivePath),url:object.url,records:Object.values(archive.payload).reduce((n,g)=>n+g.length,0),media:archive.media.length,bytes:bytes.length,externalMediaLinks:archive.externalMediaLinks,retentionStatus:'pending',...(trigger==='maintenance'?{lastMaintenanceOutcome:'complete'}:{})});
+        tx.set(ref,{...current,leaseUntil:0,status:'complete',completedAt:clock(),lastCompletedTrigger:trigger,cleanupStatus:'complete',nextAttemptAt:0,pendingUploads:(current.pendingUploads||[]).filter(item=>item.path!==archivePath),url:object.url,records:Object.values(archive.payload).reduce((n,g)=>n+g.length,0),media:archive.media.length,bytes:bytes.length,externalMediaLinks:archive.externalMediaLinks,retentionStatus:'pending',retentionOwner:owner,retentionLeaseUntil:clock()+300000,nextRetentionAt:clock()+900000,...(trigger==='maintenance'?{lastMaintenanceOutcome:'complete'}:{})});
       });
       committed=true;
       let retentionStatus='complete';
       try { await prune(object.url,now); } catch { retentionStatus='failed'; }
-      await db.runTransaction(async tx=>{const current=(await tx.get(ref)).data();if(current?.url===object.url)tx.set(ref,{...current,retentionStatus});});
+      await db.runTransaction(async tx=>{const current=(await tx.get(ref)).data();if(current?.url===object.url&&current.retentionOwner===owner)tx.set(ref,{...current,retentionStatus,retentionLeaseUntil:0,lastRetentionAt:clock(),nextRetentionAt:clock()+(retentionStatus==='complete'?20*3600000:900000)});});
       return {status:'complete',records:Object.values(archive.payload).reduce((n,g)=>n+g.length,0),media:archive.media.length,retentionStatus};
     } catch(error) {
+      if(publicationAttempted&&!committed) {
+        // A failed RPC does not establish that the commit failed. Keep all bytes
+        // until authoritative state or delayed reconciliation establishes ownership.
+        let current;
+        try { current=(await ref.get()).data(); } catch { throw error; }
+        if(current?.url===object?.url&&current.status==='complete')return {status:'complete',records:current.records,media:current.media,retentionStatus:current.retentionStatus};
+        throw error;
+      }
       let cleanupStatus='complete';
       if(archivePath&&!committed) { try { if(object)await blob.del(object.url,{token});await clearPending(archivePath); } catch {cleanupStatus='failed';} }
       if(!committed) await db.runTransaction(async tx=>{

@@ -4,7 +4,7 @@ function validCompletion(state, now) {
   return Number.isFinite(state.completedAt) && state.completedAt > 0 && state.completedAt <= now;
 }
 function backupDue(state, now) {
-  return !validCompletion(state, now) || cityDate(state.completedAt) !== cityDate(now) || now - state.completedAt > MAX_AGE;
+  return ['failed','running'].includes(state.status) || !validCompletion(state, now) || cityDate(state.completedAt) !== cityDate(now) || now - state.completedAt > MAX_AGE;
 }
 function backupHealth(state, now) {
   if (state.status === 'running' && state.leaseUntil > now) return 'running';
