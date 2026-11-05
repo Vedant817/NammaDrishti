@@ -28,7 +28,7 @@ NammaDrishti empowers citizens and traffic wardens to crowd-source ground-truth 
 - **🛡️ Proximity-Weighted Verification**: On-ground commuters (<1.5 km) carry higher verification weight ($1.0\times$) than remote observers ($0.25\times$), defeating false alarms while remaining tamper-resistant. Requires at least 2 distinct voters and score $\ge 2.5$ for verified status.
 - **📍 Dynamic Spatial Auto-Clustering**: Nearby hazard reports within 200m auto-merge into unified clusters, preventing visual clutter and consolidating confirmation scores.
 - **🧭 Safe Navigation & Hazard Detour Radar**: Interactive origin-to-destination routing that samples road corridors, alerts commuters of intersecting hazards, and calculates safe bypasses. Supports both GeoJSON routes and raw coordinate arrays.
-- **🌊 Monsoon Diagnostic Engine**: Dedicated telemetry analyzing 12 high-risk Bengaluru underpasses (Panathur, Hebbal, Okalipuram, Le Méridien, etc.) alongside real-time Doppler precipitation data.
+- **🌊 Monsoon Diagnostic Engine**: Dedicated telemetry analyzing 11 documented high-risk Bengaluru underpasses (Panathur, Hebbal, Okalipuram, Le Méridien, etc.) alongside real-time Doppler precipitation data.
 - **🆘 One-Tap Emergency SOS Dispatcher**: Generates pre-formatted WhatsApp SOS broadcasts with exact GPS coordinates, triggers an emergency beacon via `POST /api/sos/dispatch`, and offers direct dialing to Bengaluru Police (112) and Traffic Helplines (1095).
 - **🗣️ Tri-Lingual Support**: Complete native localisation in **ಕನ್ನಡ (Kannada)**, **हिंदी (Hindi)**, and **English**, with dynamic locale switching and fallback deep-merging.
 - **🤖 Context-Aware AI Commute Assistant**: Powered by heuristic city knowledge and live weather telemetry to answer commuter questions on underpasses, gridlocks, and alternate routes.
@@ -70,8 +70,8 @@ NammaDrishti incorporates robust production and concurrency safeguards:
 1. **Two-Voter Minimum for Verified Status**:
    A single commuter cannot elevate an incident to verified status alone. Even with high initial weight, an incident requires `verificationScore >= 2.5` **and** at least `2` distinct verified voters before attaining verified status.
 
-2. **Authoritative Bulletin Protection**:
-   Official advisories ingested from Bengaluru Traffic Police (BTP) or BBMP cannot be cleared by citizen resolution votes. Citizen clearance requests on official bulletins receive `HTTP 403 Forbidden`.
+2. **Honest Data Provenance**:
+   Every displayed value comes from a live keyless source or a clearly-labeled curated catalog — never from seeded sample data. See [DATA_SOURCES.md](./DATA_SOURCES.md) for the full audit trail, and note again: **this is advisory tooling, not an authority feed**.
 
 3. **Atomic Anti-Sybil Single Vote Guard**:
    Verification and clearance endpoints enforce strict single-vote-per-device rules. Concurrent duplicate votes are atomically rejected with `HTTP 409 Conflict`.
@@ -125,7 +125,7 @@ NammaDrishti includes a unified multi-tier test suite with zero external mocks r
 # Run complete test suite (Frontend + Backend + E2E + Sandbox Scenarios + 5 QA Brutal)
 npm run test:all
 
-# Run frontend tests only (React Testing Library - 7 test suites)
+# Run frontend tests only (React Testing Library - 7 tests)
 npm run test:ci
 
 # Run backend API, clustering, proximity, and TTL tests (13 test cases)
@@ -148,7 +148,7 @@ Simulates an isolated, high-concurrency sandbox environment with harsh, adversar
 1. **Senior Security & Concurrency QA Engineer**:
    - Atomic anti-Sybil protection under 15 simultaneous parallel verification blasts (1 accepted, 14 blocked with HTTP 409).
    - Multi-citizen consensus clearance race condition (2 distinct confirmations required to purge).
-   - Authoritative title spoofing and official impersonation sanitization (`"BTP Official Police Patrol Commander"` -> scrubbed to `"Citizen Commander"`).
+   - Authoritative title spoofing and official impersonation sanitization on `reportedBy` (`"BTP Official Police Patrol Commander"` -> scrubbed to `"Citizen Commander"`).
    - Oversized JSON string payload attacks (>2,000 characters rejected with HTTP 400).
    - Media path traversal and binary executable injection rejection (`../../system32/cmd.exe` blocked with HTTP 400).
 
@@ -183,7 +183,7 @@ The isolated sandbox runner (`scripts/sandbox_scenario_runner.js`) spins up an e
 4. **Monsoon Offline Queue Sync**: Simulates network disconnection during cloudbursts, queues reports locally, and drains + syncs with WebSocket broadcast once reconnected.
 5. **Multi-Citizen Clearance Consensus**: Requires 2 unique citizen confirmations to mark resolved and purge from live map; enforces Sybil immunity.
 6. **Dynamic TTL Decay & Worker Lifecycle**: Expired incidents past their half-life are safely purged with atomic disk persistence.
-7. **Context-Aware AI Commute Assistant**: Inquires on Panathur flood status, Silk Board/HSR congestion, and Doppler rain telemetry with 96% confidence score.
+7. **Context-Aware AI Commute Assistant**: Inquires on Panathur flood status, Silk Board/HSR congestion, and Doppler rain telemetry, with answers composed strictly from live incident data (no invented delays or engine "confidence" scores).
 8. **One-Tap Emergency SOS Dispatch**: Formats stranded commuter coordinates into instant 112/1095 hotline targets and pre-formatted WhatsApp SOS dispatch links.
 
 ---
@@ -196,7 +196,7 @@ Bengaluru commuters traditionally juggle multiple disconnected platforms to navi
 | :--- | :--- | :--- | :--- | :--- |
 | **Monsoon Flooding & Inundation Tracking** | **Hyper-localized real-time alerts** with depth telemetry, waterlogged underpass monitoring, and RainViewer Doppler radar overlay | Generic traffic delay color-coding (red/orange); no distinction between slow traffic and impassable deep water | Crowd-flagged "flood" warnings, but zero depth metrics or low-lying underpass classification | Periodic official advisories or grievance tickets; not embedded in live commuter maps |
 | **Verification & Anti-Sybil Consensus** | **Proximity-weighted consensus**: on-ground commuters ($<1.5$ km) receive $1.0\times$ weight, remote voters $0.25\times$; strict Sybil-proof multi-citizen clearance | Algorithmic telemetry estimation; citizen incident reporting lacks visible consensus verification | Thumbs up/down crowdsourcing without strict physical proximity weighting; vulnerable to remote spam | Manual departmental verification; hours or days delay before resolution status updates |
-| **Bengaluru Underpass Diagnostic Engine** | **Automated risk telemetry** for 12 notorious underpasses (Panathur, Hebbal, Okalipuram, etc.) with rain intensity thresholds | None (treats underpasses as standard road segments) | None | Periodic manual barricading announcements via Twitter/X or control rooms |
+| **Bengaluru Underpass Diagnostic Engine** | **Automated risk telemetry** for 11 documented chronic underpasses (Panathur, Hebbal, Okalipuram, etc.) with rain intensity thresholds | None (treats underpasses as standard road segments) | None | Periodic manual barricading announcements via Twitter/X or control rooms |
 | **Safe Corridor Navigation & Hazard Detour** | **Dynamic corridor hazard conflict detection** with automated bypass routing around submerged roads & fallen trees | Standard fastest-route routing (frequently guides motorists directly into flooded underpasses) | Real-time rerouting based on congestion, but lacks flood-depth awareness | No navigation routing engine; text-only notifications |
 | **Low-Connectivity Offline Resilience** | **Zero-drop offline queue**: stores drafted reports and consensus votes in `localStorage`, auto-syncs with atomic replay upon reconnection | Offline map download available for static maps, but crowd incident reporting and voting are disabled offline | Requires active cellular data to submit or view crowd alerts | Web portal requires steady connectivity; high failure rates during cloudburst signal dropouts |
 | **One-Tap Emergency SOS Dispatch** | **Instant coordinate generation**, WhatsApp emergency dispatch links, and direct hotlines (112, 1095, 1533) with restricted dispatch room privacy | Emergency SOS location sharing via SMS/contacts, but no direct routing to Bengaluru civic agencies | Community roadside assistance; not linked to Karnataka ERSS 112 | 112 / 1095 phone lines exist, but no integrated coordinate sharing web app |
@@ -207,25 +207,25 @@ Bengaluru commuters traditionally juggle multiple disconnected platforms to navi
 
 ---
 
-## 👤 Commuter Field Experience & UX Evaluation
+## 🧭 Why Commuters Use NammaDrishti (Illustrative Walkthrough)
+
+*A scenario walkthrough, composed from features as shipped — not a transcription of a specific user session:*
 
 ### Scenario: The Monsoon Commute (Silk Board → Bellandur → Panathur)
 
-As an actual daily commuter navigating Bengaluru's IT corridor during an evening cloudburst:
-
 1. **Immediate Situational Clarity**:
-   - Opening NammaDrishti immediately presents the high-visibility dark UI with high-contrast hazard markers. The weather telemetry pill at the top announces *Heavy Monsoon Showers (18.2 mm/h)* with real-time Doppler cloud reflectivity.
-   - Unlike commercial apps that merely paint the Outer Ring Road in solid dark red, NammaDrishti explicitly isolates **why** the road is gridlocked: an impassable 2.5 ft waterlogging at Bellandur EcoSpace and an active tree fall near Agara Junction.
+   - Opening NammaDrishti presents a high-visibility dark UI with live hazard markers fed only by backend reports. The weather telemetry pill shows the current Open-Meteo reading, and the RainViewer Doppler overlay animates the last ~2 hours of precipitation plus a 30-minute nowcast.
+   - Unlike commercial apps that merely paint the Outer Ring Road in solid dark red, NammaDrishti isolates **why** a corridor is risky: citizen reports carry water depth, vehicle passability, and multi-citizen confirmation counts.
 
 2. **Proximity-Weighted Trust Factor**:
-   - Seeing a report verified by **4 on-ground commuters** with the green *"Verified by Citizens"* badge instills immediate confidence. Commuters don't have to second-guess whether a jam cleared twenty minutes ago—the dynamic TTL worker and multi-citizen clearance ensure stale reports disappear once 2 drivers confirm the road is open.
+   - On-ground confirmations (<1.5 km) carry 1.0× weight, so a "Verified" badge means nearby commuters actually confirmed the hazard — not that an opaque algorithm guessed. Stale reports age out via the TTL worker, and two citizens can clear a resolved hazard.
 
 3. **Avoiding the Panathur "Trap"**:
-   - Commuters headed towards Whitefield often get lured by navigation apps into the notorious Panathur Railway Underpass. NammaDrishti's **Underpass Diagnostic Tab** flags Panathur in red: *Critical Submersion Risk (Water Depth > 2.0 ft)*.
-   - Activating the **Safe Route Radar** highlights the flood intersection on the primary path and automatically suggests a clean bypass via Balagere-Varthur Road.
+   - The Underpass Diagnostic tab evaluates every catalogued chokepoint against the live rain intensity using BBMP/BTP-derived trigger thresholds, so a crossing shows *below trigger*, *warning*, or *critical submersion risk* — never a made-up water depth.
+   - Activating the **Safe Route Radar** highlights citizen-confirmed hazards intersecting the OSRM corridor and automatically computes a detour around them when one exists.
 
 4. **Peace of Mind with Offline SOS**:
-   - When driving through low-lying dead zones under railway lines where cellular signals drop, the app continues functioning. Emergency SOS coordinates remain cached, and hazard updates are securely stored in the offline queue ready to transmit the instant connectivity returns.
+   - When driving through low-lying dead zones under railway lines where cellular signal drops, drafted reports and verification votes stay queued in `localStorage` and replay automatically the instant connectivity returns — the one-tap SOS keeps direct 112/1095 dial links and a preformatted WhatsApp dispatch ready.
 
 
 ### Production Build
@@ -244,6 +244,34 @@ Run the complete multi-stage containerized stack with a single command:
 docker-compose up --build
 ```
 The application will be live at `http://localhost:5001`, serving both the static React SPA and real-time backend API from a unified container with persistent data storage.
+
+---
+
+## 🗺️ Roadmap
+
+Recent and upcoming work — PRs welcome for any of these:
+
+- **Live keyless geocoding everywhere**: ✅ shipped — Safe Route origins/destinations and Report Modal ward lookups now resolve through OpenStreetMap Nominatim instead of preset hub dictionaries.
+- **Official advisory ingestion**: dropped the curated placeholder BTP/BBMP advisory pins; the hook point is a documented integration (`server/` ingestion module) waiting on a real data agreement.
+- **Traffic flow overlays with real telemetry**: corridor overlays currently reflect live incident density only; LMDS / MapmyIndia-style keyless flow APIs are unverified — evaluate before wiring.
+- **PWA install hardening & IndexedDB offline drafts** beyond the current `localStorage` queue.
+- **Municipal dashboards**: aggregate ward-level feeds (`/api/incidents/spatial/neighborhood`) packaged for BBMP/BTP review.
+
+---
+
+## 📚 Project Documentation
+
+| Document | What it covers |
+|---|---|
+| [DATA_SOURCES.md](./DATA_SOURCES.md) | Every external data source, endpoint, auth posture, terms & honesty notes |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Ground rules (zero fabricated data), local setup, validation gate |
+| `.env.example` | Optional configuration surface — the app is keyless-first and runs with zero config |
+
+---
+
+## 🤝 Contributing
+
+Bug reports, feature PRs, and Bengaluru ward data corrections are welcome — start with [CONTRIBUTING.md](./CONTRIBUTING.md). CI must be green (`npm run test:all`, `CI=true npm run build`) before any PR is opened.
 
 ---
 

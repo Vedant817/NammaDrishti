@@ -3,22 +3,14 @@ import React, { useState } from "react";
 import TrendingItems from "./TrendingItems";
 import { useLanguage } from "../../context/LanguageContext";
 
-const calculateTrustScore = (item) => {
-  const reporter = (item.reportedBy || "").toLowerCase();
-  if (
-    reporter.includes("police") ||
-    reporter.includes("patrol") ||
-    reporter.includes("btp") ||
-    reporter.includes("monitor")
-  ) {
-    return 96;
-  }
-  const votes = Number(item.verificationCount) || 1;
-  return Math.min(98, Math.max(65, 62 + votes * 6));
+const currentAppOrigin = () => {
+  if (typeof window === "undefined") return "/";
+  return `${window.location.origin}${window.location.pathname}`;
 };
 
 const PersonalizedFeed = ({
   events = [],
+  allEvents = null,
   selectedEvent,
   onEventSelect,
   activeFilter = "All",
@@ -29,8 +21,7 @@ const PersonalizedFeed = ({
 
   // Direct link that re-opens this incident on the map (?incident=<id>)
   const buildIncidentLink = (item) => {
-    if (typeof window === "undefined") return "https://nammadrishti.app";
-    return `${window.location.origin}${window.location.pathname}?incident=${encodeURIComponent(item.id)}`;
+    return `${currentAppOrigin()}?incident=${encodeURIComponent(item.id)}`;
   };
 
   const handleCopyLink = async (e, item) => {
@@ -82,7 +73,7 @@ const PersonalizedFeed = ({
     e.stopPropagation();
     const mapLink = item.position
       ? `https://maps.google.com/?q=${item.position.lat},${item.position.lng}`
-      : "https://nammadrishti.app";
+      : currentAppOrigin();
     const appLink = buildIncidentLink(item);
     const text = `🚨 *NammaDrishti Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n*Open live on map:* ${appLink}\n_Stay safe & take alternate routes._`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
@@ -126,7 +117,6 @@ const PersonalizedFeed = ({
         ) : (
           filteredEvents.map((item) => {
             const isSelected = selectedEvent && selectedEvent.id === item.id;
-            const trustScore = calculateTrustScore(item);
 
             return (
               <div
@@ -138,9 +128,6 @@ const PersonalizedFeed = ({
                   <span className={`urgency-dot ${getUrgencyClass(item.urgency)}`}></span>
                   <span className="card-type">
                     {(t.filters && t.filters[item.type]) || item.type}
-                  </span>
-                  <span className="card-trust-pill" title="Citizen & sensor consensus score">
-                    🛡️ {trustScore}% Trust
                   </span>
                   {item.clusterCount > 1 && (
                     <span className="card-cluster-pill" title="Multiple citizen reports merged within 200m">
@@ -198,7 +185,7 @@ const PersonalizedFeed = ({
       <div className="trending-divider">
         <h4>{t.sidebar.trendingHeader}</h4>
       </div>
-      <TrendingItems />
+      <TrendingItems events={allEvents || events} />
     </div>
   );
 };

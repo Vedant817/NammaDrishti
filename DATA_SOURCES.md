@@ -12,6 +12,7 @@ NammaDrishti is **keyless-first**: every external data source below works with *
 | Source | Endpoint(s) | Used for | Auth | Terms / Attribution | Notes |
 |---|---|---|---|---|---|
 | **OpenStreetMap** tiles | `tile.openstreetmap.org/{z}/{x}/{y}.png` | Base map layer | None | [ODbL](https://www.openstreetmap.org/copyright) — "© OpenStreetMap contributors" shown in map attribution | Standard Leaflet usage; fair-use tile policy respected (single city, no bulk scraping) |
+| **OpenStreetMap Nominatim** | `nominatim.openstreetmap.org/search` | Live geocoding for Safe Route origins/destinations and Report Modal ward lookups | None | [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) — browser Referer used as identifier | Serialized to ≤1 req/s with per-query memoization; searches bounded to the Bengaluru viewbox (`bounded=1`) |
 | **RainViewer** radar archive | `api.rainviewer.com/public/weather-maps.json` + `tilecache.rainviewer.com` | Animated 🌧️ radar timeline: past ~2h observed frames + 30-min nowcast, play/scrub in the map toolbar | None | Public API per [RainViewer docs](https://www.rainviewer.com/api.html); free tier permits public map display | Frames refresh every 5 min; app keeps working offline when unreachable |
 | **Open-Meteo** | `api.open-meteo.com/v1/forecast` (Bengaluru coords) | Header weather telemetry, monsoon rain intensity, underpass trigger thresholds | None | [Attribution required](https://open-meteo.com/en/terms) — "Weather data by Open-Meteo.com" | Also drives the AI assistant's answers and City Recap diagnostics |
 | **OSRM public routing mirrors** | `router.project-osrm.org` (primary), `router.project-osrm.de` (FOSSGIS fallback) | Safe Route turn-by-turn corridors + hazard-detour calculation | None | Public OSRM demo servers; ODbL-derived data | Mirror chain: 5xx/network errors fail over `.org` → `.de`; bad input (NoRoute) is a final answer, not retried |
@@ -21,12 +22,18 @@ NammaDrishti is **keyless-first**: every external data source below works with *
 
 | Source | Location | Used for | Honesty note |
 |---|---|---|---|
-| **Citizen incident stream** | `server/incidents.json` + WebSocket (`socket.io`, port 5001) | Live hazard feed, verification consensus, TTL lifecycle decay | Crowd-sourced; trust scores are heuristics, not ground truth |
-| **Underpass vulnerability catalog (12)** | `src/data/bengaluruUnderpasses.js` | Chronic flooding chokepoint watch (Pump capacity, gate status, trigger mm/hr) | **Curated static catalog** compiled from public BBMP/BTP reporting; needs periodic manual review |
-| **BTP / BBMP advisories** | `server/services/btpIngestion.js` | "Official" advisory pins in the feed | **Curated placeholders**, not a live police feed — swapping in an official feed requires an agreement; advisory `reportedBy` is intentionally masked to "Citizen" unless an authority token is configured |
-| **Sample seed events** | `src/data/sampleEvents.js` | First-load demo data before any citizen reports arrive | Clearly demo content, replaceable by live backend data |
-| **Corridor baselines** | `src/components/Map/MapContainer.jsx` | Silk Board / ORR / Tin Factory / Hebbal chokepoint overlays | Baseline speeds + peak delays are editorial estimates, correlated live against nearby citizen reports |
+| **Citizen incident stream** | backend store (`DATA_FILE`, defaults to git-ignored `server/incidents.json`) + WebSocket (`socket.io`, port 5001) | Live hazard feed, verification consensus, TTL lifecycle decay | Crowd-sourced; the store **starts empty** on first run — no seeds, no synthetic incidents. Verification is heuristic consensus, not ground truth |
+| **Underpass vulnerability catalog (11)** | `src/data/bengaluruUnderpasses.js` | Chronic flooding chokepoint watch (pump capacity, gate status, trigger mm/hr) | **Curated static catalog** compiled from public BBMP/BTP reporting; needs periodic manual review — clearly labeled in the UI |
+| **Monitoring corridor geometry** | `src/components/Map/MapContainer.jsx` | Silk Board / ORR / Tin Factory / Hebbal overlay lines | Geometry + names are factual; corridor status derives **only** from live citizen report density (no speed/delay estimates) |
 | **Device APIs** | browser Geolocation, `navigator.clipboard` | Proximity alerts, Copy-Link sharing | GPS asks permission in-browser; clipboard copy falls back to a prompt dialog |
+
+### Data honesty policy
+
+Anything rendered to a user originates from one of the tables above. There are no
+sample seeds, placeholder advisories, preset "trust" percentages, baseline speeds,
+or forecast bullets anywhere in the client or server — when data is missing the UI
+shows explicit empty states. Removing or adding data sources must update both
+tables here (`npm run doctor` probes the live list).
 
 ## Explicitly Not Included (pending official agreements)
 

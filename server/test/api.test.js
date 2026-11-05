@@ -8,7 +8,7 @@ const {
   cleanupExpiredIncidents,
   getHexIndex,
   getHexRing,
-  getBtpAdvisories,
+  TTL_HOURS_BY_TYPE,
   processMediaUpload,
 } = require('../index.js');
 const { createRateLimiter } = require('../services/rateLimiter.js');
@@ -251,19 +251,17 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     }
   });
 
-  await t.test('10. BTP Authoritative Civic Advisories Endpoint', async () => {
-    const res = await fetch(`${BASE_URL}/api/advisories/btp`);
+  await t.test('10. Health endpoint exposes dynamic TTL decay policies', async () => {
+    const res = await fetch(`${BASE_URL}/api/health`);
     assert.equal(res.status, 200);
-    const advisories = await res.json();
-    assert.ok(Array.isArray(advisories));
-    assert.ok(advisories.length >= 2);
-    assert.equal(advisories[0].isAuthoritative, true);
-
-    // Sync endpoint
-    const syncRes = await fetch(`${BASE_URL}/api/advisories/sync`, { method: 'POST' });
-    assert.equal(syncRes.status, 200);
-    const syncBody = await syncRes.json();
-    assert.ok(typeof syncBody.totalOfficial === 'number');
+    const body = await res.json();
+    assert.deepEqual(body.ttlPolicies, {
+      Traffic: 3,
+      Accident: 2,
+      Waterlogging: 4,
+      Infrastructure: 72,
+    });
+    assert.equal(Object.keys(TTL_HOURS_BY_TYPE).length, 4);
   });
 
   await t.test('11. Civic Media Upload Service validates format and returns CDN path', async () => {

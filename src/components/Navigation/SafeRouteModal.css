@@ -131,6 +131,89 @@
   border-color: var(--border-focus);
 }
 
+/* Live Nominatim place search widgets */
+.route-place-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.route-search-hint {
+  position: absolute;
+  right: 10px;
+  top: 9px;
+  font-size: 0.72rem;
+  color: var(--text-muted, #94A3B8);
+  pointer-events: none;
+}
+
+.route-suggestions {
+  position: absolute;
+  top: 38px;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-canvas, #0F172A);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.route-suggestion-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.route-suggestion-item:hover {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60A5FA;
+}
+
+.route-place-help {
+  font-size: 0.68rem;
+  color: var(--text-muted, #94A3B8);
+}
+
+.route-place-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.route-place-badge .route-place-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+.route-place-clear {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+
 .auto-detour-toggle {
   margin: 2px 0;
 }

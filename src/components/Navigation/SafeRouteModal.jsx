@@ -1,8 +1,111 @@
 // src/components/Navigation/SafeRouteModal.jsx
-import React, { useState } from "react";
-import { fetchDrivingRoute, fetchDetourRoute, detectRouteHazards } from "../../services/routingService";
-import { BENGALURU_HUBS } from "../../data/constants";
+import React, { useState, useRef, useEffect } from "react";
+import {
+  fetchDrivingRoute,
+  fetchDetourRoute,
+  detectRouteHazards,
+} from "../../services/routingService";
+import {
+  geocodeBengaluruPlace,
+  suggestBengaluruPlaces,
+} from "../../services/geocodeService";
 import "./SafeRouteModal.css";
+
+const TYPEAHEAD_DEBOUNCE_MS = 700;
+
+// Debounced live place search input backed by OpenStreetMap Nominatim.
+// Users must either select a suggestion or press Enter to geocode the typed text.
+const PlaceInput = ({ value, place, onChange, onPick, placeholder }) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const debounceRef = useRef(null);
+  const boxRef = useRef(null);
+
+  // Close the suggestion dropdown on any outside click
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (boxRef.current && !boxRef.current.contains(e.target)) {
+        setSuggestions([]);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  const handleChange = (e) => {
+    const text = e.target.value;
+    onChange(text);
+    setSuggestions([]);
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = text.trim();
+    if (trimmed.length < 2) {
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      const places = await suggestBengaluruPlaces(trimmed);
+      setSuggestions(places);
+      setSearching(false);
+    }, TYPEAHEAD_DEBOUNCE_MS);
+  };
+
+  const handlePick = (p) => {
+    setSuggestions([]);
+    onChange(p.shortLabel || p.label);
+    onPick(p);
+  };
+
+  const handleKeyDown = async (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (suggestions.length > 0) {
+      handlePick(suggestions[0]);
+      return;
+    }
+    if (place) return;
+    const resolved = await geocodeBengaluruPlace(value);
+    if (resolved) {
+      handlePick({ ...resolved, shortLabel: resolved.label });
+    }
+  };
+
+  const showDropdown = !place && suggestions.length > 0;
+
+  return (
+    <div className="route-place-wrap" ref={boxRef}>
+      <input
+        type="text"
+        className="route-select"
+        value={value}
+        placeholder={placeholder}
+        autoComplete="off"
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+      />
+      {searching && <span className="route-search-hint">🔍…</span>}
+      {showDropdown && (
+        <div className="route-suggestions" role="listbox">
+          {suggestions.map((p) => (
+            <button
+              type="button"
+              key={`${p.lat},${p.lng}`}
+              className="route-suggestion-item"
+              onClick={() => handlePick(p)}
+            >
+              {p.shortLabel || p.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <span className="route-place-help">Pick a suggestion or press Enter to geocode</span>
+    </div>
+  );
+};
 
 const SafeRouteModal = ({
   onClose,
@@ -11,38 +114,57 @@ const SafeRouteModal = ({
   onApplyRouteToMap,
   userLocation,
 }) => {
-  const resolvedHazards = (activeHazards && activeHazards.length > 0) ? activeHazards : (hazards || []);
-  const [startId, setStartId] = useState("silk-board");
-  const [destId, setDestId] = useState("marathahalli");
+  const resolvedHazards = activeHazards && activeHazards.length > 0 ? activeHazards : (hazards || []);
+  const [startText, setStartText] = useState("");
+  const [startPlace, setStartPlace] = useState(null);
+  const [endText, setEndText] = useState("");
+  const [endPlace, setEndPlace] = useState(null);
   const [useCurrentGps, setUseCurrentGps] = useState(false);
   const [autoDetour, setAutoDetour] = useState(true);
   const [loading, setLoading] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
   const [routingError, setRoutingError] = useState(null);
 
-  const handleCalculateRoute = async () => {
-    let startCoords;
-    if (useCurrentGps && userLocation) {
-      startCoords = userLocation;
-    } else {
-      const hub = BENGALURU_HUBS.find((h) => h.id === startId) || BENGALURU_HUBS[0];
-      startCoords = { lat: hub.lat, lng: hub.lng };
+  const resolveEndpoint = async (text, pickedPlace, fieldName) => {
+    if (pickedPlace) return pickedPlace;
+    const resolved = await geocodeBengaluruPlace(text);
+    if (!resolved) {
+      throw new Error(
+        `Could not locate the ${fieldName} with live Bengaluru geocoding. Pick a suggestion or use a different landmark.`
+      );
     }
+    return resolved;
+  };
 
-    const endHub = BENGALURU_HUBS.find((h) => h.id === destId) || BENGALURU_HUBS[3];
-    const endCoords = { lat: endHub.lat, lng: endHub.lng };
+  const handleCalculateRoute = async () => {
+    setRoutingError(null);
+    setRouteResult(null);
+
+    let startCoords;
+    let endCoords;
+    try {
+      if (useCurrentGps && userLocation) {
+        startCoords = userLocation;
+      } else {
+        const resolvedStart = await resolveEndpoint(startText, startPlace, "origin");
+        startCoords = { lat: resolvedStart.lat, lng: resolvedStart.lng, label: resolvedStart.label };
+      }
+      const resolvedEnd = await resolveEndpoint(endText, endPlace, "destination");
+      endCoords = { lat: resolvedEnd.lat, lng: resolvedEnd.lng, label: resolvedEnd.label };
+    } catch (resolveErr) {
+      setRoutingError(resolveErr.message);
+      return;
+    }
 
     if (
       Math.abs(startCoords.lat - endCoords.lat) < 0.0001 &&
       Math.abs(startCoords.lng - endCoords.lng) < 0.0001
     ) {
-      setRoutingError("Origin and destination hubs are identical. Please select different transit locations.");
-      setRouteResult(null);
+      setRoutingError("Origin and destination resolve to the same location. Please choose distinct transit points.");
       return;
     }
 
     setLoading(true);
-    setRoutingError(null);
     try {
       let routeData;
       if (autoDetour) {
@@ -97,46 +219,45 @@ const SafeRouteModal = ({
         <div className="safe-route-body">
           <div className="safe-route-controls">
             <div className="route-input-group">
-              <label>Origin Hub</label>
-              <div className="origin-toggle-row">
-                <select
-                  value={startId}
-                  disabled={useCurrentGps}
-                  onChange={(e) => setStartId(e.target.value)}
-                  className="route-select"
+              <label>Origin</label>
+              {useCurrentGps && userLocation ? (
+                <div className="route-place-badge">
+                  <span className="route-place-text">
+                    📍 My GPS ({userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)})
+                  </span>
+                </div>
+              ) : (
+                <div className="origin-toggle-row">
+                  <PlaceInput
+                    value={startText}
+                    place={startPlace}
+                    onChange={setStartText}
+                    onPick={setStartPlace}
+                    placeholder="e.g. Silk Board Junction, MG Road…"
+                  />
+                </div>
+              )}
+              {userLocation && (
+                <button
+                  type="button"
+                  className={`gps-toggle-btn ${useCurrentGps ? "active" : ""}`}
+                  onClick={() => setUseCurrentGps(!useCurrentGps)}
+                  title="Use current GPS as starting waypoint"
                 >
-                  {BENGALURU_HUBS.map((hub) => (
-                    <option key={hub.id} value={hub.id}>
-                      {hub.name} ({hub.zone})
-                    </option>
-                  ))}
-                </select>
-                {userLocation && (
-                  <button
-                    type="button"
-                    className={`gps-toggle-btn ${useCurrentGps ? "active" : ""}`}
-                    onClick={() => setUseCurrentGps(!useCurrentGps)}
-                    title="Use current GPS as starting waypoint"
-                  >
-                    📍 My GPS
-                  </button>
-                )}
-              </div>
+                  📍 My GPS
+                </button>
+              )}
             </div>
 
             <div className="route-input-group">
-              <label>Destination Hub</label>
-              <select
-                value={destId}
-                onChange={(e) => setDestId(e.target.value)}
-                className="route-select"
-              >
-                {BENGALURU_HUBS.map((hub) => (
-                  <option key={hub.id} value={hub.id}>
-                    {hub.name} ({hub.zone})
-                  </option>
-                ))}
-              </select>
+              <label>Destination</label>
+              <PlaceInput
+                value={endText}
+                place={endPlace}
+                onChange={setEndText}
+                onPick={setEndPlace}
+                placeholder="e.g. Whitefield, Kempegowda Airport…"
+              />
             </div>
 
             <div className="auto-detour-toggle">
@@ -211,7 +332,7 @@ const SafeRouteModal = ({
                   <span>✓</span>
                   <div>
                     <strong>Clear Corridor Verified</strong>
-                    <p>No active waterlogging or major accidents detected along this path.</p>
+                    <p>No active waterlogging or major accidents reported near this path.</p>
                   </div>
                 </div>
               ) : (

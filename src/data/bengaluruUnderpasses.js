@@ -172,8 +172,8 @@ export const evaluateUnderpassRisk = (underpass, currentRainIntensityMm) => {
     };
   }
   return {
-    level: "Clear / Normal Flow",
-    action: "Drainage sump pumps operating within capacity.",
+    level: "Below Trigger Threshold",
+    action: "Live rainfall is below this underpass's engineered trigger threshold. Report any ponding you observe.",
     color: "#10B981",
     isFloodedLikely: false,
   };

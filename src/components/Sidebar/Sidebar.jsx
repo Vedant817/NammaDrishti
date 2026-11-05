@@ -140,6 +140,7 @@ const Sidebar = ({
         {activeTab === "feed" && (
           <PersonalizedFeed
             events={events}
+            allEvents={allEvents}
             selectedEvent={selectedEvent}
             onEventSelect={onEventSelect}
             onVerifyEvent={onVerifyEvent}

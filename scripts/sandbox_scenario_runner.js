@@ -464,7 +464,7 @@ async function runScenarioSandbox() {
         });
         const aiData = await aiRes.json();
         console.log(`  ✓ 7. Query: "${q.prompt}"`);
-        console.log(`       Reply (${aiData.confidence * 100}% confidence): "${aiData.reply.substring(0, 110)}..."`);
+        console.log(`       Reply: "${aiData.reply.substring(0, 110)}..."`);
         if (!aiData.reply || aiData.reply.length < 15) {
           throw new Error('AI Assistant reply was empty or unexpectedly short.');
         }

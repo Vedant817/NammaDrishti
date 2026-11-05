@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for NammaPulse
+# Multi-stage Dockerfile for NammaDrishti
 # Stage 1: Build the React PWA frontend
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app
@@ -11,10 +11,10 @@ RUN npm run build
 FROM node:18-alpine
 WORKDIR /app
 
-# Install backend dependencies
+# Install backend dependencies (production only)
 COPY server/package*.json ./server/
 WORKDIR /app/server
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy server code
 WORKDIR /app

@@ -2,20 +2,8 @@
 /**
  * Safe Route Transit & Hazard Avoidance Service for Bengaluru.
  * Calculates turn-by-turn driving paths and checks against active waterlogging & choke points.
+ * Endpoints come from live geocoding (src/services/geocodeService.js), not preset hubs.
  */
-
-// Popular Bengaluru Transit Landmarks
-export const BENGALURU_HUBS = [
-  { id: "silk_board", name: "Silk Board Junction", lat: 12.9171, lng: 77.6238, zone: "South" },
-  { id: "koramangala", name: "Koramangala Sony World", lat: 12.9345, lng: 77.6258, zone: "South-East" },
-  { id: "indiranagar", name: "Indiranagar 100ft Road", lat: 12.9719, lng: 77.6412, zone: "East" },
-  { id: "marathahalli", name: "Marathahalli Bridge", lat: 12.9592, lng: 77.6974, zone: "East" },
-  { id: "bellandur", name: "Bellandur EcoSpace (ORR)", lat: 12.9260, lng: 77.6744, zone: "South-East" },
-  { id: "whitefield", name: "Whitefield ITPL", lat: 12.9868, lng: 77.7378, zone: "East" },
-  { id: "hebbal", name: "Hebbal Flyover Junction", lat: 13.0358, lng: 77.5970, zone: "North" },
-  { id: "mg_road", name: "MG Road Metro Station", lat: 12.9754, lng: 77.6068, zone: "Central" },
-  { id: "electronic_city", name: "Electronic City Toll", lat: 12.8452, lng: 77.6602, zone: "South" },
-];
 
 // Distance calculation using Haversine formula (km) with numerical bounds clamping
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {

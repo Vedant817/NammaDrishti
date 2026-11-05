@@ -139,7 +139,8 @@ const CustomMapContainer = ({
     return deltaMin < 0 ? `${clock} • ${-deltaMin}m ago` : `${clock} • +${deltaMin}m`;
   };
 
-  // Bengaluru arterial corridors with live incident correlation
+  // Bengaluru arterial corridors (factual geometry) with live incident correlation.
+  // No fabricated speed/delayfiction: status comes only from live citizen reports.
   const baseCorridors = [
     {
       id: "corridor_silk_board",
@@ -150,8 +151,6 @@ const CustomMapContainer = ({
         [12.923, 77.627],
         [12.928, 77.629],
       ],
-      baselineSpeed: "8-12 km/h",
-      peakDelay: "+28 min",
     },
     {
       id: "corridor_orr_bellandur",
@@ -162,8 +161,6 @@ const CustomMapContainer = ({
         [12.945, 77.692],
         [12.9592, 77.6974],
       ],
-      baselineSpeed: "14-18 km/h",
-      peakDelay: "+18 min",
     },
     {
       id: "corridor_tin_factory",
@@ -173,8 +170,6 @@ const CustomMapContainer = ({
         [13.002, 77.675],
         [13.0075, 77.6959],
       ],
-      baselineSpeed: "10-15 km/h",
-      peakDelay: "+22 min",
     },
     {
       id: "corridor_hebbal",
@@ -184,12 +179,10 @@ const CustomMapContainer = ({
         [13.045, 77.598],
         [13.055, 77.6],
       ],
-      baselineSpeed: "20-25 km/h",
-      peakDelay: "+14 min",
     },
   ];
 
-  // Synthesize monitored corridors with active nearby hazard density
+  // Correlate monitored corridors with active nearby hazard density.
   const dynamicCorridors = baseCorridors.map((corridor) => {
     const nearbyHazards = events.filter((evt) => {
       if (!evt.position || !Number.isFinite(evt.position.lat) || !Number.isFinite(evt.position.lng)) {
@@ -200,10 +193,10 @@ const CustomMapContainer = ({
       );
     });
 
-    let status = "Normal Baseline Flow";
+    let status = "No Active Reports Nearby";
     let color = "#10B981"; // Emerald green
     if (nearbyHazards.length >= 2) {
-      status = `High Congestion (${nearbyHazards.length} Active Incidents)`;
+      status = `High Incident Density (${nearbyHazards.length} Active Incidents)`;
       color = "#EF4444"; // Crimson red
     } else if (nearbyHazards.length === 1) {
       status = `Active Caution (${nearbyHazards[0].title})`;
@@ -615,11 +608,10 @@ const CustomMapContainer = ({
                   </div>
                   <h5>{corridor.name}</h5>
                   <div className="traffic-metrics">
-                    <span>Baseline Flow: <strong>{corridor.baselineSpeed}</strong></span>
-                    <span>Peak Delay: <strong style={{ color: corridor.color }}>{corridor.peakDelay}</strong></span>
+                    <span>Live Citizen Reports Nearby: <strong style={{ color: corridor.color }}>{corridor.hazardCount}</strong></span>
                   </div>
                   <span className="corridor-note" style={{ fontSize: "0.75rem", color: "#94A3B8", marginTop: "4px", display: "block" }}>
-                    * Correlated with active citizen hazard density in corridor
+                    * Status derived solely from live citizen reports within 1.2 km — no speed estimates are surfaced.
                   </span>
                 </div>
               </Popup>

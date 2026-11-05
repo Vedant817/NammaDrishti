@@ -4,53 +4,8 @@ import Button from "../Common/Button";
 import { useGeolocation } from "../../hooks/useGeolocation";
 import { useLanguage } from "../../context/LanguageContext";
 import { compressImage } from "../../utils/imageOptimizer";
+import { geocodeBengaluruPlace } from "../../services/geocodeService";
 import "./ReportModal.css";
-
-// Comprehensive Bengaluru Locality & Chokepoint Geocoding Map
-const BENGALURU_LOCALITY_COORDS = {
-  "silk board": { lat: 12.9171, lng: 77.6238 },
-  "btm": { lat: 12.9166, lng: 77.6101 },
-  "btm layout": { lat: 12.9166, lng: 77.6101 },
-  "hsr": { lat: 12.9121, lng: 77.6446 },
-  "hsr layout": { lat: 12.9121, lng: 77.6446 },
-  "koramangala": { lat: 12.9352, lng: 77.6245 },
-  "indiranagar": { lat: 12.9719, lng: 77.6412 },
-  "whitefield": { lat: 12.9698, lng: 77.7500 },
-  "marathahalli": { lat: 12.9591, lng: 77.6974 },
-  "bellandur": { lat: 12.9260, lng: 77.6744 },
-  "panathur": { lat: 12.9352, lng: 77.7019 },
-  "hebbal": { lat: 13.0358, lng: 77.5970 },
-  "electronic city": { lat: 12.8452, lng: 77.6602 },
-  "ecity": { lat: 12.8452, lng: 77.6602 },
-  "sarjapur": { lat: 12.8596, lng: 77.7884 },
-  "sarjapur road": { lat: 12.9150, lng: 77.6830 },
-  "jayanagar": { lat: 12.9308, lng: 77.5838 },
-  "jp nagar": { lat: 12.9063, lng: 77.5857 },
-  "banashankari": { lat: 12.9255, lng: 77.5468 },
-  "rajajinagar": { lat: 12.9982, lng: 77.5530 },
-  "malleshwaram": { lat: 13.0031, lng: 77.5643 },
-  "yelahanka": { lat: 13.1007, lng: 77.5963 },
-  "majestic": { lat: 12.9767, lng: 77.5713 },
-  "mg road": { lat: 12.9754, lng: 77.6068 },
-  "kalyan nagar": { lat: 13.0280, lng: 77.6433 },
-  "tin factory": { lat: 12.9972, lng: 77.6672 },
-  "kr puram": { lat: 13.0075, lng: 77.6959 },
-  "mahadevapura": { lat: 12.9902, lng: 77.6952 },
-};
-
-// Sort entries by substring length descending to match specific multi-word locations first (e.g., 'sarjapur road' before 'sarjapur')
-const SORTED_LOCALITY_ENTRIES = Object.entries(BENGALURU_LOCALITY_COORDS).sort(
-  (a, b) => b[0].length - a[0].length
-);
-
-const resolveLocalityCoordinates = (text) => {
-  if (!text) return null;
-  const clean = text.toLowerCase();
-  for (const [name, pos] of SORTED_LOCALITY_ENTRIES) {
-    if (clean.includes(name)) return pos;
-  }
-  return null;
-};
 
 const ReportModal = ({
   isOpen,
@@ -159,17 +114,31 @@ const ReportModal = ({
 
     let resolvedCoords = formData.position;
 
-    // Fallback: If no GPS or map pin, attempt lookup from ward or title
-    if (!resolvedCoords || !Number.isFinite(Number(resolvedCoords.lat))) {
-      resolvedCoords =
-        resolveLocalityCoordinates(formData.ward) ||
-        resolveLocalityCoordinates(formData.title) ||
-        resolveLocalityCoordinates(formData.description);
-    }
-
+    // Fallback: If no GPS or map pin, resolve live coordinates via Nominatim
     if (!resolvedCoords || !Number.isFinite(Number(resolvedCoords.lat)) || !Number.isFinite(Number(resolvedCoords.lng))) {
-      setErrorMsg("Please specify a recognized Bengaluru area (e.g. Silk Board, Panathur, Whitefield) or use Auto-Detect GPS / Map Pin.");
-      return;
+      let geocoded = null;
+
+      if (submitting) return; // Geocoding shares the submit guard
+
+      setSubmitting(true);
+      try {
+        geocoded =
+          (await geocodeBengaluruPlace(formData.ward)) ||
+          (await geocodeBengaluruPlace(formData.title));
+      } catch (geoErr) {
+        geocoded = null;
+      } finally {
+        setSubmitting(false);
+      }
+
+      if (geocoded) {
+        resolvedCoords = { lat: geocoded.lat, lng: geocoded.lng };
+      } else {
+        setErrorMsg(
+          "No live geocode match found for this location. Use \"Auto-Detect GPS\", click the map to drop a pin before reporting, or name a specific Bengaluru landmark."
+        );
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -320,7 +289,7 @@ const ReportModal = ({
               <span className="location-status-badge">
                 {locationSource === "GPS" && "✓ GPS Locked"}
                 {locationSource === "PIN_SELECTED" && "✓ Map Pin Selected"}
-                {locationSource === "MANUAL" && "ℹ Auto-resolving from locality"}
+                {locationSource === "MANUAL" && "ℹ Live geocode on submit"}
               </span>
             </div>
           </div>

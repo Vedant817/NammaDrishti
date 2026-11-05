@@ -1,11 +1,11 @@
 // src/hooks/useEventData.js
 import { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
-import { initialBengaluruEvents } from "../data/sampleEvents";
 import { recordReputationEvent } from "../utils/reputationService";
 
-const STORAGE_KEY = "nammadrishti_events_v1";
-const LEGACY_STORAGE_KEY = "nammapulse_events_v1";
+// v2: events are NEVER seeded from local sample data — the store starts empty
+// and fills exclusively from the live backend / offline queue / user reports.
+const STORAGE_KEY = "nammadrishti_events_v2";
 const VOTES_STORAGE_KEY = "nammadrishti_user_votes_v1";
 const LEGACY_VOTES_KEY = "nammapulse_user_votes_v1";
 const OFFLINE_QUEUE_KEY = "nammadrishti_offline_queue_v1";
@@ -306,9 +306,11 @@ export const useEventData = () => {
         // Backend offline or unreachable
       }
 
-      // Local storage fallback (respect empty array if user cleared incidents)
+      // Local storage fallback (offline drafts / last synced snapshot).
+      // Deliberate behavior when nothing is stored: the map starts with an
+      // honest empty state — zero fabricated incidents are ever seeded locally.
       try {
-        const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+        const saved = localStorage.getItem(STORAGE_KEY);
         if (saved !== null) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
@@ -317,13 +319,7 @@ export const useEventData = () => {
           }
         }
       } catch (e) {
-        // Ignore parse error
-      }
-
-      // First run default seed
-      if (isMounted) {
-        setEvents(initialBengaluruEvents);
-        safeSaveStorage(initialBengaluruEvents);
+        // Ignore parse error — stay empty and let the socket snapshot fill in
       }
     };
 

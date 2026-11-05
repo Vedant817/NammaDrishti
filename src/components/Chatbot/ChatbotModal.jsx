@@ -68,9 +68,10 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
         (e.description && (e.description.toLowerCase().includes("silk board") || e.description.toLowerCase().includes("btm")))
       );
       if (matchEvt) {
-        return `🚨 ${matchEvt.title} (${matchEvt.ward || 'BTM / Silk Board'}): ${matchEvt.description} Delays are approx +28 minutes. BTP recommends taking Hosur Road elevated tollway if heading to Electronic City.`;
+        const depthText = matchEvt.waterDepth ? ` 🌊 Reported depth: ${matchEvt.waterDepth}.` : '';
+        return `🚨 ${matchEvt.title} (${matchEvt.ward || 'BTM / Silk Board zone'}): ${matchEvt.description}${depthText} Confirmed by ${matchEvt.verificationCount || 1} citizen(s) — check the live map and Safe Route radar before detouring.`;
       }
-      return "Silk Board and BTM Layout corridors are currently moving at moderate speeds with standard signal delays.";
+      return "No citizen report currently mentions Silk Board / BTM. Absence of reports is not a guarantee of clear roads — verify on the live map.";
     }
 
     // Check Doppler Weather Radar specifically
@@ -88,7 +89,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
         const details = floodEvts.map((f) => `• ${f.title}: ${f.description}`).join("\n");
         return `⚠️ Active Waterlogging Alert in Bengaluru:\n${details}\n\nCurrent Precipitation: ${weather ? weather.precipitation + " mm" : "Active monitoring"}. Divert from low-lying railway underpasses.`;
       }
-      return "Good news! No major underpasses or arterial roads are reporting severe inundation right now.";
+      return "No active waterlogging reports are in the live stream right now — citizen data can lag reality. Check the rain radar and underpass triggers on the map before crossing.";
     }
 
     // Check Weather / Rain
@@ -96,7 +97,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
       if (weather) {
         return `🌧️ Bengaluru Weather: ${weather.temp}°C, ${weather.description}. Relative humidity is ${weather.humidity}% with ${weather.precipitation}mm precipitation. Flood Risk is currently assessed as ${weather.floodRisk}.`;
       }
-      return "Current weather in Bengaluru is partly cloudy with isolated shower chances in East & South zones.";
+      return "Live weather telemetry is unavailable right now. Open the Doppler radar overlay on the map for the latest RainViewer frames.";
     }
 
     // Check Hebbal / Airport road
@@ -107,9 +108,10 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
         (e.description && e.description.toLowerCase().includes("airport"))
       );
       if (hebbalEvt) {
-        return `✈️ Hebbal Flyover Update: ${hebbalEvt.title}. ${hebbalEvt.description} Allow an extra 20–25 minutes if traveling to KIA.`;
+        const depthText = hebbalEvt.waterDepth ? ` 🌊 Reported depth: ${hebbalEvt.waterDepth}.` : '';
+        return `✈️ ${hebbalEvt.title} (${hebbalEvt.verificationCount || 1} citizen confirmations): ${hebbalEvt.description}${depthText} Plan extra lead time for airport drives and verify on the live map.`;
       }
-      return "Airport Expressway via Hebbal is moving smoothly with usual airport traffic.";
+      return "No citizen report on the Hebbal / airport corridor right now. Reports can lag road reality — check the live map before you leave.";
     }
 
     // Check Pothole / Reporting

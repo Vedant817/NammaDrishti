@@ -9,7 +9,6 @@ const path = require('path');
 
 const { getHexIndex, getHexRing } = require('./services/spatialHex.js');
 const { createRateLimiter } = require('./services/rateLimiter.js');
-const { syncBtpAdvisories, getBtpAdvisories, markAdvisoryDismissed } = require('./services/btpIngestion.js');
 const { processMediaUpload } = require('./services/mediaService.js');
 
 const app = express();
@@ -37,48 +36,29 @@ const io = new Server(server, {
 });
 
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'incidents.json');
-const SEED_FILE = path.join(__dirname, 'incidents.json');
 
-// In-Memory Incident Store initialized from disk with fresh Docker mount seed copy support
+// In-Memory Incident Store initialized ONLY from the operator's own persisted
+// data file. First run starts empty — no seeds, no synthetic incidents; the
+// live feed is built from real citizen reports arriving over REST/WebSocket.
 let incidents = [];
 try {
-  let raw = null;
   if (fs.existsSync(DATA_FILE)) {
-    raw = fs.readFileSync(DATA_FILE, 'utf-8');
-  } else if (fs.existsSync(SEED_FILE)) {
-    // Fresh container deployment with DATA_FILE on clean mount: seed from SEED_FILE
-    raw = fs.readFileSync(SEED_FILE, 'utf-8');
-    const dataDir = path.dirname(DATA_FILE);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+    if (raw.trim()) {
+      incidents = JSON.parse(raw);
+      // Backfill integrity fields for legacy persisted records (timestamp stays
+      // as reported — missing createdAt simply means the record is aged "now")
+      incidents = incidents.map((inc) => {
+        const lat = inc.position?.lat || 12.9716;
+        const lng = inc.position?.lng || 77.5946;
+        return {
+          ...inc,
+          createdAt: inc.createdAt || new Date().toISOString(),
+          hexIndex: inc.hexIndex || getHexIndex(lat, lng, 8),
+          verificationScore: inc.verificationScore || inc.verificationCount || 1.0,
+        };
+      });
     }
-    fs.writeFileSync(DATA_FILE, raw, 'utf-8');
-  }
-
-  if (raw) {
-    incidents = JSON.parse(raw);
-    // Ensure all incidents have a valid createdAt timestamp and hex index
-    const now = Date.now();
-    incidents = incidents.map((inc) => {
-      let createdAt = inc.createdAt;
-      if (!createdAt) {
-        let minsAgo = 30;
-        if (typeof inc.timestamp === 'string') {
-          const match = inc.timestamp.match(/(\d+)\s*mins?\s*ago/i);
-          if (match) minsAgo = parseInt(match[1], 10);
-        }
-        createdAt = new Date(now - minsAgo * 60 * 1000).toISOString();
-      }
-      const lat = inc.position?.lat || 12.9716;
-      const lng = inc.position?.lng || 77.5946;
-      const hexIndex = inc.hexIndex || getHexIndex(lat, lng, 8);
-      return {
-        ...inc,
-        createdAt,
-        hexIndex,
-        verificationScore: inc.verificationScore || inc.verificationCount || 1.0,
-      };
-    });
   }
 } catch (err) {
   console.warn('[Storage] Failed to read initial incidents file:', err.message);
@@ -127,7 +107,6 @@ function getDistanceKm(lat1, lon1, lat2, lon2) {
 }
 
 // DYNAMIC TTL DECAY EXPIRATION POLICIES (in hours)
-// Aligned with the documented NammaPulse roadmap (TODO.md §2):
 // Accidents 2h • Waterlogging 4h • Traffic 3h • Potholes/Infrastructure 72h
 const TTL_HOURS_BY_TYPE = {
   Traffic: 3, // Rapid clearing congestion
@@ -151,14 +130,12 @@ function cleanupExpiredIncidents() {
     }
 
     const ageMs = now - createdMs;
-    // Authoritative alerts expire after their operational period (default 24h, 72h for Infra, or explicit ttlHours)
-    const baseTtlHours = incident.isAuthoritative
-      ? (incident.ttlHours || (incident.type === 'Infrastructure' ? 72 : 24))
-      : (TTL_HOURS_BY_TYPE[incident.type] || 6);
+    // TTL policy per incident type (accidents clear fastest, infrastructure lingers)
+    const baseTtlHours = TTL_HOURS_BY_TYPE[incident.type] || 6;
     const ttlMs = baseTtlHours * 60 * 60 * 1000;
 
     // High consensus citizen hazards receive a 50% TTL grace window
-    const consensusMultiplier = (!incident.isAuthoritative && (incident.verificationScore >= 3 || incident.verificationCount >= 4)) ? 1.5 : 1.0;
+    const consensusMultiplier = (incident.verificationScore >= 3 || incident.verificationCount >= 4) ? 1.5 : 1.0;
     const effectiveTtlMs = ttlMs * consensusMultiplier;
 
     if (ageMs > effectiveTtlMs) {
@@ -178,14 +155,9 @@ function cleanupExpiredIncidents() {
     }
 
     for (const { incident, ageMs } of expiredIncidents) {
-      if (incident.isAuthoritative) {
-        markAdvisoryDismissed(incident.id);
-      }
       io.emit('incident:expired', {
         id: incident.id,
-        reason: incident.isAuthoritative
-          ? `Official advisory period concluded (${Math.round(ageMs / (1000 * 60 * 60))} hours elapsed).`
-          : `Expired after ${Math.round(ageMs / (1000 * 60 * 60))} hours (TTL exceeded).`,
+        reason: `Expired after ${Math.round(ageMs / (1000 * 60 * 60))} hours (TTL exceeded).`,
       });
     }
     console.log(`[Lifecycle Worker] Cleaned up and persisted ${expiredIncidents.length} expired incidents.`);
@@ -197,16 +169,6 @@ function cleanupExpiredIncidents() {
 // Run cleanup every 60 seconds (documented lifecycle ticker cadence)
 const cleanupInterval = setInterval(cleanupExpiredIncidents, 60 * 1000);
 if (cleanupInterval.unref) cleanupInterval.unref();
-
-// Periodically ingest official BTP and BBMP civic advisories every 15 minutes
-const btpSyncInterval = setInterval(() => {
-  const result = syncBtpAdvisories(incidents);
-  if (result.addedCount > 0) {
-    persistIncidents();
-    io.emit('advisories:updated', { addedCount: result.addedCount });
-  }
-}, 15 * 60 * 1000);
-if (btpSyncInterval.unref) btpSyncInterval.unref();
 
 // RATE LIMITERS
 const reportLimiter = createRateLimiter({
@@ -314,23 +276,6 @@ app.get('/api/incidents/spatial/neighborhood', (req, res) => {
     activeRings: ring,
     count: neighborhoodIncidents.length,
     incidents: neighborhoodIncidents,
-  });
-});
-
-// Official BTP Traffic Police Advisories Endpoint
-app.get('/api/advisories/btp', (req, res) => {
-  res.json(getBtpAdvisories());
-});
-
-app.post('/api/advisories/sync', (req, res) => {
-  const result = syncBtpAdvisories(incidents);
-  if (result.addedCount > 0) {
-    persistIncidents();
-    io.emit('advisories:updated', { addedCount: result.addedCount });
-  }
-  res.json({
-    message: `Synchronized official BTP civic advisories.`,
-    ...result,
   });
 });
 
@@ -639,42 +584,6 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
   }
 
   const incident = incidents[index];
-  const isAuthority = Boolean(
-    req.body?.isAuthority ||
-    req.headers['x-authority-token'] ||
-    req.body?.authorityToken === (process.env.AUTHORITY_TOKEN || 'btp_control_secret')
-  );
-
-  // Authoritative alerts cannot be cleared by citizen consensus votes, but can be cleared by authority credentials
-  if (incident.isAuthoritative && !isAuthority) {
-    return res.status(403).json({
-      error: 'Authoritative government bulletins (BTP/BBMP) cannot be cleared by citizen votes. They are managed directly by civic authority control.',
-    });
-  }
-
-  // If authority clearance, dismiss immediately
-  if (incident.isAuthoritative && isAuthority) {
-    const [cleared] = incidents.splice(index, 1);
-    markAdvisoryDismissed(cleared.id);
-    const saved = persistIncidents();
-    if (!saved) {
-      incidents.splice(index, 0, cleared);
-      return res.status(500).json({ error: 'Failed to persist advisory clearance.' });
-    }
-
-    io.emit('incident:resolved', {
-      id: cleared.id,
-      clearedBy: 'Official Authority Control (BTP/BBMP)',
-      timestamp: new Date().toISOString(),
-    });
-
-    return res.json({
-      message: 'Authoritative bulletin cleared by civic authority control.',
-      id: cleared.id,
-      cleared: true,
-    });
-  }
-
   const voterKey = req.body?.voterId || req.ip || 'anon_voter';
 
   if (!Array.isArray(incident.resolutionVoterKeys)) {
@@ -691,7 +600,6 @@ app.post('/api/incidents/:id/resolve', (req, res) => {
 
   if (incident.clearanceVotes >= 2) {
     const [cleared] = incidents.splice(index, 1);
-    markAdvisoryDismissed(cleared.id);
     const saved = persistIncidents();
     if (!saved) {
       cleared.resolutionVoterKeys.pop();
@@ -800,31 +708,6 @@ app.get('/api/sos/dispatches', (req, res) => {
   res.json({ dispatches: emergencyDispatches });
 });
 
-// Explicit Authority Advisory Dismissal Route
-app.post('/api/advisories/:id/dismiss', (req, res) => {
-  const { id } = req.params;
-  const token = req.headers['x-authority-token'] || req.body?.authorityToken;
-  const isDev = process.env.NODE_ENV !== 'production';
-  if (!isDev && token !== (process.env.AUTHORITY_TOKEN || 'btp_control_secret')) {
-    return res.status(401).json({ error: 'Unauthorized: Authority credentials required.' });
-  }
-
-  const index = incidents.findIndex((i) => i.id === id);
-  if (index !== -1) {
-    const [dismissed] = incidents.splice(index, 1);
-    markAdvisoryDismissed(dismissed.id);
-    persistIncidents();
-    io.emit('incident:resolved', {
-      id: dismissed.id,
-      clearedBy: 'Authority Action (BTP/BBMP Desk)',
-      timestamp: new Date().toISOString(),
-    });
-    return res.json({ success: true, message: 'Authoritative advisory dismissed.', id: dismissed.id });
-  }
-  markAdvisoryDismissed(id);
-  return res.json({ success: true, message: 'Advisory dismissed.', id });
-});
-
 // 6. CONVERSATIONAL AI TRANSIT ASSISTANT ENDPOINT
 app.post('/api/assistant/chat', aiLimiter, (req, res) => {
   const { message } = req.body || {};
@@ -849,20 +732,21 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
         (i.ward && (i.ward.toLowerCase().includes('btm') || i.ward.toLowerCase().includes('hsr') || i.ward.toLowerCase().includes('silk board')))
     );
     if (silk) {
-      reply = `🚨 Silk Board / BTM / HSR Alert: Heavy congestion flagged (${silk.verificationCount} citizen confirmations). ${silk.description} Estimated delay +28 mins. Commuters heading to Electronic City are advised to use the elevated tollway.`;
+      reply = `🚨 ${silk.title} (${silk.ward || 'Silk Board / BTM / HSR corridor'}): ${silk.description} Confirmed by ${silk.verificationCount} citizen(s). Check the live map and Safe Route radar before heading out.`;
       sources.push(silk.title);
     } else {
-      reply = `Silk Board Junction, BTM Layout, and HSR corridor are currently experiencing routine traffic flow with standard signal cycles.`;
+      reply = `No citizen report currently mentions Silk Board, BTM, or HSR. Absence of reports is not a guarantee of clear roads — verify on the live map.`;
     }
   } else if (query.includes('flood') || query.includes('waterlog') || query.includes('underpass') || query.includes('panathur')) {
     const panathur = activeHazards.find((i) => i.title.toLowerCase().includes('panathur'));
     if (panathur) {
-      reply = `⚠️ Critical Underpass Alert: Panathur Railway Underpass is severely inundated with up to 2.5 ft water (${panathur.verificationCount} citizen upvotes). Autos and two-wheelers are advised to detour via Balagere-Varthur Road.`;
+      const depthText = panathur.waterDepth ? ` Reported depth: ${panathur.waterDepth}.` : '';
+      reply = `⚠️ ${panathur.title} (${panathur.ward || 'Panathur'}): ${panathur.description}${depthText} Confirmed by ${panathur.verificationCount} citizen(s). Consider alternate routes and verify conditions locally.`;
       sources.push(panathur.title);
     } else if (waterlogCount > 0) {
       reply = `Bengaluru has ${waterlogCount} active waterlogging point(s) reported right now. Avoid low-lying underpasses and monitor live Doppler radar.`;
     } else {
-      reply = `All major Bengaluru underpasses (K.R. Circle, Panathur, Windsor, Okalipuram) are currently clear with automated pump stations operational.`;
+      reply = `No active waterlogging reports right now — but this is citizen-driven data that can lag reality. Check the rain radar and underpass trigger thresholds on the map before you cross.`;
     }
   } else if (query.includes('hebbal') || query.includes('airport') || query.includes('expressway') || query.includes('bellary')) {
     const hebbal = activeHazards.find(
@@ -874,17 +758,17 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
         (i.description && (i.description.toLowerCase().includes('hebbal') || i.description.toLowerCase().includes('airport')))
     );
     if (hebbal) {
-      reply = `✈️ Airport Expressway Advisory: Accident reported near Hebbal Flyover approach ramp (${hebbal.description}). Expect +20 mins transit delay. Plan extra lead time for KIA flights.`;
+      reply = `✈️ ${hebbal.title} (${hebbal.verificationCount} citizen confirmations): ${hebbal.description} Plan extra lead time for airport drives and verify on the live map.`;
       sources.push(hebbal.title);
     } else {
-      reply = `Hebbal Flyover and Bellary Road to Kempegowda International Airport are clear with steady moving traffic.`;
+      reply = `No citizen report on the Hebbal / airport corridor right now. Reports can lag road reality — check the live map before you leave.`;
     }
   } else if (query.includes('radar') || query.includes('rain') || query.includes('weather') || query.includes('forecast') || query.includes('storm')) {
-    const rainMm = (req.body && req.body.weather && typeof req.body.weather.precipitation === 'number')
-      ? req.body.weather.precipitation
-      : 0;
-    const weatherCondition = req.body?.weather?.condition || (rainMm > 5 ? 'Heavy Monsoon Showers' : (rainMm > 0 ? 'Light Rain / Drizzle' : 'Clear / Overcast'));
-    reply = `🌧️ Rain & Radar Telemetry: Current conditions indicate ${weatherCondition} (${rainMm} mm/hr precipitation). RainViewer Doppler radar is tracking real-time cloud reflectivity across Bengaluru. There are ${waterlogCount} active waterlogged stretch(es) reported. Check the Underpass Diagnostic tab for localized flood risks.`;
+    const hasWeather = req.body?.weather && typeof req.body.weather.precipitation === 'number';
+    const rainMm = hasWeather ? req.body.weather.precipitation : null;
+    reply = hasWeather
+      ? `🌧️ Rain & Radar Telemetry: Current Open-Meteo reading is ${rainMm} mm/hr precipitation. RainViewer Doppler radar tracks real-time cloud reflectivity across Bengaluru, and there are ${waterlogCount} waterlogged stretch(es) reported. Check the Underpass Diagnostic tab before crossing.`
+      : `🌧️ Rain & Radar Telemetry: Open the live radar overlay on the map for the latest RainViewer frames — ${waterlogCount} waterlogged stretch(es) reported right now.`;
     sources.push('RainViewer Doppler & Open-Meteo Telemetry');
   } else if (query.includes('emergency') || query.includes('helpline') || query.includes('police') || query.includes('bbmp')) {
     reply = `📞 Bengaluru Emergency Helplines:\n• BTP Traffic Police: 1095 / 080-22943030\n• BBMP Disaster Cell: 1533\n• BESCOM Electrical Emergency: 1912\n• BWSSB Water & Sewerage: 1916\n• National Emergency: 112`;
@@ -907,7 +791,6 @@ app.post('/api/assistant/chat', aiLimiter, (req, res) => {
 
   res.json({
     reply,
-    confidence: 0.96,
     sources,
     timestamp: new Date().toISOString(),
     activeIncidentCount: activeHazards.length,
@@ -969,8 +852,6 @@ module.exports = {
   TTL_HOURS_BY_TYPE,
   getHexIndex,
   getHexRing,
-  syncBtpAdvisories,
-  getBtpAdvisories,
   processMediaUpload,
 };
 
