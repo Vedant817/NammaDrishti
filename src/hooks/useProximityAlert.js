@@ -113,10 +113,6 @@ export const useProximityAlert = (userLocation, events = [], onAlertTriggered) =
           } catch (e) {
             // Notifications may be restricted in some contexts
           }
-        } else if ("Notification" in window && Notification.permission !== "denied") {
-          try {
-            Notification.requestPermission();
-          } catch (e) {}
         }
       }
     });

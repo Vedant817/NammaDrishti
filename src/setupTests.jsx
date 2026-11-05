@@ -1,20 +1,11 @@
+import { vi } from 'vitest';
 // jest-dom adds custom jest matchers for asserting on DOM nodes.
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 
 // Mock Leaflet and React-Leaflet for Jest jsdom environment
-jest.mock('leaflet', () => {
-  return {
-    Icon: {
-      Default: {
-        prototype: {},
-        mergeOptions: jest.fn(),
-      },
-    },
-    divIcon: jest.fn(() => ({})),
-  };
-});
+vi.mock('leaflet', () => ({ default: { Icon: { Default: { prototype: {}, mergeOptions: vi.fn() } }, divIcon: vi.fn(() => ({})) } }));
 
-jest.mock('react-leaflet', () => {
+vi.mock('react-leaflet', () => {
   return {
     MapContainer: ({ children }) => <div data-testid="map-container">{children}</div>,
     TileLayer: () => <div data-testid="tile-layer" />,
@@ -23,8 +14,10 @@ jest.mock('react-leaflet', () => {
     Polyline: ({ children }) => <div data-testid="polyline">{children}</div>,
     CircleMarker: ({ children }) => <div data-testid="circle-marker">{children}</div>,
     useMap: () => ({
-      setView: jest.fn(),
+      setView: vi.fn(),
     }),
-    useMapEvents: jest.fn(),
+    useMapEvents: vi.fn(),
   };
 });
+
+window.fetch = vi.fn(async () => ({ok:true,json:async()=>({results:[],segments:[],status:"unconfigured",observations:[]})}));

@@ -1,4 +1,4 @@
-import { radarFallback } from "../../utils/weatherStatus";
+import { useLanguage } from '../../context/LanguageContext';
 import { useDialog } from "../../hooks/useDialog";
 import { authenticatedFetch as fetch } from "../../services/firebaseService";
 // src/components/Chatbot/ChatbotModal.jsx
@@ -32,11 +32,12 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
     return Array.isArray(currentEvents) ? currentEvents : (Array.isArray(events) ? events : []);
   }, [currentEvents, events]);
 
+  const { lang, t } = useLanguage();
   const dialogRef = useDialog(onClose);
   const [messages, setMessages] = useState([
     {
       type: "bot",
-      text: "Ask about reported road hazards, rain, or getting around Bengaluru.",
+      text: t.live.assistantIntro,
     },
   ]);
   const [input, setInput] = useState("");
@@ -53,81 +54,15 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
       // Strip markdown and emojis for clean speech
       const clean = text.replace(/[\u{1F300}-\u{1F9FF}]/gu, "").replace(/[*_#`]/g, "");
       const utterance = new SpeechSynthesisUtterance(clean);
+      utterance.lang = `${lang}-IN`;
       utterance.rate = 1.05;
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.warn("TTS playback error:", e);
     }
-  }, [voiceEnabled]);
+  }, [voiceEnabled, lang]);
 
-  // Dynamic context-aware query responder fallback
-  const processQueryLocally = useCallback((userQuery) => {
-    const q = userQuery.toLowerCase();
-
-    // Check Traffic & Silk Board / BTM
-    if (q.includes("silk board") || q.includes("btm")) {
-      const matchEvt = activeEvents.find((e) =>
-        (e.title && (e.title.toLowerCase().includes("silk board") || e.title.toLowerCase().includes("btm"))) ||
-        (e.ward && (e.ward.toLowerCase().includes("silk board") || e.ward.toLowerCase().includes("btm"))) ||
-        (e.description && (e.description.toLowerCase().includes("silk board") || e.description.toLowerCase().includes("btm")))
-      );
-      if (matchEvt) {
-        const depthText = matchEvt.waterDepth ? ` 🌊 Reported depth: ${matchEvt.waterDepth}.` : '';
-        return `🚨 ${matchEvt.title} (${matchEvt.ward || 'BTM / Silk Board zone'}): ${matchEvt.description}${depthText} Confirmed by ${matchEvt.verificationCount || 1} citizen(s) — check the live map and Safe Route radar before detouring.`;
-      }
-      return "No citizen report currently mentions Silk Board / BTM. Absence of reports is not a guarantee of clear roads — verify on the live map.";
-    }
-
-    // Check Doppler Weather Radar specifically
-    if (q.includes("radar")) {
-      return radarFallback(weather);
-    }
-
-    // Check Waterlogging / Flooding / Underpass
-    if (q.includes("flood") || q.includes("waterlog") || q.includes("underpass") || q.includes("panathur")) {
-      const floodEvts = activeEvents.filter((e) => e.type === "Waterlogging");
-      if (floodEvts.length > 0) {
-        const details = floodEvts.map((f) => `• ${f.title}: ${f.description}`).join("\n");
-        return `⚠️ Active Waterlogging Alert in Bengaluru:\n${details}\n\nCurrent Precipitation: ${weather ? weather.precipitation + " mm" : "Active monitoring"}. Divert from low-lying railway underpasses.`;
-      }
-      return "No active waterlogging reports are in the live stream right now — citizen data can lag reality. Check the rain radar and underpass triggers on the map before crossing.";
-    }
-
-    // Check Weather / Rain
-    if (q.includes("rain") || q.includes("weather")) {
-      if (weather && !weather.loading && !weather.isOffline && weather.lastUpdated) {
-        return `🌧️ Bengaluru Weather: ${weather.temp}°C, ${weather.description}. Relative humidity is ${weather.humidity}% with ${weather.precipitation}mm precipitation. Flood Risk is currently assessed as ${weather.floodRisk}.`;
-      }
-      return "Live weather telemetry is unavailable right now. Open the Doppler radar overlay on the map for the latest RainViewer frames.";
-    }
-
-    // Check Hebbal / Airport road
-    if (q.includes("hebbal") || q.includes("airport")) {
-      const hebbalEvt = activeEvents.find((e) =>
-        (e.title && e.title.toLowerCase().includes("hebbal")) ||
-        (e.ward && e.ward.toLowerCase().includes("hebbal")) ||
-        (e.description && e.description.toLowerCase().includes("airport"))
-      );
-      if (hebbalEvt) {
-        const depthText = hebbalEvt.waterDepth ? ` 🌊 Reported depth: ${hebbalEvt.waterDepth}.` : '';
-        return `✈️ ${hebbalEvt.title} (${hebbalEvt.verificationCount || 1} citizen confirmations): ${hebbalEvt.description}${depthText} Plan extra lead time for airport drives and verify on the live map.`;
-      }
-      return "No citizen report on the Hebbal / airport corridor right now. Reports can lag road reality — check the live map before you leave.";
-    }
-
-    // Check Pothole / Reporting
-    if (q.includes("pothole") || q.includes("report") || q.includes("how to report")) {
-      return "To report a hazard directly in NammaDrishti:\n1. Click the 'Report Hazard' button at the bottom-right of the map.\n2. Choose 'Potholes / Infra' or 'Traffic'.\n3. Click 'Auto-Detect GPS' or tap on the map to pin the exact coordinates.\n4. Submit! It will immediately be added to the live consensus stream.";
-    }
-
-    // Emergency Contacts
-    if (q.includes("emergency") || q.includes("helpline") || q.includes("police") || q.includes("bbmp") || q.includes("sos")) {
-      return "📞 Bengaluru Emergency Helplines:\n• BTP Traffic Police: 1095 / 080-22943030\n• BBMP Control Room: 1533\n• BESCOM Power Breakdown: 1912\n• BWSSB Water Supply: 1916\n• National Emergency: 112\n\nTip: You can also use the 'Emergency SOS' button in the Helplines sidebar for instant GPS dispatch!";
-    }
-
-    // General fallback
-    return `Currently tracking ${activeEvents.length} live incidents across Bengaluru. You can ask me about Silk Board, BTM, Hebbal, waterlogging, weather radar, or emergency helplines!`;
-  }, [activeEvents, weather]);
+  const processQueryLocally = useCallback(() => `${t.live.cachedAnswer} ${activeEvents.length} ${t.live.citizenData}. ${t.live.call112}`, [activeEvents,t]);
 
   const handleSendMessage = useCallback(async (textToSend) => {
     const text = textToSend || input;
@@ -144,14 +79,14 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          context: { weather, rainIntensity: weather?.precipitation, incidents: activeEvents },
+          language: lang,
         }),
-        signal: AbortSignal.timeout(2500),
+        signal: AbortSignal.timeout(16000),
       });
 
       if (res.ok) {
         const data = await res.json();
-        setMessages((prev) => [...prev, { type: "bot", text: data.reply }]);
+        setMessages((prev) => [...prev, { type: "bot", text: `${data.reply}\n[${data.mode}]` }]);
         setIsTyping(false);
         speakText(data.reply);
         return;
@@ -164,7 +99,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
     setMessages((prev) => [...prev, { type: "bot", text: fallbackResponse }]);
     setIsTyping(false);
     speakText(fallbackResponse);
-  }, [input, activeEvents, weather, processQueryLocally, speakText]);
+  }, [input, lang, processQueryLocally, speakText]);
 
   // Keep ref up to date for speech recognition callback
   useEffect(() => {
@@ -178,7 +113,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = "en-IN"; // Prioritize Indian English / Bengaluru accents
+      recognition.lang = `${lang}-IN`; // Prioritize Indian English / Bengaluru accents
 
       recognition.onstart = () => setIsListening(true);
       recognition.onend = () => setIsListening(false);
@@ -219,8 +154,8 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
           <div className="bot-header-info">
             <span className="bot-avatar">🤖</span>
             <div>
-              <h3>City assistant</h3>
-              <span className="bot-status">Answers based on current reports</span>
+              <h3>{t.ui["City assistant"]}</h3>
+              <span className="bot-status">{t.ui["Answers based on current reports"]}</span>
             </div>
           </div>
           <div className="header-actions-group">
@@ -232,7 +167,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
             >
               {voiceEnabled ? "🔊" : "🔇"}
             </button>
-            <button type="button" className="close-button" aria-label="Close dialog" onClick={onClose}>
+            <button type="button" className="close-button" aria-label={t.ui["Close dialog"]} onClick={onClose}>
               ✕
             </button>
           </div>
@@ -242,12 +177,12 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
           <div className="quick-prompts-bar">
             {QUICK_PROMPTS.map((prompt) => (
               <button
-                key={prompt}
+                key={t.ui[prompt] || prompt}
                 type="button"
                 className="quick-prompt-chip"
                 onClick={() => handleSendMessage(prompt)}
               >
-                {prompt}
+                {t.ui[prompt] || prompt}
               </button>
             ))}
           </div>
@@ -285,7 +220,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
-              placeholder={isListening ? "Listening to your voice..." : "Ask about traffic, floods, road hazards..."}
+              placeholder={isListening ? t.ui["Listening to your voice..."] : t.ui["Ask about traffic, floods, road hazards..."]}
             />
             <button
               type="button"

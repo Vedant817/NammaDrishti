@@ -1,3 +1,4 @@
+import { useReactiveRoute } from '../../hooks/useReactiveRoute';
 import { Plus, Route, MessageSquare } from "lucide-react";
 // src/components/Dashboard/CityPulseDashboard.jsx
 import React, { useState, useEffect, useRef } from "react";
@@ -48,6 +49,7 @@ const CityPulseDashboard = () => {
   const [reportPin, setReportPin] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [navigationRoute, setNavigationRoute] = useState(null);
+  useReactiveRoute(navigationRoute, setNavigationRoute, events, isLiveConnected);
   const [userLocation, setUserLocation] = useState(null);
 
   // Deep-link camera: one-shot fly for ?view=... (only until the user interacts)
@@ -168,7 +170,7 @@ const CityPulseDashboard = () => {
     }
     setNavigationRoute(routeData);
     if (routeData.hasConflicts) {
-      showToast("⚠️ Caution: Navigation corridor intersects active civic hazards. Rerouted.");
+      showToast("⚠️ Caution: Navigation corridor intersects reported hazards. Check the route.");
     } else {
       showToast("Route added. No reported hazards nearby.");
     }
@@ -304,6 +306,7 @@ const CityPulseDashboard = () => {
       {/* Safe Route Hazard Avoidance Modal */}
       {showRouteModal && (
         <SafeRouteModal
+          activeRoute={navigationRoute}
           isOpen={showRouteModal}
           onClose={() => setShowRouteModal(false)}
           hazards={events}

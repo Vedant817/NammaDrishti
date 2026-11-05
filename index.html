@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" href="/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#EDF2F4" />
+
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="NammaDrishti - Real-time civic intelligence, live transit radar, Doppler rain radar, and urban monitoring for Bengaluru" />
+  <meta name="keywords" content="NammaDrishti, Bengaluru, civic radar, live traffic, rain radar, incident reporting, smart city" />
+  <meta name="author" content="Vedant817" />
+
+  <!-- Open Graph Meta Tags for Social Sharing -->
+  <meta property="og:title" content="NammaDrishti - Bengaluru Real-Time Civic & Transit Radar" />
+  <meta property="og:description" content="Live, crowd-sourced civic and transit monitoring radar for Bengaluru, powered by Open-Meteo & RainViewer telemetry" />
+  <meta property="og:type" content="website" />
+
+  <!-- Apple Touch Icon -->
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- Preconnect to External Resources -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://tile.openstreetmap.org">
+
+  <!-- Modern Inter & JetBrains Mono Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS for Maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin=""/>
+
+  <style>
+    .loading-screen { position:fixed; inset:0; display:grid; place-content:center; background:#EDF2F4; color:#203640; font:18px system-ui; z-index:9999; }
+    .app-loaded .loading-screen { display:none; }
+  </style>
+
+  <title>NammaDrishti | Real-Time Bengaluru Civic & Transit Radar</title>
+</head>
+<body>
+  <noscript>
+    <div style="padding: 2rem; text-align: center; color: #fff; background: #090D16;">
+      <h1>NammaDrishti</h1>
+      <p>Please enable JavaScript to view real-time Bengaluru civic radar and transit intelligence.</p>
+    </div>
+  </noscript>
+
+  <div class="loading-screen" id="loading-screen" role="status">Loading NammaDrishti…</div>
+
+  <div id="root"></div>
+  <script type="module" src="/src/index.jsx"></script>
+</body>
+</html>

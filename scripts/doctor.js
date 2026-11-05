@@ -52,17 +52,17 @@ const withTimeout = async (promise, label) => {
 };
 
 const probeJson = async (url, label) => {
-  const res = await withTimeout(fetch(url, { headers: { 'User-Agent': 'NammaDrishti-Doctor/1.0 (keyless preflight)' } }), label);
+  const res = await withTimeout(fetch(url, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS), headers: { 'User-Agent': 'NammaDrishti-Doctor/1.0 (keyless preflight)' } }), label);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 };
 
 const checkNode = () => {
   const major = Number(process.versions.node.split('.')[0]);
-  if (Number.isFinite(major) && major >= 18) {
+  if (Number.isFinite(major) && major >= 22) {
     ok('Node runtime', `v${process.versions.node}`);
   } else {
-    fail('Node runtime', `Node ${process.versions.node} detected; 18+ required for global fetch`);
+    fail('Node runtime', `Node ${process.versions.node} detected; 22+ required for global fetch`);
   }
 };
 
@@ -70,9 +70,9 @@ const checkDependencies = () => {
   const rootModules = path.join(ROOT, 'node_modules');
   const serverModules = path.join(ROOT, 'server', 'node_modules');
 
-  // The frontend toolchain (react-scripts) lives in the root install
-  if (fs.existsSync(path.join(rootModules, 'react-scripts'))) {
-    ok('Root dependencies installed', 'node_modules/react-scripts present');
+  // The frontend toolchain (vite) lives in the root install
+  if (fs.existsSync(path.join(rootModules, 'vite'))) {
+    ok('Root dependencies installed', 'node_modules/vite present');
   } else {
     fail('Root dependencies installed', 'run `npm install --legacy-peer-deps`');
   }
@@ -87,7 +87,7 @@ const checkDependencies = () => {
 const checkIncidentStore = () => {
   const storePath = path.join(ROOT, 'server', 'incidents.json');
   if (!fs.existsSync(storePath)) {
-    warn('Server incident store', 'server/incidents.json missing — server will boot with the built-in seed');
+    warn('Server incident store', 'server/incidents.json missing — server will boot with the empty citizen report store');
     return;
   }
   try {

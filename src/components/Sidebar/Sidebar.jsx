@@ -36,12 +36,14 @@ const Sidebar = ({
   userLocation = null,
 }) => {
   const { t } = useLanguage();
+  const [delivery, setDelivery] = useState(null);
   const [sosStatus, setSosStatus] = useState(null);
   const [acquiringGps, setAcquiringGps] = useState(false);
 
   const handleTriggerSos = () => {
     setAcquiringGps(true);
     setSosStatus(null);
+    setDelivery(null);
 
     const onCoordsAcquired = (lat, lng) => {
       setAcquiringGps(false);
@@ -56,7 +58,7 @@ const Sidebar = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
-        }).catch(() => {});
+        }).then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); setDelivery(data.status); }).catch(() => setDelivery('SAVE_FAILED'));
       } catch (err) {
         // Continue even if network is restricted
       }
@@ -86,7 +88,7 @@ const Sidebar = ({
             )}`,
           });
         },
-        { timeout: 7000, enableHighAccuracy: true }
+        { timeout: 7000, enableHighAccuracy: true, maximumAge: 0 }
       );
     } else {
       setAcquiringGps(false);
@@ -127,6 +129,7 @@ const Sidebar = ({
       </div>
 
       <div className="sidebar-scrollable-body">
+        {delivery && <p role="status">{delivery} · {t.live.call112}</p>}
         {activeTab === "feed" && (
           <PersonalizedFeed
             events={events}
@@ -170,7 +173,7 @@ const Sidebar = ({
                 onClick={handleTriggerSos}
                 disabled={acquiringGps}
               >
-                {acquiringGps ? "Finding your location…" : "Share emergency location"}
+                {acquiringGps ? "Finding your location…" : t.ui["Share emergency location"]}
               </button>
 
               {sosStatus && (
@@ -200,12 +203,12 @@ const Sidebar = ({
                       💬 Send WhatsApp SOS
                     </a>
                     <a
-                      href={`sms:112?body=${encodeURIComponent(
+                      href={`sms:?body=${encodeURIComponent(
                         sosStatus.isVerifiedGps ? `EMERGENCY ALERT [NammaDrishti]: Stranded in Bengaluru at GPS: ${sosStatus.lat.toFixed(5)}, ${sosStatus.lng.toFixed(5)}. Need urgent assistance.` : 'EMERGENCY ALERT [NammaDrishti]: Need urgent assistance in Bengaluru. GPS unavailable; contact me for my location.'
                       )}`}
                       className="sos-sms-btn"
                     >
-                      📱 SMS (Offline GSM)
+                      📱 SMS
                     </a>
                     <a href="tel:112" className="sos-dial-btn">
                       📞 Call 112 (Police/Med)

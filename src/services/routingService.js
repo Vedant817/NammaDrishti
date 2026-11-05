@@ -123,8 +123,8 @@ const osrmRouteRequest = async (routePath) => {
   for (let i = 0; i < OSRM_MIRRORS.length; i++) {
     const mirror = OSRM_MIRRORS[i];
     try {
-      const res = await fetch(`${mirror}${routePath}`);
-      if (res.status >= 500) {
+      const res = await fetch(`${mirror}${routePath}`, { signal: AbortSignal.timeout(6000) });
+      if (res.status >= 500 || res.status === 429) {
         if (i >= OSRM_MIRRORS.length - 1) {
           throw new Error(`OSRM routing failed with status ${res.status}`);
         }

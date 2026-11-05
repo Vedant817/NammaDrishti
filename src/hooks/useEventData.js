@@ -156,6 +156,14 @@ const getOrCreateDeviceId = () => {
   }
 };
 
+async function prepareReport(report) {
+  if (!report.mediaUrl?.startsWith('data:')) return report;
+  const r = await fetch(`${API_BASE}/media/upload`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ imageBase64:report.mediaUrl }), signal:AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error('Photo upload failed. Report remains pending.');
+  const media = await r.json();
+  return {...report, mediaUrl:new URL(media.mediaUrl, API_BASE).href};
+}
+
 export const useEventData = () => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -171,11 +179,12 @@ export const useEventData = () => {
       const successfulIds = new Set();
       for (const item of queue) {
         try {
+          const uploaded = await prepareReport(item);
           const res = await fetch(`${API_BASE}/incidents`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              ...item,
+              ...uploaded,
               voterId: getOrCreateDeviceId(),
             }),
             signal: AbortSignal.timeout(3000),
@@ -520,11 +529,12 @@ export const useEventData = () => {
 
     // Post to server preserving the client ID
     try {
+      const uploaded = await prepareReport(formatted);
       const res = await fetch(`${API_BASE}/incidents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...formatted,
+          ...uploaded,
           voterId: getOrCreateDeviceId(),
         }),
         signal: AbortSignal.timeout(3000),
