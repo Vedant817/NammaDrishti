@@ -1,5 +1,5 @@
 // src/components/Map/MapContainer.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -30,13 +30,18 @@ L.Icon.Default.mergeOptions({
 // Center of Bengaluru
 const BENGALURU_CENTER = [12.9716, 77.5946];
 
-// Component to dynamically pan and zoom to selected event
+// Component to dynamically pan and zoom to selected event / deep-linked view.
+// Deduplicates identical targets so unrelated re-renders can't re-trigger a fly.
 const MapViewController = ({ center, zoom }) => {
   const map = useMap();
+  const lastTargetRef = useRef(null);
   useEffect(() => {
-    if (center && Number.isFinite(center[0]) && Number.isFinite(center[1])) {
-      map.flyTo(center, zoom, { duration: 1.2 });
-    }
+    if (!center || !Number.isFinite(center[0]) || !Number.isFinite(center[1])) return undefined;
+    const targetKey = `${center[0]},${center[1]},${zoom}`;
+    if (lastTargetRef.current === targetKey) return undefined;
+    lastTargetRef.current = targetKey;
+    map.flyTo(center, zoom, { duration: 1.2 });
+    return undefined;
   }, [center, zoom, map]);
   return null;
 };
@@ -63,25 +68,32 @@ const CustomMapContainer = ({
   reportPin = null,
   navigationRoute = null,
   onClearNavigationRoute = () => {},
+  initialCamera = null,
 }) => {
   const { t } = useLanguage();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(false);
-  const [radarTimestamp, setRadarTimestamp] = useState(null);
+  // RainViewer frame timeline: observed frames (past) + 30-min nowcast
+  const [radarData, setRadarData] = useState(null); // { frames: [{time, path}], nowIndex }
+  const [radarIndex, setRadarIndex] = useState(null);
+  const [isPlayingRadar, setIsPlayingRadar] = useState(false);
 
-  // Fetch latest RainViewer radar layer timestamp with auto-refresh every 5 minutes
+  // Fetch RainViewer frame catalog (past + nowcast), auto-refresh every 5 minutes
   const fetchRadar = useCallback(async () => {
     try {
       const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
       if (!res.ok) return;
       const data = await res.json();
-      if (data.radar && data.radar.past && data.radar.past.length > 0) {
-        const latest = data.radar.past[data.radar.past.length - 1];
-        setRadarTimestamp(latest.path);
-      }
+      const past = (data.radar && data.radar.past) || [];
+      const nowcast = (data.radar && data.radar.nowcast) || [];
+      const frames = [...past, ...nowcast]
+        .filter((frame) => frame && frame.path && Number.isFinite(frame.time))
+        .map((frame) => ({ time: frame.time, path: frame.path }));
+      if (frames.length === 0) return;
+      setRadarData({ frames, nowIndex: Math.max(0, past.length - 1) });
     } catch (err) {
-      // Retain previous timestamp if temporary network issue
+      // Retain previous frame catalog if temporary network issue
     }
   }, []);
 
@@ -91,12 +103,41 @@ const CustomMapContainer = ({
     return () => clearInterval(radarInterval);
   }, [fetchRadar]);
 
-  // If user turns on radar and timestamp is missing, fetch immediately
+  // If user turns on radar and the catalog is missing, fetch immediately
   useEffect(() => {
-    if (showRadar && !radarTimestamp) {
+    if (showRadar && !radarData) {
       fetchRadar();
     }
-  }, [showRadar, radarTimestamp, fetchRadar]);
+  }, [showRadar, radarData, fetchRadar]);
+
+  // Clamp / initialize the scrub position whenever a fresh frame catalog arrives
+  useEffect(() => {
+    if (!radarData) return undefined;
+    setRadarIndex((idx) => (idx == null || idx >= radarData.frames.length ? radarData.nowIndex : idx));
+    return undefined;
+  }, [radarData]);
+
+  // Radar timeline playback loop (~0.7s per frame)
+  useEffect(() => {
+    if (!isPlayingRadar || !radarData || radarData.frames.length === 0) return undefined;
+    const totalFrames = radarData.frames.length;
+    const playbackInterval = setInterval(() => {
+      setRadarIndex((idx) => ((idx == null ? radarData.nowIndex : idx) + 1) % totalFrames);
+    }, 700);
+    return () => clearInterval(playbackInterval);
+  }, [isPlayingRadar, radarData]);
+
+  const radarFrames = radarData ? radarData.frames : [];
+  const currentRadarFrame = radarIndex != null ? radarFrames[radarIndex] : null;
+
+  // Label like "14:30 • Now", "14:10 • 20m ago", "15:00 • +30m"
+  const formatRadarLabel = (frame) => {
+    if (!frame || !radarData) return "";
+    const clock = new Date(frame.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const deltaMin = Math.round((frame.time - radarData.frames[radarData.nowIndex].time) / 60);
+    if (deltaMin === 0) return `${clock} • Now`;
+    return deltaMin < 0 ? `${clock} • ${-deltaMin}m ago` : `${clock} • +${deltaMin}m`;
+  };
 
   // Bengaluru arterial corridors with live incident correlation
   const baseCorridors = [
@@ -239,7 +280,13 @@ const CustomMapContainer = ({
         <button
           type="button"
           className={`toolbar-btn ${showRadar ? "active-blue" : ""}`}
-          onClick={() => setShowRadar(!showRadar)}
+          onClick={() => {
+            setShowRadar(!showRadar);
+            if (!showRadar) {
+              setIsPlayingRadar(false);
+              setRadarIndex(radarData ? radarData.nowIndex : null);
+            }
+          }}
           title="Toggle live Doppler rain radar overlay"
         >
           🌧️ {showRadar ? t.actions.hideRadar : t.actions.liveRadar}
@@ -262,6 +309,44 @@ const CustomMapContainer = ({
         >
           🔥 {showHeatmap ? (t.actions?.hideHeatmap || "Hide Heatmap") : (t.actions?.heatmap || "Risk Heatmap")}
         </button>
+
+        {/* GEV-style radar timeline: play the past 2h + scrub the 30-min nowcast */}
+        {showRadar && radarData && radarFrames.length > 0 && (
+          <div className="radar-timeline">
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={() => setIsPlayingRadar((p) => !p)}
+              title="Animate past radar frames + 30-min nowcast"
+            >
+              {isPlayingRadar ? "⏸ Pause" : "▶ Play"}
+            </button>
+            <input
+              type="range"
+              className="radar-scrubber"
+              min={0}
+              max={radarFrames.length - 1}
+              value={radarIndex == null ? radarData.nowIndex : radarIndex}
+              onChange={(e) => {
+                setIsPlayingRadar(false);
+                setRadarIndex(Number(e.target.value));
+              }}
+              aria-label="Scrub monsoon radar timeline"
+            />
+            <span className="radar-frame-label">{formatRadarLabel(currentRadarFrame)}</span>
+            <button
+              type="button"
+              className="toolbar-btn"
+              onClick={() => {
+                setIsPlayingRadar(false);
+                setRadarIndex(radarData.nowIndex);
+              }}
+              title="Jump to latest observed radar frame"
+            >
+              ⏭ Now
+            </button>
+          </div>
+        )}
 
         {navigationRoute && (
           <button
@@ -290,6 +375,10 @@ const CustomMapContainer = ({
         className="leaflet-container"
       >
         <MapEventsHandler onMapClick={onMapClick} />
+        {/* One-shot camera restore for ?view=lat,lng,z deep links (only when nothing is selected) */}
+        {!selectedEvent && initialCamera && (
+          <MapViewController center={initialCamera.center} zoom={initialCamera.zoom} />
+        )}
         {selectedEvent &&
           selectedEvent.position &&
           Number.isFinite(selectedEvent.position.lat) &&
@@ -307,10 +396,11 @@ const CustomMapContainer = ({
           maxZoom={19}
         />
 
-        {/* Live RainViewer Radar Layer */}
-        {showRadar && radarTimestamp && (
+        {/* Live RainViewer Radar Layer — keyed per frame so tiles reload while scrubbing */}
+        {showRadar && currentRadarFrame && (
           <TileLayer
-            url={`https://tilecache.rainviewer.com${radarTimestamp}/256/{z}/{x}/{y}/2/1_1.png`}
+            key={currentRadarFrame.path}
+            url={`https://tilecache.rainviewer.com${currentRadarFrame.path}/256/{z}/{x}/{y}/2/1_1.png`}
             opacity={0.65}
             zIndex={200}
           />

@@ -24,7 +24,30 @@ const PersonalizedFeed = ({
   activeFilter = "All",
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [copiedEventId, setCopiedEventId] = useState(null);
   const { t } = useLanguage();
+
+  // Direct link that re-opens this incident on the map (?incident=<id>)
+  const buildIncidentLink = (item) => {
+    if (typeof window === "undefined") return "https://nammadrishti.app";
+    return `${window.location.origin}${window.location.pathname}?incident=${encodeURIComponent(item.id)}`;
+  };
+
+  const handleCopyLink = async (e, item) => {
+    e.stopPropagation();
+    const link = buildIncidentLink(item);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        window.prompt("Copy this incident link:", link);
+      }
+      setCopiedEventId(item.id);
+      setTimeout(() => setCopiedEventId((cur) => (cur === item.id ? null : cur)), 2000);
+    } catch (err) {
+      window.prompt("Copy this incident link:", link);
+    }
+  };
 
   const filteredEvents = events.filter((event) => {
     const matchesFilter =
@@ -60,7 +83,8 @@ const PersonalizedFeed = ({
     const mapLink = item.position
       ? `https://maps.google.com/?q=${item.position.lat},${item.position.lng}`
       : "https://nammadrishti.app";
-    const text = `🚨 *NammaDrishti Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n_Stay safe & take alternate routes._`;
+    const appLink = buildIncidentLink(item);
+    const text = `🚨 *NammaDrishti Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n*Open live on map:* ${appLink}\n_Stay safe & take alternate routes._`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -143,6 +167,14 @@ const PersonalizedFeed = ({
                 <div className="card-bottom-row">
                   <span className="card-ward">📍 {item.ward || "Bengaluru"}</span>
                   <div className="card-actions-right">
+                    <button
+                      type="button"
+                      className="copy-link-btn"
+                      onClick={(e) => handleCopyLink(e, item)}
+                      title="Copy a direct link that opens this incident on the map"
+                    >
+                      {copiedEventId === item.id ? "✓ Copied" : "🔗 Copy Link"}
+                    </button>
                     <button
                       type="button"
                       className="whatsapp-share-btn"

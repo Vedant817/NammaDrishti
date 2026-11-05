@@ -120,6 +120,41 @@ export const detectRouteHazards = (routeCoordinates, activeHazards, hazardBuffer
   return encounteredHazards;
 };
 
+// Public OSRM community mirrors, tried in order. `.org` is the official demo
+// server; `.de` is the FOSSGIS-hosted backup so Safe Route keeps working when
+// the demo server rate-limits mid-storm (keyless-first, no API keys needed).
+const OSRM_MIRRORS = [
+  "https://router.project-osrm.org",
+  "https://router.project-osrm.de",
+];
+
+// Issue an OSRM route request across mirrors: 5xx responses and network errors
+// advance to the next mirror; an OSRM answer (even a NoRoute 4xx body) is final
+// and returned as-is, since bad input fails identically on every mirror.
+const osrmRouteRequest = async (routePath) => {
+  for (let i = 0; i < OSRM_MIRRORS.length; i++) {
+    const mirror = OSRM_MIRRORS[i];
+    try {
+      const res = await fetch(`${mirror}${routePath}`);
+      if (res.status >= 500) {
+        if (i >= OSRM_MIRRORS.length - 1) {
+          throw new Error(`OSRM routing failed with status ${res.status}`);
+        }
+        console.warn(`[routing] OSRM mirror ${mirror} outage (HTTP ${res.status}); trying fallback mirror.`);
+        continue;
+      }
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      if (i === OSRM_MIRRORS.length - 1) {
+        throw err;
+      }
+      console.warn(`[routing] OSRM mirror ${mirror} unreachable (${err.message}); trying fallback mirror.`);
+    }
+  }
+  throw new Error("All OSRM routing mirrors are unreachable.");
+};
+
 // Fetch real driving route from OSRM public API
 export const fetchDrivingRoute = async (start, end) => {
   if (
@@ -133,10 +168,8 @@ export const fetchDrivingRoute = async (start, end) => {
     throw new Error("Invalid start or end coordinates for routing.");
   }
 
-  const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`OSRM routing failed with status ${res.status}`);
-  const data = await res.json();
+  const routePath = `/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+  const data = await osrmRouteRequest(routePath);
 
   if (!data.routes || data.routes.length === 0) {
     throw new Error("No driving route found between selected points.");
@@ -193,33 +226,30 @@ export const fetchDetourRoute = async (start, end, activeHazards = []) => {
   };
 
   try {
-    const detourUrl = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${detourWaypoint.lng},${detourWaypoint.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-    const res = await fetch(detourUrl);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.routes && data.routes.length > 0) {
-        const detourRoute = data.routes[0];
-        const detourCoords = detourRoute.geometry.coordinates.map((coord) => [
-          coord[1],
-          coord[0],
-        ]);
-        const remainingConflicts = detectRouteHazards(detourCoords, activeHazards, 0.45);
+    const detourPath = `/route/v1/driving/${start.lng},${start.lat};${detourWaypoint.lng},${detourWaypoint.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
+    const data = await osrmRouteRequest(detourPath);
+    if (data.routes && data.routes.length > 0) {
+      const detourRoute = data.routes[0];
+      const detourCoords = detourRoute.geometry.coordinates.map((coord) => [
+        coord[1],
+        coord[0],
+      ]);
+      const remainingConflicts = detectRouteHazards(detourCoords, activeHazards, 0.45);
 
-        // If detour cleared or reduced conflicts
-        if (remainingConflicts.length < initialConflicts.length) {
-          const detourDistKm = (detourRoute.distance / 1000).toFixed(1);
-          const detourDuration = Math.round(detourRoute.duration / 60);
-          return {
-            coordinates: detourCoords,
-            distanceKm: detourDistKm,
-            durationMin: detourDuration,
-            summary: `Bypass detour via ${worstHazard.ward || 'arterial bypass'}`,
-            conflicts: remainingConflicts,
-            isDetour: true,
-            bypassedHazard: worstHazard,
-            addedMinutes: Math.max(1, detourDuration - baseRoute.durationMin),
-          };
-        }
+      // If detour cleared or reduced conflicts
+      if (remainingConflicts.length < initialConflicts.length) {
+        const detourDistKm = (detourRoute.distance / 1000).toFixed(1);
+        const detourDuration = Math.round(detourRoute.duration / 60);
+        return {
+          coordinates: detourCoords,
+          distanceKm: detourDistKm,
+          durationMin: detourDuration,
+          summary: `Bypass detour via ${worstHazard.ward || 'arterial bypass'}`,
+          conflicts: remainingConflicts,
+          isDetour: true,
+          bypassedHazard: worstHazard,
+          addedMinutes: Math.max(1, detourDuration - baseRoute.durationMin),
+        };
       }
     }
   } catch (err) {

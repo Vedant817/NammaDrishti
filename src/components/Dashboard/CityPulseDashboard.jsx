@@ -1,5 +1,5 @@
 // src/components/Dashboard/CityPulseDashboard.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Header from "../Header/Header";
 import FilterPanel from "../Filters/FilterPanel";
 import MapContainer from "../Map/MapContainer";
@@ -12,6 +12,26 @@ import { useWeatherTelemetry } from "../../hooks/useWeatherTelemetry";
 import { useLanguage } from "../../context/LanguageContext";
 import { useProximityAlert } from "../../hooks/useProximityAlert";
 import "./CityPulseDashboard.css";
+
+// GEV-pattern shareable state: ?incident=<id> re-opens the shared hazard, and
+// ?view=lat,lng,z restores the map camera. Parsed once at module load.
+const parseDeepLinkParams = () => {
+  if (typeof window === "undefined") return { incidentId: null, view: null };
+  const params = new URLSearchParams(window.location.search);
+  const incidentId = params.get("incident");
+  let view = null;
+  const rawView = params.get("view");
+  if (rawView) {
+    const parts = rawView.split(",").map((v) => Number(v.trim()));
+    if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+      const zoomNum = Number.isFinite(parts[2]) ? Math.max(4, Math.min(18, Math.round(parts[2]))) : 14;
+      view = { lat: Math.max(-90, Math.min(90, parts[0])), lng: Math.max(-180, Math.min(180, parts[1])), zoom: zoomNum };
+    }
+  }
+  return { incidentId: incidentId ? incidentId.trim() : null, view };
+};
+
+const DEEP_LINK = parseDeepLinkParams();
 
 const CityPulseDashboard = () => {
   const { events, isLiveConnected, offlineQueueCount, addEvent, verifyEvent, resolveEvent } = useEventData();
@@ -28,6 +48,13 @@ const CityPulseDashboard = () => {
   const [toastMessage, setToastMessage] = useState(null);
   const [navigationRoute, setNavigationRoute] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
+
+  // Deep-link camera: one-shot fly for ?view=... (only until the user interacts)
+  const [initialCamera, setInitialCamera] = useState(
+    DEEP_LINK.incidentId || !DEEP_LINK.view
+      ? null
+      : { center: [DEEP_LINK.view.lat, DEEP_LINK.view.lng], zoom: DEEP_LINK.view.zoom }
+  );
 
   // Auto-detect commuter GPS on mount to power proximity verification
   useEffect(() => {
@@ -52,6 +79,22 @@ const CityPulseDashboard = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const incidentLinkUsedRef = useRef(false);
+
+  // Restore a ?incident=<id> deep link once the live event stream has loaded
+  useEffect(() => {
+    if (incidentLinkUsedRef.current || !DEEP_LINK.incidentId || events.length === 0) return undefined;
+    const match = events.find((e) => String(e.id) === String(DEEP_LINK.incidentId));
+    incidentLinkUsedRef.current = true; // one-shot: stop watching after the first load pass
+    if (match) {
+      setSelectedEvent(match);
+      setInitialCamera(null);
+      showToast(`🔗 Opened shared incident: ${match.title}`);
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
   // Real-time audio-visual proximity alert listener for severe nearby hazards
   useProximityAlert(userLocation, events, (alert) => {
     if (alert && alert.hazard) {
@@ -60,6 +103,12 @@ const CityPulseDashboard = () => {
       showToast("⚠️ Proximity Alert: High urgency hazard detected near your location!");
     }
   });
+
+  const handleEventSelect = (event) => {
+    // User interaction voids any deep-linked camera restore
+    setInitialCamera(null);
+    setSelectedEvent(event);
+  };
 
   const handleMapPinSelected = (coords) => {
     setReportPin(coords);
@@ -168,12 +217,13 @@ const CityPulseDashboard = () => {
           <MapContainer
             events={filteredEvents}
             selectedEvent={selectedEvent}
-            onEventSelect={setSelectedEvent}
+            onEventSelect={handleEventSelect}
             onMapClick={handleMapPinSelected}
             onOpenReportModal={handleOpenReportModal}
             navigationRoute={navigationRoute}
             onClearNavigationRoute={() => setNavigationRoute(null)}
             userLocation={userLocation}
+            initialCamera={initialCamera}
           />
 
           <div className="map-floating-actions floating-action-buttons">
@@ -211,7 +261,7 @@ const CityPulseDashboard = () => {
           events={filteredEvents}
           allEvents={events}
           selectedEvent={selectedEvent}
-          onEventSelect={setSelectedEvent}
+          onEventSelect={handleEventSelect}
           onVerifyEvent={handleVerifyEvent}
           onResolveEvent={handleResolveEvent}
           activeTab={sidebarTab}

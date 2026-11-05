@@ -26,6 +26,7 @@
   "scripts": {
     "start": "react-scripts start",
     "server": "node server/index.js",
+    "doctor": "node scripts/doctor.js",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "test:ci": "react-scripts test --watchAll=false",
