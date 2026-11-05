@@ -1,3 +1,4 @@
+import BackupStatus from './BackupStatus';
 import React, { useEffect, useState } from 'react';
 import { UserRound, X, CheckCircle2 } from 'lucide-react';
 import { citizenRole, signInCitizen, signOutCitizen, resendCitizenVerification, authenticatedFetch } from '../../services/firebaseService';
@@ -85,6 +86,7 @@ export default function AccountPanel({ onClose }) {
           {items.length === 0 && <p>{t.sidebar.emptyState}</p>}
           {items.map(item => <article className="account-panel__report" key={item.id}><div><strong>{item.title}</strong><p>{item.description}</p></div><button type="button" disabled={busy || reason.trim().length < 5} onClick={() => moderate(item.id, item.moderationHidden ? 'restore' : 'hide')}>{item.moderationHidden ? t.account.restore : t.account.hide}</button></article>)}
           <details><summary>{t.account.audit}</summary>{audit.map(entry => <p key={entry.id}>{new Date(entry.at).toLocaleString()} · {entry.action} · {entry.reason} · {entry.status}</p>)}</details>
+          {operations?.backup && <BackupStatus backup={operations.backup}/>}
           {operations && <dl className="account-panel__metrics">{Object.entries(operations.sources || {}).map(([source,value]) => <div key={source}><dt>{source}</dt><dd>{value}</dd></div>)}</dl>}
         </section>}
       </div>

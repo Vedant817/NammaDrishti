@@ -96,7 +96,7 @@ function createBackupService({db,blob=require('@vercel/blob'),token=process.env.
       await db.runTransaction(async tx=>{
         const current=(await tx.get(ref)).data();
         if(current?.owner!==owner || current.leaseUntil<=clock()) throw new Error('Backup lease lost');
-        tx.set(ref,{...current,leaseUntil:0,status:'complete',completedAt:clock(),lastCompletedTrigger:trigger,nextAttemptAt:0,pendingUploads:(current.pendingUploads||[]).filter(item=>item.path!==archivePath),url:object.url,records:Object.values(archive.payload).reduce((n,g)=>n+g.length,0),media:archive.media.length,bytes:bytes.length,externalMediaLinks:archive.externalMediaLinks,retentionStatus:'pending',...(trigger==='maintenance'?{lastMaintenanceOutcome:'complete'}:{})});
+        tx.set(ref,{...current,leaseUntil:0,status:'complete',completedAt:clock(),lastCompletedTrigger:trigger,cleanupStatus:'complete',nextAttemptAt:0,pendingUploads:(current.pendingUploads||[]).filter(item=>item.path!==archivePath),url:object.url,records:Object.values(archive.payload).reduce((n,g)=>n+g.length,0),media:archive.media.length,bytes:bytes.length,externalMediaLinks:archive.externalMediaLinks,retentionStatus:'pending',...(trigger==='maintenance'?{lastMaintenanceOutcome:'complete'}:{})});
       });
       committed=true;
       let retentionStatus='complete';
