@@ -1,3 +1,4 @@
+import BackupStatus from './BackupStatus';
 import React, { useEffect, useState } from 'react';
 import { UserRound, X, CheckCircle2 } from 'lucide-react';
 import { citizenRole, signInCitizen, signOutCitizen, resendCitizenVerification, authenticatedFetch } from '../../services/firebaseService';
@@ -20,9 +21,10 @@ export default function AccountPanel({ onClose }) {
   const [audit, setAudit] = useState([]);
   const [operations, setOperations] = useState(null);
   const [reason, setReason] = useState('');
-  useEffect(() => { let active = true; citizenRole().then(value => { if (active) { setRole(value); if (value?.moderator) refresh().catch(() => { if (active) setStatus(t.account.failed); }); } }).catch(() => {}); return () => { active = false; }; }, []);
+  useEffect(() => { let active=true;setBusy(true);refresh().catch(()=>{if(active){setError(true);setStatus(t.account.failed);}}).finally(()=>{if(active)setBusy(false);});return()=>{active=false;}; }, []);
 
   async function refresh() {
+    setOperations(null);
     const current = await citizenRole();
     setRole(current); setError(false);
     setStatus(current?.email ? current.verified ? t.account.verified : t.account.verify : '');
@@ -31,7 +33,8 @@ export default function AccountPanel({ onClose }) {
       if (!response.ok) throw new Error();
       const data = await response.json(); setItems(data.incidents); setAudit(data.audit);
       const ops = await authenticatedFetch(`${API_BASE}/operations`);
-      if (ops.ok) setOperations(await ops.json());
+      if (!ops.ok) throw new Error();
+      setOperations(await ops.json());
     }
   }
   async function perform(task) {
@@ -85,6 +88,7 @@ export default function AccountPanel({ onClose }) {
           {items.length === 0 && <p>{t.sidebar.emptyState}</p>}
           {items.map(item => <article className="account-panel__report" key={item.id}><div><strong>{item.title}</strong><p>{item.description}</p></div><button type="button" disabled={busy || reason.trim().length < 5} onClick={() => moderate(item.id, item.moderationHidden ? 'restore' : 'hide')}>{item.moderationHidden ? t.account.restore : t.account.hide}</button></article>)}
           <details><summary>{t.account.audit}</summary>{audit.map(entry => <p key={entry.id}>{new Date(entry.at).toLocaleString()} · {entry.action} · {entry.reason} · {entry.status}</p>)}</details>
+          {operations?.backup && <BackupStatus backup={operations.backup}/>}
           {operations && <dl className="account-panel__metrics">{Object.entries(operations.sources || {}).map(([source,value]) => <div key={source}><dt>{source}</dt><dd>{value}</dd></div>)}</dl>}
         </section>}
       </div>
