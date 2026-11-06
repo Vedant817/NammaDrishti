@@ -1,13 +1,19 @@
-import React from 'react';
+import React,{useState,useEffect} from 'react';
 import {useInterfaceCopy} from '../../hooks/useInterfaceCopy';
 import {cityTime} from '../../utils/sourceTime';
 export default function BackupStatus({backup}) {
   const copy=useInterfaceCopy();
+  const [clock,setClock]=useState(Date.now);
+  useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),30000);return()=>clearInterval(timer);},[]);
   if(!backup)return null;
   const time=value=>Number.isFinite(value)&&value>0?cityTime(value):copy.backupUnknown;
-  const health=backup.health || (backup.configured?'unknown':'unconfigured');
+  let health=backup.health || (backup.configured?'unknown':'unconfigured');
+  if(health==='healthy'){
+    if(!Number.isFinite(backup.completedAt)||backup.completedAt<=0||backup.completedAt>clock+300000)health='unknown';
+    else if(clock-backup.completedAt>26*3600000)health='stale';
+  }
   const state=value=>copy['backup_'+value] || copy.backupUnknown;
-  const warning=['failed','stale','never-completed','unconfigured'].includes(health)||backup.retentionStatus==='failed'||backup.cleanupStatus==='failed';
+  const warning=['failed','stale','never-completed','unconfigured','unknown'].includes(health)||backup.retentionStatus==='failed'||backup.cleanupStatus==='failed';
   return <section className="account-panel__backup" aria-label={copy.backupTitle}>
     <h3>{copy.backupTitle}</h3>
     <p role={warning?'alert':'status'}>{state(health)}</p>

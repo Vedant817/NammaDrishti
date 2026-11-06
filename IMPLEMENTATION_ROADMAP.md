@@ -26,4 +26,4 @@ The user requested one feature at a time, incremental commits, three independent
 
 - Baseline: main `134fd56`; working tree clean before starting. Node 24.13.1 and npm 11.8.0 available.
 - Three read-only QA agents assigned: app journeys, operational reliability, and provider contracts. Parent owns all implementation and shared-browser interaction.
-- Milestone 1: in progress. Milestones 2–8: pending. No external live integration is marked complete without actual access and acceptance evidence.
+- Milestone 1: implementation and regression repairs complete; full local/browser/live-isolated acceptance and release review in progress. Milestones 2–8: pending. No external live integration is marked complete without actual access and acceptance evidence.
