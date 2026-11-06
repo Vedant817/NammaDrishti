@@ -137,7 +137,7 @@ app.use('/api', async (req, res, next) => {
       const match = /^Bearer (.+)$/.exec(req.headers.authorization || '');
       if (!match) return res.status(401).json({ error: 'Firebase sign-in required.' });
       req.citizen = await firebaseStore.auth.verifyIdToken(match[1], true);
-      if(req.path.startsWith('/incidents') && process.env.REQUIRE_VERIFIED_IDENTITY !== 'false' && !req.citizen.email_verified) return res.status(403).json({error:'Verify your email in Citizen account before reporting or voting.'});
+      if(req.path.startsWith('/incidents') && process.env.REQUIRE_VERIFIED_IDENTITY !== 'false' && !req.citizen.email_verified) return res.status(403).json({code:'EMAIL_VERIFICATION_REQUIRED',error:'Verify your email in Citizen account before reporting or voting.'});
       req.body = { ...req.body, voterId: req.citizen.uid };
     } catch { return res.status(401).json({ error: 'Invalid Firebase sign-in token.' }); }
   }
@@ -732,7 +732,7 @@ app.post('/api/incidents/:id/resolve', async (req, res) => {
 
   // Multi-citizen consensus: prevent duplicate clearance votes from the same citizen/device
   if (incident.resolutionVoterKeys.includes(voterKey)) {
-    return res.status(400).json({ error: 'You have already voted to clear this incident.' });
+    return res.status(409).json({ error: 'You have already voted to clear this incident.',alreadyVoted:true,id:incident.id,clearanceVotes:incident.clearanceVotes||incident.resolutionVoterKeys.length,cleared:false });
   }
 
   incident.resolutionVoterKeys.push(voterKey);

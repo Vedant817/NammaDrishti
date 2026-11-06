@@ -16,6 +16,9 @@ function localIdentity() {
   if(localPrincipal?.uid!==uid)localPrincipal={uid};
   return localPrincipal;
 }
+export function actionIdentitySnapshot() {
+  return identityTracker.observe(projectId?citizenAuth().currentUser:localIdentity());
+}
 export function isActionIdentityCurrent(identity) {
   const user=projectId?citizenAuth().currentUser:localIdentity();
   return identityTracker.isCurrent(identity,user);

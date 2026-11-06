@@ -40,6 +40,7 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
       request.onupgradeneeded=()=>{
         const db=request.result;
         for(const store of ['actions','markers']){const table=db.createObjectStore(store,{keyPath:['owner','id']});table.createIndex('owner','owner');}
+        db.createObjectStore('owners',{keyPath:'owner'});
       };
       request.onerror=fail;request.onblocked=fail;
       request.onsuccess=()=>{
@@ -62,9 +63,9 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
   function owned(owner){if(!ownerOK(owner))throw error('identity-unavailable');}
   async function list(owner) {
     owned(owner);
-    return transaction(['actions','markers'],'readonly',({actions,markers},set)=>{
-      const a=actions.index('owner').getAll(owner),m=markers.index('owner').getAll(owner);let values,seen;
-      const finish=()=>{if(!values||!seen)return;set({actions:values.filter(item=>validAction(item,owner)).sort((x,y)=>x.createdAt-y.createdAt),markers:seen.filter(item=>item.owner===owner&&idOK(item.id)&&Number.isFinite(item.at)&&now()-item.at<7*86400000),invalidCount:values.filter(item=>!validAction(item,owner)).length});};
+    return transaction(['actions','markers','owners'],'readonly',({actions,markers,owners},set)=>{
+      const a=actions.index('owner').getAll(owner),m=markers.index('owner').getAll(owner);let values,seen,gate;const g=owners.get(owner);g.onsuccess=()=>{gate=g.result||{};finish();};
+      const finish=()=>{if(!values||!seen||!gate)return;set({gate,actions:values.filter(item=>validAction(item,owner)).sort((x,y)=>x.createdAt-y.createdAt),markers:seen.filter(item=>item.owner===owner&&idOK(item.id)&&Number.isFinite(item.at)&&now()-item.at<7*86400000),invalidCount:values.filter(item=>!validAction(item,owner)).length});};
       a.onsuccess=()=>{values=a.result;finish();};m.onsuccess=()=>{seen=m.result;finish();};
     });
   }
@@ -92,26 +93,39 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
   }
   async function claim(owner,id) {
     owned(owner);if(!idOK(id))throw error('invalid-action');
-    const result=await transaction(['actions'],'readwrite',({actions},set)=>{
-      const get=actions.get([owner,id]);get.onsuccess=()=>{
-        const current=get.result,time=now();
-        if(!validAction(current,owner)||current.state!=='pending'||current.nextAt>time||current.leaseUntil>time){set(null);return;}
-        const next={...current,leaseToken:newId(),leaseUntil:time+LEASE_MS,revision:current.revision+1,updatedAt:time};actions.put(next);set(next);
+    const result=await transaction(['actions','owners'],'readwrite',({actions,owners},set)=>{
+      const gate=owners.get(owner);gate.onsuccess=()=>{
+        if(gate.result?.blocked||gate.result?.until>now()){set(null);return;}
+        const get=actions.get([owner,id]);get.onsuccess=()=>{
+          const current=get.result,time=now();
+          if(!validAction(current,owner)||current.state!=='pending'||current.nextAt>time||current.leaseUntil>time){set(null);return;}
+          const next={...current,leaseToken:newId(),leaseUntil:time+LEASE_MS,revision:current.revision+1,updatedAt:time};actions.put(next);set(next);
+        };
       };
     });
     if(result)changed(owner);return result;
   }
-  async function update(owner,id,revision,patch,{token=null,manual=false}={}) {
+  async function setGate(owner,{until=0,blocked=false,reason=null}={}) {
+    owned(owner);if(!Number.isFinite(until)||until<0)throw error('invalid-action');
+    await transaction(['owners'],'readwrite',({owners})=>owners.put({owner,until,blocked:!!blocked,reason}));changed(owner);
+  }
+  async function update(owner,id,revision,patch,{token=null,manual=false,gate=null,resetGate=false}={}) {
     owned(owner);
     try{patch=structuredClone(patch);}catch{throw error('invalid-action');}if(!idOK(id))throw error('invalid-action');
-    const result=await transaction(['actions'],'readwrite',({actions},set)=>{
+    if(gate&&(!Number.isFinite(gate.until)||gate.until<0))throw error('invalid-action');
+    const result=await transaction(['actions','owners'],'readwrite',({actions,owners},set)=>{
       const get=actions.get([owner,id]);get.onsuccess=()=>{
         const current=get.result;
         if(!validAction(current,owner)||current.revision!==revision||(token?current.leaseToken!==token||current.leaseUntil<=now():current.leaseUntil>now())){set(null);return;}
         const safe=Object.fromEntries(['state','reason','nextAt','attempts','httpStatus','payload'].filter(key=>Object.hasOwn(patch,key)).map(key=>[key,patch[key]]));
         const next={...current,...safe,revision:current.revision+1,updatedAt:now(),...(manual?{leaseToken:null,leaseUntil:0}:{})};
         if(!validAction(next,owner)){set(null);return;}
-        const all=actions.index('owner').getAll(owner);all.onsuccess=()=>{const bytes=all.result.filter(item=>item.id!==id).reduce((sum,item)=>sum+JSON.stringify(item).length*2,JSON.stringify(next).length*2);if(bytes>MAX_BYTES){set(null);return;}actions.put(next);set(next);};
+        const all=actions.index('owner').getAll(owner);all.onsuccess=()=>{
+          const bytes=all.result.filter(item=>item.id!==id).reduce((sum,item)=>sum+JSON.stringify(item).length*2,JSON.stringify(next).length*2);if(bytes>MAX_BYTES){set(null);return;}
+          actions.put(next);
+          if(gate){const read=owners.get(owner);read.onsuccess=()=>{const old=read.result||{};const blocked=!!gate.blocked||(!resetGate&&!!old.blocked);owners.put({owner,until:resetGate?gate.until:Math.max(old.until||0,gate.until),blocked,reason:!resetGate&&old.blocked?old.reason:gate.reason||null});};}
+          set(next);
+        };
       };
     });
     if(result)changed(owner);return result;
@@ -139,7 +153,7 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
     });
     if(result)changed(owner);return result;
   }
-  return {list,enqueue,claim,update,complete,discard,subscribe(listener){
+  return {list,enqueue,claim,update,complete,discard,setGate,subscribe(listener){
     listeners.add(listener);
     if(!channel&&typeof BroadcastChannel!=='undefined'){try{channel=new BroadcastChannel(name);channel.onmessage=event=>{if(ownerOK(event.data?.owner))for(const cb of listeners){try{cb(event.data.owner);}catch{}}};}catch{}}
     return()=>{listeners.delete(listener);if(!listeners.size){channel?.close();channel=null;}};
