@@ -137,7 +137,7 @@ app.use('/api', async (req, res, next) => {
       const match = /^Bearer (.+)$/.exec(req.headers.authorization || '');
       if (!match) return res.status(401).json({ error: 'Firebase sign-in required.' });
       req.citizen = await firebaseStore.auth.verifyIdToken(match[1], true);
-      if(req.path.startsWith('/incidents') && process.env.REQUIRE_VERIFIED_IDENTITY !== 'false' && !req.citizen.email_verified) return res.status(403).json({error:'Verify your email in Citizen account before reporting or voting.'});
+      if(req.path.startsWith('/incidents') && process.env.REQUIRE_VERIFIED_IDENTITY !== 'false' && !req.citizen.email_verified) return res.status(403).json({code:'EMAIL_VERIFICATION_REQUIRED',error:'Verify your email in Citizen account before reporting or voting.'});
       req.body = { ...req.body, voterId: req.citizen.uid };
     } catch { return res.status(401).json({ error: 'Invalid Firebase sign-in token.' }); }
   }
@@ -436,7 +436,7 @@ app.get('/api/media/status', (req, res) => {
 });
 
 app.post('/api/incidents', reportLimiter, async (req, res) => {
-  let { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability } = req.body || {};
+  let { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability, observedAt } = req.body || {};
 
   if (urgency !== undefined && !['Low', 'Medium', 'High'].includes(urgency)) return res.status(400).json({ error: 'Invalid urgency.' });
   if (id !== undefined && (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(id))) return res.status(400).json({ error: 'Invalid incident ID.' });
@@ -493,6 +493,11 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
     }
   }
 
+  // Citizen device time is an observation claim, never trusted telemetry. Bound
+  // its age and retain it rather than labeling a delayed report as just seen.
+  const receivedAt=Date.now();
+  if(observedAt!==undefined&&(!Number.isFinite(observedAt)||observedAt<receivedAt-30*60000||observedAt>receivedAt+5*60000))return res.status(422).json({code:'OBSERVATION_EXPIRED',error:'Check the location again before sending an old observation.'});
+  const observationTime=new Date(Math.min(observedAt??receivedAt,receivedAt)).toISOString();
   const allowedTypes = ['Traffic', 'Waterlogging', 'Accident', 'Infrastructure'];
   const category = allowedTypes.includes(type) ? type : 'Infrastructure';
   const hexIndex = getHexIndex(lat, lng, 8);
@@ -555,7 +560,7 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
       clusterMatch.updates = [];
     }
     clusterMatch.updates.unshift({
-      timestamp: 'Just now',
+      timestamp: observationTime,
       description: String(description).trim(),
       reportedBy: sanitizedReportedBy,
       mediaUrl: mediaUrl || null,
@@ -602,8 +607,8 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
     description: String(description).trim(),
     position: { lat, lng },
     hexIndex,
-    timestamp: 'Just now',
-    createdAt: new Date().toISOString(),
+    timestamp: observationTime,
+    createdAt: observationTime,
     urgency: urgency || 'Medium',
     verificationCount: 1,
     verificationScore: 1.0,
@@ -732,7 +737,7 @@ app.post('/api/incidents/:id/resolve', async (req, res) => {
 
   // Multi-citizen consensus: prevent duplicate clearance votes from the same citizen/device
   if (incident.resolutionVoterKeys.includes(voterKey)) {
-    return res.status(400).json({ error: 'You have already voted to clear this incident.' });
+    return res.status(409).json({ error: 'You have already voted to clear this incident.',alreadyVoted:true,id:incident.id,clearanceVotes:incident.clearanceVotes||incident.resolutionVoterKeys.length,cleared:false });
   }
 
   incident.resolutionVoterKeys.push(voterKey);

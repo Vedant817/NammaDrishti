@@ -320,15 +320,16 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     });
     assert.equal(vote1.status, 200);
 
-    // Second vote from SAME device_alpha: Rejected (400)
+    // Second vote from SAME device_alpha: acknowledged duplicate (409)
     const vote2 = await fetch(`${BASE_URL}/api/incidents/${tempInc.id}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ voterId: 'device_alpha' }),
     });
-    assert.equal(vote2.status, 400);
+    assert.equal(vote2.status, 409);
     const errBody = await vote2.json();
     assert.ok(errBody.error.includes('already voted'));
+    assert.equal(errBody.alreadyVoted,true);assert.equal(errBody.id,tempInc.id);assert.equal(errBody.cleared,false);
 
     // Second vote from DIFFERENT device_beta: Allowed (200) and clears incident
     const vote3 = await fetch(`${BASE_URL}/api/incidents/${tempInc.id}/resolve`, {

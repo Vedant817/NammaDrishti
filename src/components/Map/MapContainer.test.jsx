@@ -15,3 +15,7 @@ test('traffic uses road tiles rather than hardcoded corridor lines and underpass
   fireEvent.click(screen.getByRole('button', { name: 'Report clusters' }));
   expect(screen.getByRole('status')).toHaveTextContent('No community reports yet');
 });
+test('passability without observed depth never invents a depth measurement',()=>{
+ render(<CustomMapContainer events={[{id:'passability',title:'Fixture water',type:'Waterlogging',position:{lat:12.97,lng:77.59},waterDepth:null,vehiclePassability:'Cars blocked'}]}/>);
+ expect(screen.getByText(/Not known \/ not observed/)).toBeInTheDocument();expect(screen.queryByText(/Depth: Measured/)).not.toBeInTheDocument();
+});

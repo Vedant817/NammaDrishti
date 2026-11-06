@@ -370,10 +370,10 @@ async function runScenarioSandbox() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voterId: 'voter_citizen_clear_1' }),
       });
-      if (resVoteSybil.status === 400) {
-        console.log(`  ✓ 5b. Anti-Sybil Clearance Protection: Repeat vote from same citizen rejected with HTTP 400.`);
+      if (resVoteSybil.status === 409) {
+        console.log(`  ✓ 5b. Anti-Sybil Clearance Protection: Repeat vote from same citizen acknowledged with HTTP 409.`);
       } else {
-        throw new Error(`Expected 400 for duplicate clearance vote, got ${resVoteSybil.status}`);
+        throw new Error(`Expected 409 for duplicate clearance vote, got ${resVoteSybil.status}`);
       }
 
       // Vote 2: Citizen B marks cleared

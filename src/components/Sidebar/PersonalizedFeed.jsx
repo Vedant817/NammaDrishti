@@ -1,3 +1,4 @@
+import {incidentTime} from '../../utils/incidentTime';
 // src/components/Sidebar/PersonalizedFeed.jsx
 import React, { useState } from "react";
 import { MapPin } from "lucide-react";
@@ -17,7 +18,7 @@ const PersonalizedFeed = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedEventId, setCopiedEventId] = useState(null);
-  const { t } = useLanguage();
+  const { t,lang } = useLanguage();
 
   // Direct link that re-opens this incident on the map (?incident=<id>)
   const buildIncidentLink = (item) => {
@@ -140,7 +141,7 @@ const PersonalizedFeed = ({
                       📍 On-Ground
                     </span>
                   )}
-                  <span className="card-time">{item.timestamp}</span>
+                  <span className="card-time">{incidentTime(item,lang)}</span>
                 </div>
 
                 <h5 className="card-title"><button type="button" className="incident-title-btn" onClick={e => { e.stopPropagation(); onEventSelect?.(item); }}>{item.title}</button></h5>

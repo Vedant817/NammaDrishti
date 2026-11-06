@@ -1,3 +1,4 @@
+import {incidentTime} from '../../utils/incidentTime';
 import {useInterfaceCopy} from '../../hooks/useInterfaceCopy';
 import { API_BASE } from '../../services/api';
 import { CloudRain, Route, Layers } from "lucide-react";
@@ -78,6 +79,20 @@ const MapEventsHandler = ({ onMapClick, onZoom }) => {
   return null;
 };
 
+// Selection moves the camera. Open details after that movement, since Leaflet
+// can close a popup opened during the same marker click/fly-to update.
+const IncidentMarker=({selected,...props})=>{
+  const marker=useRef(null),map=useMap();
+  useEffect(()=>{
+    if(!selected)return;
+    let timer;
+    const open=()=>{clearTimeout(timer);map.off?.('moveend',open);marker.current?.openPopup();};
+    map.once?.('moveend',open);timer=setTimeout(open,1350);
+    return()=>{clearTimeout(timer);map.off?.('moveend',open);};
+  },[selected,map]);
+  return <Marker ref={marker} bubblingMouseEvents={false} {...props}/>;
+};
+
 const CustomMapContainer = ({
   events = [],
   providerIncidents = {status:'loading',incidents:[]},
@@ -92,7 +107,7 @@ const CustomMapContainer = ({
   onClearNavigationRoute = () => {},
   initialCamera = null,
 }) => {
-  const { t } = useLanguage();
+  const { t,lang } = useLanguage();
   const copy=useInterfaceCopy();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
@@ -495,7 +510,7 @@ const CustomMapContainer = ({
                   )}
                     <div className="popup-meta">
                       <span>{event.ward}</span>
-                      <span>{event.timestamp}</span>
+                      <span>{incidentTime(event,lang)}</span>
                     </div>
                   </div>
                 </Popup>
@@ -507,8 +522,9 @@ const CustomMapContainer = ({
             (t.filters && t.filters[event.type]) || event.type;
 
           return (
-            <Marker
+            <IncidentMarker
               key={event.id}
+              selected={isSelected}
               position={[event.position.lat, event.position.lng]}
               icon={createCustomIcon(event.type, isSelected)}
               eventHandlers={{
@@ -535,7 +551,7 @@ const CustomMapContainer = ({
 
                   {(event.waterDepth || event.vehiclePassability) && (
                     <div className="popup-water-depth-badge" style={{ margin: '6px 0', padding: '4px 8px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.15)', color: '#06B6D4', fontSize: '0.78rem', fontWeight: 600 }}>
-                      🌊 Depth: {event.waterDepth || 'Measured'} {event.vehiclePassability ? `• 🚫 ${event.vehiclePassability}` : ''}
+                      🌊 {copy.waterDepth}: {event.waterDepth || copy.unknown} {event.vehiclePassability ? `• 🚫 ${event.vehiclePassability}` : ''}
                     </div>
                   )}
                   {event.clusterCount > 1 && (
@@ -581,7 +597,7 @@ const CustomMapContainer = ({
                   </div>
                 </div>
               </Popup>
-            </Marker>
+            </IncidentMarker>
           );
         })}
 
