@@ -284,7 +284,7 @@ const CityPulseDashboard = () => {
       {/* Citizen Report Modal */}
       {showReportModal&&reportIdentity?.uid===actionIdentity?.uid&&reportIdentity?.sessionKey===actionIdentity?.sessionKey&&isActionIdentityCurrent(reportIdentity)&&(
         <ReportModal
-          key={reportIdentity.uid+':'+reportIdentity.sessionKey}
+          key={reportIdentity.uid+':'+reportIdentity.sessionKey+':'+(editingAction?.id||'new')}
           isOpen={showReportModal}
           onClose={() => {
             setShowReportModal(false);setEditingAction(null);
