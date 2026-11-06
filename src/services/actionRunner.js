@@ -2,6 +2,7 @@ import {identityChanged} from './identityRequest';
 
 const retryError=()=>Object.assign(new Error('Uncertain acknowledgement'),{code:'uncertain'});
 const count=value=>Number.isFinite(value)&&value>=0;
+export const MAX_ACTION_AGE_MS=30*60*1000;
 export function validAcknowledgement(action,body) {
   if(!body||typeof body!=='object')return false;
   if(action.kind==='report')return typeof body.id==='string'&&body.id.length>0&&typeof body.title==='string'&&['Traffic','Waterlogging','Accident','Infrastructure'].includes(body.type)&&Number.isFinite(body.position?.lat)&&Number.isFinite(body.position?.lng)&&!body._isLocalPending;
@@ -24,12 +25,18 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
     guard(identity);
     let action=await store.claim(identity.uid,id);
     if(!action)return {status:'waiting'};
-    let response;
+    let response,incidentRequested=false;
     const previouslyUncertain=!!action.uncertain;
     try {
       guard(identity);
-      const send=(path,body,timeout=15000)=>{
+      const observedAt=action.observedAt??action.createdAt;
+      if(now()-observedAt>MAX_ACTION_AGE_MS||observedAt>now()+300000)throw Object.assign(new Error('Observation needs review'),{code:'outdated'});
+      const send=async(path,body,timeout=15000)=>{
         guard(identity);
+        const latest=await store.list(identity.uid);guard(identity);
+        if(latest.gate.blocked||latest.gate.until>now())throw Object.assign(new Error('Owner paused'),{code:'owner-gated',gate:latest.gate});
+        if(now()-observedAt>MAX_ACTION_AGE_MS)throw Object.assign(new Error('Observation needs review'),{code:'outdated'});
+        if(path==='/incidents')incidentRequested=true;
         return request(`${apiBase}${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(timeout),expectedIdentity:identity});
       };
       async function read(res) {
@@ -58,6 +65,7 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
       const p=action.payload;
       const payload=action.kind==='report'?Object.fromEntries(['id','title','type','urgency','description','ward','position','mediaUrl','waterDepth','vehiclePassability'].filter(k=>Object.hasOwn(p,k)).map(k=>[k,p[k]])):{...(action.kind==='verify'?{voterPosition:p.voterPosition}:{}),voterId:identity.uid};
       if(action.kind==='report')payload.voterId=identity.uid;
+      if(action.kind==='report')payload.observedAt=observedAt;
       if(action.kind==='report'){
         // Preserve an immutable uncertain submission across crashes/lost ACKs.
         // It must be retried unchanged; editing it could lose new text when the
@@ -79,6 +87,15 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
     }catch(err) {
       // Never apply a previous account's response or failure to the new session.
       if(err.code==='identity-changed'||!isCurrent(identity))return {status:'identity-changed'};
+      if(err.code==='owner-gated'){
+        const state=err.gate.blocked?'blocked':'pending';
+        const updated=await store.update(identity.uid,id,action.revision,{state,reason:err.gate.blocked?'account':'network',nextAt:err.gate.until||0,uncertain:previouslyUncertain||incidentRequested},{token:action.leaseToken,manual:true});
+        return {status:updated?state:'superseded',stop:true};
+      }
+      if(err.code==='outdated'){
+        const updated=await store.update(identity.uid,id,action.revision,{state:'failed',reason:'stale',nextAt:0,uncertain:previouslyUncertain||incidentRequested},{token:action.leaseToken,manual:true});
+        return {status:updated?'failed':'superseded'};
+      }
       const attempts=action.attempts+1;
       const account=err.code==='account-required',permanent=err.code==='rejected';
       const state=account?'blocked':permanent?'failed':attempts>=5?'blocked':'pending';

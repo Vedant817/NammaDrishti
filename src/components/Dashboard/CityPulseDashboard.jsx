@@ -1,3 +1,4 @@
+import {MAX_ACTION_AGE_MS} from '../../services/actionRunner';
 import {useOfflineCopy} from '../../data/offlineCopy';
 import {isActionIdentityCurrent} from '../../services/firebaseService';
 import { routeContext } from '../../services/routeContext';
@@ -290,6 +291,7 @@ const CityPulseDashboard = () => {
             setReportPin(null);
           }}
           onSubmitReport={handleSubmitReport}
+          requiresFreshObservation={!!editingAction&&(editingAction.reason==='stale'||Date.now()-(editingAction.observedAt??editingAction.createdAt)>MAX_ACTION_AGE_MS)}
           initialReport={editingAction?.payload}
           initialCoordinates={editingAction?.payload.position||reportPin}
         />

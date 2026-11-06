@@ -72,3 +72,10 @@ test('an oversized draft is rejected without erasing earlier committed work',asy
   await expect(h.a.enqueue('A',big)).rejects.toMatchObject({code:'storage-full'});expect((await h.a.list('A')).actions.map(a=>a.id)).toEqual(['kept']);
  }finally{await h.a.close();await h.b.close();}
 });
+test('clock rollback cannot turn a valid saved record into an unreadable draft',async()=>{
+ const h=harness();try{await h.a.enqueue('A',report('clock'));h.clock=900;const row=await h.a.claim('A','clock');expect(row.updatedAt).toBe(1000);expect((await h.a.list('A')).invalidCount).toBe(0);const updated=await h.a.update('A',row.id,row.revision,{state:'failed'},{token:row.leaseToken,manual:true});expect(updated.updatedAt).toBe(1000);expect(await h.a.discard('A',updated.id,updated.revision)).toBe(true);}finally{await h.a.close();await h.b.close();}
+});
+test('legacy detection tolerates a browser SecurityError while acquiring storage',()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){throw new DOMException('Denied','SecurityError');}});
+ try{expect(()=>legacyActionsPresent()).not.toThrow();}finally{Object.defineProperty(globalThis,'localStorage',descriptor);}
+});

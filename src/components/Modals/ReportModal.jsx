@@ -16,6 +16,7 @@ const ReportModal = ({
   onSubmitReport,
   initialCoordinates,
   initialReport,
+  requiresFreshObservation=false,
 }) => {
   const dialogRef = useDialog(onClose);
   const { getPosition } = useGeolocation();
@@ -67,6 +68,7 @@ const ReportModal = ({
   );
   const [compressing, setCompressing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [freshConfirmed,setFreshConfirmed]=useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -115,6 +117,7 @@ const ReportModal = ({
       return;
     }
 
+    if(requiresFreshObservation&&!freshConfirmed){setErrorMsg(offline['action-stale']);return;}
     submitLock.current=true;
     let resolvedCoords = formData.position;
 
@@ -152,6 +155,7 @@ const ReportModal = ({
       const res = await onSubmitReport({
         ...formData,
         id:submissionId.current,
+        confirmedFreshObservation:requiresFreshObservation&&freshConfirmed,
         waterDepth: formData.type === "Waterlogging" ? formData.waterDepth || null : null,
         vehiclePassability: formData.type === "Waterlogging" ? formData.vehiclePassability || null : null,
         position: resolvedCoords,
@@ -327,6 +331,7 @@ const ReportModal = ({
             )}
           </div>
 
+          {requiresFreshObservation&&<label><input type="checkbox" required checked={freshConfirmed} onChange={event=>setFreshConfirmed(event.target.checked)}/>{offline.freshConfirm}</label>}
           <div className="form-actions">
             <Button variant="secondary" onClick={onClose} type="button">
               {t?.actions?.cancel || "Cancel"}

@@ -62,7 +62,7 @@ test('stale response cannot remove another tab replacement or reblock its retry'
 });
 test('automatic retry budget ends in recoverable blocked state',async()=>{
  const request=vi.fn(async()=>{throw new TypeError('offline');}),f=fixture(request);
- try{await f.store.enqueue('A',vote('road'));for(let i=0;i<8;i++){f.clock=1000+i*1000000;await f.runner.drain(identity);}expect(request).toHaveBeenCalledTimes(5);expect((await f.store.list('A')).actions[0]).toMatchObject({state:'blocked',reason:'retry-limit',attempts:5});}finally{await f.store.close();}
+ try{await f.store.enqueue('A',vote('road'));for(let i=0;i<8;i++){f.clock=1000+i*100000;await f.runner.drain(identity);}expect(request).toHaveBeenCalledTimes(5);expect((await f.store.list('A')).actions[0]).toMatchObject({state:'blocked',reason:'retry-limit',attempts:5});}finally{await f.store.close();}
 });
 
 test('HTTP status classification survives non-JSON errors',async()=>{
@@ -88,7 +88,7 @@ test('concurrent action failures cannot clear account blocks or shorten owner co
 test('server Retry-After longer than inferred backoff is honored across restart',async()=>{
  for(const header of ['3600',new Date(3601000).toUTCString()]){
   const request=vi.fn(async()=>reply({},429,{'Retry-After':header})),f=fixture(request);
-  try{await f.store.enqueue('A',vote('road'));await f.runner.drain(identity);await f.store.close();expect((await f.store.list('A')).gate.until).toBe(3601000);f.clock=901000;await f.runner.drain(identity);expect(request).toHaveBeenCalledTimes(1);f.clock=3601000;await f.runner.drain(identity);expect(request).toHaveBeenCalledTimes(2);}finally{await f.store.close();}
+  try{await f.store.enqueue('A',vote('road'));await f.runner.drain(identity);await f.store.close();expect((await f.store.list('A')).gate.until).toBe(3601000);f.clock=901000;await f.runner.drain(identity);expect(request).toHaveBeenCalledTimes(1);f.clock=3601000;await f.runner.drain(identity);expect(request).toHaveBeenCalledTimes(1);expect((await f.store.list('A')).actions[0].reason).toBe('stale');}finally{await f.store.close();}
  }
 });
 test('lost report acknowledgement locks its payload against edits until canonical retry completes',async()=>{
@@ -96,4 +96,18 @@ test('lost report acknowledgement locks its payload against edits until canonica
  try{const input={...report,payload:{...report.payload,mediaUrl:null}};await f.store.enqueue('A',input);await f.runner.drain(identity);const row=(await f.store.list('A')).actions[0];expect(row.uncertain).toBe(true);
   expect(await f.store.update('A',row.id,row.revision,{payload:{...row.payload,title:'New text that must not be lost'}},{manual:true})).toBeNull();f.clock=4000;await f.runner.drain(identity);expect((await f.store.list('A')).actions).toHaveLength(0);expect(accepted.title).toBe('Fixture');
  }finally{await f.store.close();}
+});
+test('overnight reports and votes are retained for fresh review without transmission',async()=>{
+ const request=vi.fn(),f=fixture(request);
+ try{await f.store.enqueue('A',report);await f.store.enqueue('A',vote('road'));f.clock=86401000;await f.runner.drain(identity);const saved=await f.store.list('A');expect(saved.actions).toHaveLength(2);expect(saved.actions.every(a=>a.state==='failed'&&a.reason==='stale')).toBe(true);expect(request).not.toHaveBeenCalled();
+  const row=saved.actions.find(a=>a.kind==='report');await f.store.update('A',row.id,row.revision,{payload:row.payload,state:'pending'},{manual:true});expect((await f.store.list('A')).actions.find(a=>a.kind==='report').observedAt).toBe(86401000);
+ }finally{await f.store.close();}
+});
+test('a new owner barrier during upload prevents the next incident POST',async()=>{
+ const uploaded=deferred(),entered=deferred(),request=vi.fn(async url=>{if(url.endsWith('/media/upload')){entered.resolve();return uploaded.promise;}return reply({},401);}),f=fixture(request);
+ try{await f.store.enqueue('A',report);await f.store.enqueue('A',vote('road'));const work=f.runner.run(identity,'r');await entered.promise;await f.runner.run(identity,'verify:road');uploaded.resolve(reply({mediaUrl:'/photo.webp'}));await work;expect(request.mock.calls.some(([url])=>url.endsWith('/incidents'))).toBe(false);expect((await f.store.list('A')).actions.find(a=>a.id==='r').state).toBe('blocked');}finally{await f.store.close();}
+});
+test('a photo upload crossing the age boundary preserves fresh-review eligibility if report was never sent',async()=>{
+ let f;const request=vi.fn(async()=>{f.clock=1803000;return reply({mediaUrl:'/photo.webp'});});f=fixture(request);
+ try{await f.store.enqueue('A',report);f.clock=1800000;await f.runner.drain(identity);const row=(await f.store.list('A')).actions[0];expect(row).toMatchObject({state:'failed',reason:'stale',uncertain:false});expect(request).toHaveBeenCalledTimes(1);expect(await f.store.update('A',row.id,row.revision,{payload:{...row.payload,confirmedFreshObservation:true},state:'pending'},{manual:true})).not.toBeNull();}finally{await f.store.close();}
 });

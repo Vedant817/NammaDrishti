@@ -38,3 +38,8 @@ test('over-limit restored fields explain validation without discarding the draft
  const submit=vi.fn();render(<ReportModal isOpen onClose={()=>{}} onSubmitReport={submit} initialReport={{title:'x'.repeat(201),description:'Kept note'}}/>);
  fireEvent.submit(document.querySelector('form'));expect(await screen.findByRole('alert')).toHaveTextContent('200 characters');expect(submit).not.toHaveBeenCalled();expect(document.querySelector('#report-title')).toHaveValue('x'.repeat(201));
 });
+test('fresh review requires an explicit new observation before resubmitting an aged report',async()=>{
+ const submit=vi.fn().mockResolvedValue({success:true});render(<ReportModal isOpen onClose={()=>{}} onSubmitReport={submit} requiresFreshObservation initialCoordinates={{lat:12.97,lng:77.59}} initialReport={{id:'stable',title:'Checked again',description:'Current conditions'}}/>);
+ fireEvent.submit(document.querySelector('form'));expect(await screen.findByRole('alert')).toHaveTextContent('Recheck the location');expect(submit).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('checkbox'));fireEvent.submit(document.querySelector('form'));await waitFor(()=>expect(submit).toHaveBeenCalledWith(expect.objectContaining({id:'stable',confirmedFreshObservation:true})));
+});

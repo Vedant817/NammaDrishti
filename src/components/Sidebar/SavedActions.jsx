@@ -19,8 +19,8 @@ export default function SavedActions({actions=[],gate={},storageError,legacy=fal
     {state==='pending'&&until>Date.now()&&<p>{copy.waitUntil}: <time dateTime={new Date(until).toISOString()}>{new Date(until).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time></p>}
     {action.uncertain&&<p>{copy.uncertain}</p>}
     {action.kind==='report'&&<details><summary>{copy.report}</summary><p>{action.payload.description}</p><p>{action.payload.ward}</p>{action.payload.mediaUrl&&<img src={action.payload.mediaUrl} alt={copy.photo}/>}</details>}
-    <div className="saved-actions__buttons"><button type="button" disabled={sending||busy!==null} onClick={()=>change(action,'retry')}>{copy.retry}</button>
-    {action.kind==='report'&&action.state==='failed'&&!action.uncertain&&<button type="button" disabled={sending||busy!==null} onClick={()=>onEdit(action)}>{copy.edit}</button>}
+    <div className="saved-actions__buttons">{action.reason!=='stale'&&<button type="button" disabled={sending||busy!==null} onClick={()=>change(action,'retry')}>{copy.retry}</button>}
+    {action.kind==='report'&&action.state==='failed'&&!action.uncertain&&<button type="button" disabled={sending||busy!==null} onClick={()=>onEdit(action)}>{action.reason==='stale'?copy.review:copy.edit}</button>}
     <button type="button" disabled={sending||busy!==null} onClick={()=>change(action,'discard')}>{copy.discard}</button></div>
    </li>;
   })}</ul>

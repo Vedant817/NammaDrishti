@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {API_BASE} from '../services/api';
 import {authenticatedFetch,subscribeActionIdentity,isActionIdentityCurrent} from '../services/firebaseService';
 import {offlineStore,legacyActionsPresent} from '../services/offlineStore';
-import {createActionRunner} from '../services/actionRunner';
+import {MAX_ACTION_AGE_MS,createActionRunner} from '../services/actionRunner';
 
 export function useOfflineActions(onConfirmed) {
   const [identity,setIdentity]=useState(null),[snapshot,setSnapshot]=useState({actions:[],markers:[],gate:{}}),[storageError,setStorageError]=useState(null);
@@ -51,6 +51,7 @@ export function useOfflineActions(onConfirmed) {
   const vote=useCallback((kind,id,voterPosition,i,summary={})=>persist({id:kind+':'+id,kind,payload:{incidentId:id,voterPosition,title:summary.title,ward:summary.ward}},i),[persist]);
   const changeAction=useCallback(async(action,operation,payload)=>{
     const i=identityRef.current;if(!i||action.owner!==i.uid||!current(i))return {errorCode:'identity-changed'};
+    if(operation!=='discard'&&(action.reason==='stale'||Date.now()-(action.observedAt??action.createdAt)>MAX_ACTION_AGE_MS)&&(!payload||!payload.confirmedFreshObservation))return {errorCode:'action-stale'};
     try{
       let result;
       if(operation==='discard')result=await offlineStore.discard(i.uid,action.id,action.revision);

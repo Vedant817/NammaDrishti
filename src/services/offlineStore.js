@@ -13,8 +13,9 @@ function payloadOK(kind,payload) {
 export function validAction(item,owner) {
   return !!item&&item.owner===owner&&ownerOK(owner)&&idOK(item.id)&&KINDS.has(item.kind)&&STATES.has(item.state)&&typeof item.uncertain==='boolean'&&payloadOK(item.kind,item.payload)&&idMatches(item)&&Number.isInteger(item.revision)&&item.revision>0&&Number.isFinite(item.createdAt)&&item.createdAt>=0&&Number.isFinite(item.updatedAt)&&item.updatedAt>=item.createdAt&&Number.isFinite(item.nextAt)&&item.nextAt>=0&&Number.isFinite(item.leaseUntil)&&item.leaseUntil>=0&&(item.leaseToken===null||typeof item.leaseToken==='string')&&Number.isInteger(item.attempts)&&item.attempts>=0;
 }
-export function legacyActionsPresent(storage=globalThis.localStorage) {
+export function legacyActionsPresent(storage) {
   try {
+    storage=storage||globalThis.localStorage;
     for(const key of ['nammadrishti_offline_queue_v1','nammadrishti_offline_votes_v1','nammadrishti_user_votes_v1','nammapulse_user_votes_v1']) {
       const raw=storage.getItem(key);if(!raw)continue;
       try {const value=JSON.parse(raw);if(Array.isArray(value)?value.length>0:value&&typeof value==='object'&&Object.keys(value).length>0)return true;}catch{return true;}
@@ -82,7 +83,7 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
           const all=actions.index('owner').getAll(owner);all.onsuccess=()=>{
             const bytes=JSON.stringify(input.payload).length*2+all.result.reduce((sum,item)=>sum+JSON.stringify(item).length*2,0);
             if(all.result.length>=MAX_ACTIONS||bytes>MAX_BYTES){set({error:'storage-full'});return;}
-            const time=now(),action={owner,id:input.id,kind:input.kind,payload:structuredClone(input.payload),state:'pending',uncertain:false,reason:null,attempts:0,nextAt:0,revision:1,leaseToken:null,leaseUntil:0,createdAt:time,updatedAt:time};
+            const time=now(),action={owner,id:input.id,kind:input.kind,payload:structuredClone(input.payload),state:'pending',uncertain:false,observedAt:time,reason:null,attempts:0,nextAt:0,revision:1,leaseToken:null,leaseUntil:0,createdAt:time,updatedAt:time};
             actions.add(action);set({action});
           };
         };
@@ -99,7 +100,7 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
         const get=actions.get([owner,id]);get.onsuccess=()=>{
           const current=get.result,time=now();
           if(!validAction(current,owner)||current.state!=='pending'||current.nextAt>time||current.leaseUntil>time){set(null);return;}
-          const next={...current,leaseToken:newId(),leaseUntil:time+LEASE_MS,revision:current.revision+1,updatedAt:time};actions.put(next);set(next);
+          const next={...current,leaseToken:newId(),leaseUntil:time+LEASE_MS,revision:current.revision+1,updatedAt:Math.max(time,current.updatedAt)};actions.put(next);set(next);
         };
       };
     });
@@ -115,7 +116,7 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
         if(!validAction(current,owner)||current.revision!==revision||(token?current.leaseToken!==token||current.leaseUntil<=now():current.leaseUntil>now())){set(null);return;}
         if(manual&&!token&&patch.payload&&(current.state!=='failed'||current.uncertain)){set(null);return;}
         const safe=Object.fromEntries(['state','uncertain','reason','nextAt','attempts','httpStatus','payload'].filter(key=>Object.hasOwn(patch,key)).map(key=>[key,patch[key]]));
-        const next={...current,...safe,revision:current.revision+1,updatedAt:now(),...(manual?{leaseToken:null,leaseUntil:0}:{})};
+        const next={...current,...safe,...(manual&&!token&&patch.payload?{observedAt:now()}:{}),revision:current.revision+1,updatedAt:Math.max(now(),current.updatedAt),...(manual?{leaseToken:null,leaseUntil:0}:{})};
         if(!validAction(next,owner)){set(null);return;}
         const all=actions.index('owner').getAll(owner);all.onsuccess=()=>{
           const bytes=all.result.filter(item=>item.id!==id).reduce((sum,item)=>sum+JSON.stringify(item).length*2,JSON.stringify(next).length*2);if(bytes>MAX_BYTES){set(null);return;}
