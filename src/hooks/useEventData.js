@@ -1,287 +1,38 @@
-import { API_BASE } from "../services/api";
-import { reconcileReport, reconcileSnapshot } from "../utils/incidentState";
-import { authenticatedFetch as fetch } from "../services/firebaseService";
-import { subscribePublicIncidents } from "../services/firebaseService";
-// src/hooks/useEventData.js
-import { useState, useEffect, useCallback, useRef } from "react";
-import { io } from "socket.io-client";
-import { recordReputationEvent } from "../utils/reputationService";
+import {API_BASE} from '../services/api';
+import {authenticatedFetch as fetch,subscribePublicIncidents} from '../services/firebaseService';
+import {useState,useEffect,useRef} from 'react';
+import {io} from 'socket.io-client';
+import {useOfflineActions} from './useOfflineActions';
 
-// v2: events are NEVER seeded from local sample data — the store starts empty
-// and fills exclusively from the live backend / offline queue / user reports.
-const STORAGE_KEY = "nammadrishti_events_v2";
-const VOTES_STORAGE_KEY = "nammadrishti_user_votes_v1";
-const LEGACY_VOTES_KEY = "nammapulse_user_votes_v1";
-const OFFLINE_QUEUE_KEY = "nammadrishti_offline_queue_v1";
-const OFFLINE_VOTES_KEY = "nammadrishti_offline_votes_v1";
+// v2 could contain device-global drafts and optimistic vote counts. It is
+// deliberately excluded from the new, authoritative-public-only cache.
+const STORAGE_KEY='nammadrishti_public_events_v3';
+const publicSnapshot=rows=>rows.filter(item=>item&&typeof item.id==='string'&&!item._isLocalPending);
+const safeSaveStorage=rows=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(publicSnapshot(rows)));}catch{}};
+const SOCKET_URL=process.env.REACT_APP_SOCKET_URL||((window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')&&window.location.port==='3000'?'http://localhost:5001':window.location.origin);
 
-const getSocketUrl = () => process.env.REACT_APP_SOCKET_URL || ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && window.location.port === '3000' ? 'http://localhost:5001' : window.location.origin);
-
-
-const SOCKET_URL = getSocketUrl();
-
-// Safe storage persistence with quota fallback (strips base64 image if quota exceeded)
-const safeSaveStorage = (eventsList) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(eventsList));
-  } catch (err) {
-    if (err.name === "QuotaExceededError" || err.code === 22) {
-      try {
-        const leanEvents = eventsList.map((evt, idx) => {
-          if (idx < 2) return evt;
-          const { mediaUrl, ...rest } = evt;
-          return rest;
-        });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(leanEvents));
-      } catch (retryErr) {
-        const noMediaEvents = eventsList.map(({ mediaUrl, ...rest }) => rest);
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(noMediaEvents));
-        } catch {}
-      }
-    }
-  }
-};
-
-const getOfflineQueue = () => {
-  try {
-    const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveOfflineQueue = (queue) => {
-  try {
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-    return { success: true, photoDropped: false };
-  } catch (err) {
-    if (err.name === "QuotaExceededError" || err.code === 22) {
-      try {
-        const leanQueue = queue.map(({ mediaUrl, ...rest }) => rest);
-        localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(leanQueue));
-        return {
-          success: true,
-          photoDropped: true,
-          warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
-        };
-      } catch (retryErr) {
-        console.warn("[OfflineQueue] Failed to save lean queue:", retryErr);
-      }
-    }
-    console.warn("[OfflineQueue] Failed to save queue:", err);
-    return { success: false, photoDropped: false, error: err.message };
-  }
-};
-
-const getOfflineVotes = () => {
-  try {
-    const raw = localStorage.getItem(OFFLINE_VOTES_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveOfflineVotes = (votes) => {
-  try {
-    localStorage.setItem(OFFLINE_VOTES_KEY, JSON.stringify(votes));
-    return true;
-  } catch (err) {
-    console.warn("[OfflineVotes] Failed to save votes queue:", err);
-    return false;
-  }
-};
-
-const getUserVotes = () => {
-  try {
-    return JSON.parse(localStorage.getItem(VOTES_STORAGE_KEY) || localStorage.getItem(LEGACY_VOTES_KEY) || "{}");
-  } catch {
-    return {};
-  }
-};
-
-const recordUserVote = (id, type) => {
-  try {
-    const votes = getUserVotes();
-    votes[`${type}_${id}`] = true;
-    localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(votes));
-  } catch (e) {}
-};
-
-const removeUserVote = (id, type) => {
-  try {
-    const votes = getUserVotes();
-    delete votes[`${type}_${id}`];
-    localStorage.setItem(VOTES_STORAGE_KEY, JSON.stringify(votes));
-  } catch (e) {}
-};
-
-const hasUserVoted = (id, type) => {
-  const votes = getUserVotes();
-  return Boolean(votes[`${type}_${id}`]);
-};
-
-const getOrCreateDeviceId = () => {
-  try {
-    let id = localStorage.getItem("nammadrishti_device_id_v1") || localStorage.getItem("nammapulse_device_id_v1");
-    if (!id) {
-      id = `dev_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
-      localStorage.setItem("nammadrishti_device_id_v1", id);
-    }
-    return id;
-  } catch {
-    return `dev_anon_${Date.now()}`;
-  }
-};
-
-async function prepareReport(report) {
-  if (!report.mediaUrl?.startsWith('data:')) return report;
-  const r = await fetch(`${API_BASE}/media/upload`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ imageBase64:report.mediaUrl }), signal:AbortSignal.timeout(15000) });
-  if (!r.ok) throw new Error('Photo upload failed. Report remains pending.');
-  const media = await r.json();
-  return {...report, mediaUrl:new URL(media.mediaUrl, API_BASE).href};
-}
-
-export const useEventData = () => {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isLiveConnected, setIsLiveConnected] = useState(false);
-  const [offlineQueueCount, setOfflineQueueCount] = useState(() => getOfflineQueue().length);
-  const socketRef = useRef(null);
-  const syncingRef = useRef(false);
-
-  // Sync queued offline submissions & votes to server safely without race condition
-  const syncOfflineQueue = useCallback(async () => {
-    if (syncingRef.current) return;
-    syncingRef.current = true;
-    try {
-    // 1. Sync pending hazard reports
-    const queue = getOfflineQueue();
-    if (queue && queue.length > 0) {
-      const successfulIds = new Set();
-      for (const item of queue) {
-        try {
-          const uploaded = await prepareReport(item);
-          const res = await fetch(`${API_BASE}/incidents`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...uploaded,
-              voterId: getOrCreateDeviceId(),
-            }),
-            signal: AbortSignal.timeout(3000),
-          });
-          if (res.ok) {
-            successfulIds.add(item.id);
-            const created = await res.json();
-            setEvents((prev) => {
-              const next = reconcileReport(prev, item.id, created);
-              safeSaveStorage(next);
-              return next;
-            });
-          }
-        } catch (err) {
-          // Keep in queue for subsequent sync
-        }
-      }
-
-      if (successfulIds.size > 0) {
-        // Re-read fresh queue from localStorage so items queued during await are not lost
-        const freshQueue = getOfflineQueue();
-        const remaining = freshQueue.filter((item) => !successfulIds.has(item.id));
-        saveOfflineQueue(remaining);
-        setOfflineQueueCount(remaining.length);
-      }
-    } else {
-      setOfflineQueueCount(0);
-    }
-
-    // 2. Sync pending offline votes (verifications and clearances)
-    const votesQueue = getOfflineVotes();
-    if (votesQueue && votesQueue.length > 0) {
-      const syncedVoteTimestamps = new Set();
-      for (const vote of votesQueue) {
-        try {
-          if (vote.type === "verify") {
-            const res = await fetch(`${API_BASE}/incidents/${vote.incidentId}/verify`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                voterPosition: vote.voterPosition,
-                voterId: getOrCreateDeviceId(),
-              }),
-              signal: AbortSignal.timeout(3000),
-            });
-            if (res.ok || res.status === 409) {
-              syncedVoteTimestamps.add(vote.timestamp);
-            }
-          } else if (vote.type === "clear") {
-            const res = await fetch(`${API_BASE}/incidents/${vote.incidentId}/resolve`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ voterId: getOrCreateDeviceId() }),
-              signal: AbortSignal.timeout(3000),
-            });
-            if (res.ok || res.status === 409) {
-              syncedVoteTimestamps.add(vote.timestamp);
-            } else if (res.status === 403) {
-              syncedVoteTimestamps.add(vote.timestamp);
-              removeUserVote(vote.incidentId, "clear");
-              fetch(`${API_BASE}/incidents`)
-                .then((r) => r.json())
-                .then((fresh) => {
-                  if (Array.isArray(fresh)) {
-                    setEvents(prev => {
-                      const next = reconcileSnapshot(prev, fresh);
-                      safeSaveStorage(next);
-                      return next;
-                    });
-                  }
-                })
-                .catch(() => {});
-            }
-          }
-        } catch (voteErr) {
-          // Will retry on next sync
-        }
-      }
-
-      if (syncedVoteTimestamps.size > 0) {
-        const freshVotes = getOfflineVotes();
-        const remainingVotes = freshVotes.filter((v) => !syncedVoteTimestamps.has(v.timestamp));
-        saveOfflineVotes(remainingVotes);
-      }
-    }
-    } finally { syncingRef.current = false; }
-  }, []);
-
-  // Listen to network status changes to drain offline queue
-  useEffect(() => {
-    const handleOnline = () => {
-      syncOfflineQueue();
-    };
-    window.addEventListener("online", handleOnline);
-    return () => window.removeEventListener("online", handleOnline);
-  }, [syncOfflineQueue]);
-
+export const useEventData=()=>{
+  const [events,setEvents]=useState([]),[loading,setLoading]=useState(true),[isLiveConnected,setIsLiveConnected]=useState(false);
+  const socketRef=useRef(null),streamVersion=useRef(0);
+  // Realtime snapshots own public counts and lifecycle. An older POST reply
+  // must not recreate an incident already resolved or expired by the stream.
+  const actions=useOfflineActions();
+  const {syncOfflineQueue}=actions;
   // Initialize from backend API or localStorage fallback
   useEffect(() => {
     let isMounted = true;
 
     const loadInitialData = async () => {
+      const started=streamVersion.current;
       try {
         const res = await fetch(`${API_BASE}/incidents`, {
           signal: AbortSignal.timeout(2500),
         });
         if (res.ok) {
           const remoteEvents = await res.json();
-          if (isMounted && Array.isArray(remoteEvents)) {
+          if (isMounted && streamVersion.current===started && Array.isArray(remoteEvents)) {
             setEvents((prev) => {
-              // Reconcile: Remote server snapshot is authoritative; keep local un-synced offline drafts
-              const pendingDrafts = prev.filter((p) => p._isLocalPending && !remoteEvents.some((r) => r.id === p.id));
-              const synced = [...remoteEvents, ...pendingDrafts];
+              const synced = publicSnapshot(remoteEvents);
               safeSaveStorage(synced);
               return synced;
             });
@@ -295,7 +46,8 @@ export const useEventData = () => {
         // Backend offline or unreachable
       }
 
-      // Local storage fallback (offline drafts / last synced snapshot).
+      if(!isMounted||streamVersion.current!==started)return;
+      // Last confirmed public snapshot only.
       // Deliberate behavior when nothing is stored: the map starts with an
       // honest empty state — zero fabricated incidents are ever seeded locally.
       try {
@@ -303,7 +55,7 @@ export const useEventData = () => {
         if (saved !== null) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            if (isMounted) setEvents(parsed);
+            if (isMounted) setEvents(publicSnapshot(parsed));
             return;
           }
         }
@@ -317,7 +69,7 @@ export const useEventData = () => {
     } else {
       // The public listener owns hosted snapshots. A slower initial REST read
       // must not overwrite a newer realtime update.
-      try { const cached = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if (Array.isArray(cached)) setEvents(cached); } catch {}
+      try { const cached = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if (Array.isArray(cached)) setEvents(publicSnapshot(cached)); } catch {}
       setLoading(false);
     }
 
@@ -326,7 +78,7 @@ export const useEventData = () => {
       const stop=subscribePublicIncidents((remote,online)=>{
         if(!isMounted)return;
         setIsLiveConnected(online);
-        setEvents(previous=>{const next=reconcileSnapshot(previous,remote);safeSaveStorage(next);return next;});
+        setEvents(previous=>{const next=publicSnapshot(remote);safeSaveStorage(next);return next;});
         if(online)syncOfflineQueue();
       },()=>{if(isMounted)setIsLiveConnected(false);});
       return ()=>{isMounted=false;stop();};
@@ -343,6 +95,7 @@ export const useEventData = () => {
         transports: ["websocket"],
       });
       socketRef.current = socket;
+      const listen=(event,handler)=>socket.on(event,data=>{streamVersion.current++;handler(data);});
 
       socket.on("connect", () => {
         if (isMounted) {
@@ -356,11 +109,10 @@ export const useEventData = () => {
       });
 
       // Handle full initial snapshot emitted by server on connection
-      socket.on("initial:data", (serverIncidents) => {
+      listen("initial:data", (serverIncidents) => {
         if (isMounted && Array.isArray(serverIncidents)) {
           setEvents((prev) => {
-            const pendingDrafts = prev.filter((p) => p._isLocalPending && !serverIncidents.some((r) => r.id === p.id));
-            const synced = [...serverIncidents, ...pendingDrafts];
+            const synced = publicSnapshot(serverIncidents);
             safeSaveStorage(synced);
             return synced;
           });
@@ -377,11 +129,11 @@ export const useEventData = () => {
           return next;
         });
       };
-      socket.on("incident:created", handleNewIncident);
-      socket.on("incident:new", handleNewIncident);
+      listen("incident:created", handleNewIncident);
+      listen("incident:new", handleNewIncident);
 
       // Handle spatial cluster merge updates
-      socket.on("incident:clustered", (data) => {
+      listen("incident:clustered", (data) => {
         if (!data || !isMounted) return;
         setEvents((prev) => {
           const next = prev.map((e) =>
@@ -405,7 +157,7 @@ export const useEventData = () => {
       });
 
       // Handle proximity-weighted verification score updates
-      socket.on("incident:verified", (data) => {
+      listen("incident:verified", (data) => {
         if (!data || !isMounted) return;
         setEvents((prev) => {
           const next = prev.map((e) =>
@@ -424,7 +176,7 @@ export const useEventData = () => {
       });
 
       // Handle multi-citizen consensus clearance votes
-      socket.on("incident:clearance_vote", (data) => {
+      listen("incident:clearance_vote", (data) => {
         if (!data || !isMounted) return;
         setEvents((prev) => {
           const next = prev.map((e) =>
@@ -442,7 +194,7 @@ export const useEventData = () => {
       });
 
       // Backward compatible listener for resolution_voted
-      socket.on("incident:resolution_voted", (data) => {
+      listen("incident:resolution_voted", (data) => {
         if (!data || !isMounted) return;
         setEvents((prev) => {
           const votes = data.clearanceVotes !== undefined ? data.clearanceVotes : data.resolutionVotes;
@@ -461,7 +213,7 @@ export const useEventData = () => {
       });
 
       // Handle authoritative hazard resolution / removal
-      socket.on("incident:resolved", ({ id }) => {
+      listen("incident:resolved", ({ id }) => {
         if (!isMounted) return;
         setEvents((prev) => {
           const next = prev.filter((e) => e.id !== id);
@@ -471,7 +223,7 @@ export const useEventData = () => {
       });
 
       // Handle dynamic TTL decay expiration
-      socket.on("incident:expired", ({ id }) => {
+      listen("incident:expired", ({ id }) => {
         if (!isMounted) return;
         setEvents((prev) => {
           const next = prev.filter((e) => e.id !== id);
@@ -491,302 +243,5 @@ export const useEventData = () => {
     };
   }, [syncOfflineQueue]);
 
-  // Synchronize state changes to localStorage
-  const persistLocally = useCallback((updatedEvents) => {
-    safeSaveStorage(updatedEvents);
-  }, []);
-
-  // Report a new civic incident with offline queue resilience and rejection handling
-  const addEvent = useCallback(async (newEvent) => {
-    const deterministicId = `namma_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const formatted = {
-      id: deterministicId,
-      type: newEvent.type || "Traffic",
-      title: newEvent.title || "Citizen Reported Incident",
-      urgency: newEvent.urgency || "Medium",
-      description: newEvent.description || "Reported via NammaDrishti Web App",
-      ward: newEvent.ward || "Bengaluru Urban",
-      timestamp: "Just now",
-      verificationCount: 1,
-      clusterCount: 1,
-      isVerified: false,
-      resolutionVotes: 0,
-      reportedBy: "You (Citizen)",
-      mediaUrl: newEvent.mediaUrl || null,
-      _isLocalPending: true,
-      ...newEvent,
-    };
-
-    // Optimistically insert locally without duplication
-    setEvents((prev) => {
-      if (prev.some((e) => e.id === formatted.id)) return prev;
-      const next = [formatted, ...prev];
-      safeSaveStorage(next);
-      return next;
-    });
-
-    // Record citizen reputation gain
-    recordReputationEvent('REPORT_SUBMITTED');
-
-    // Post to server preserving the client ID
-    try {
-      const uploaded = await prepareReport(formatted);
-      const res = await fetch(`${API_BASE}/incidents`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...uploaded,
-          voterId: getOrCreateDeviceId(),
-        }),
-        signal: AbortSignal.timeout(3000),
-      });
-
-      if (res.ok) {
-        const created = await res.json();
-        setEvents((prev) => {
-          const next = reconcileReport(prev, formatted.id, created);
-          safeSaveStorage(next);
-          return next;
-        });
-        return created;
-      } else if (res.status >= 400 && res.status < 500) {
-        // Validation / client error from server - rollback optimistic state
-        const errData = await res.json().catch(() => ({}));
-        setEvents((prev) => {
-          const filtered = prev.filter((e) => e.id !== formatted.id);
-          safeSaveStorage(filtered);
-          return filtered;
-        });
-        return { error: errData.error || "Report rejected by server." };
-      } else {
-        // Enqueue for background sync
-        const queue = getOfflineQueue();
-        queue.push(formatted);
-        const saveRes = saveOfflineQueue(queue);
-        if (saveRes?.success) setOfflineQueueCount(queue.length);
-        if (saveRes?.photoDropped) {
-          return {
-            ...formatted,
-            warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
-          };
-        }
-      }
-    } catch (err) {
-      // Backend unavailable; enqueue for background sync
-      const queue = getOfflineQueue();
-      queue.push(formatted);
-      const saveRes = saveOfflineQueue(queue);
-      if (saveRes?.success) setOfflineQueueCount(queue.length);
-      if (saveRes?.photoDropped) {
-        return {
-          ...formatted,
-          warning: "Device storage quota reached. Offline report saved as text-only without photo attachment.",
-        };
-      }
-    }
-
-    return formatted;
-  }, []);
-
-  // Upvote / Verify an incident with proximity weighting & single-vote per device protection
-  const verifyEvent = useCallback(
-    async (id, voterPosition) => {
-      if (hasUserVoted(id, "verify")) {
-        return { alreadyVoted: true };
-      }
-
-      recordUserVote(id, "verify");
-      recordReputationEvent('HAZARD_VERIFIED');
-
-      // Optimistic increment
-      setEvents((prev) => {
-        const next = prev.map((evt) => {
-          if (evt.id === id) {
-            const nextCount = (evt.verificationCount || 0) + 1;
-            return {
-              ...evt,
-              verificationCount: nextCount,
-              isVerified: nextCount >= 3,
-            };
-          }
-          return evt;
-        });
-        persistLocally(next);
-        return next;
-      });
-
-      // Synchronize with server
-      try {
-        const res = await fetch(`${API_BASE}/incidents/${id}/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            voterPosition,
-            voterId: getOrCreateDeviceId(),
-          }),
-          signal: AbortSignal.timeout(3000),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          // Rollback local vote status
-          removeUserVote(id, "verify");
-          setEvents((prev) => {
-            const next = prev.map((evt) => {
-              if (evt.id === id) {
-                const prevCount = Math.max(1, (evt.verificationCount || 1) - 1);
-                return {
-                  ...evt,
-                  verificationCount: prevCount,
-                  isVerified: prevCount >= 3,
-                };
-              }
-              return evt;
-            });
-            persistLocally(next);
-            return next;
-          });
-          return { error: errData.error || "Verification failed on server." };
-        }
-
-        const data = await res.json();
-        setEvents((prev) => {
-          const next = prev.map((evt) =>
-            evt.id === id
-              ? {
-                  ...evt,
-                  verificationCount: data.verificationCount,
-                  verificationScore: data.verificationScore,
-                  isVerified: data.isVerified,
-                }
-              : evt
-          );
-          persistLocally(next);
-          return next;
-        });
-        return { success: true };
-      } catch (err) {
-        if (typeof navigator !== "undefined" && navigator.onLine) {
-          removeUserVote(id, "verify");
-          setEvents((prev) => {
-            const next = prev.map((evt) => {
-              if (evt.id === id) {
-                const prevCount = Math.max(1, (evt.verificationCount || 1) - 1);
-                return {
-                  ...evt,
-                  verificationCount: prevCount,
-                  isVerified: prevCount >= 3,
-                };
-              }
-              return evt;
-            });
-            persistLocally(next);
-            return next;
-          });
-          return { error: "Network timeout or server unavailable. Please retry." };
-        }
-        // Enqueue offline verification vote for recovery sync
-        const votes = getOfflineVotes();
-        votes.push({ type: "verify", incidentId: id, voterPosition, timestamp: Date.now() });
-        saveOfflineVotes(votes);
-        return { success: true, offlineOptimistic: true };
-      }
-    },
-    [persistLocally]
-  );
-
-  // Multi-citizen consensus clearance with single-vote per device guard
-  const resolveEvent = useCallback(
-    async (id) => {
-      if (hasUserVoted(id, "clear")) {
-        return { alreadyVoted: true };
-      }
-
-      recordUserVote(id, "clear");
-      recordReputationEvent('HAZARD_CLEARED');
-
-      try {
-        const res = await fetch(`${API_BASE}/incidents/${id}/resolve`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ voterId: getOrCreateDeviceId() }),
-          signal: AbortSignal.timeout(3000),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          removeUserVote(id, "clear");
-          return { error: errData.error || "Clearance rejected by server." };
-        }
-
-        const data = await res.json();
-        if (data.cleared) {
-          setEvents((prev) => {
-            const next = prev.filter((e) => e.id !== id);
-            persistLocally(next);
-            return next;
-          });
-        } else {
-          setEvents((prev) => {
-            const next = prev.map((e) =>
-              e.id === id
-                ? {
-                    ...e,
-                    resolutionVotes: data.clearanceVotes,
-                    clearanceVotes: data.clearanceVotes,
-                  }
-                : e
-            );
-            persistLocally(next);
-            return next;
-          });
-        }
-        return { success: true };
-      } catch (err) {
-        if (typeof navigator !== "undefined" && navigator.onLine) {
-          removeUserVote(id, "clear");
-          return { error: "Network timeout or server unavailable. Please retry." };
-        }
-        // Enqueue offline resolution vote for recovery sync
-        const votes = getOfflineVotes();
-        votes.push({ type: "clear", incidentId: id, timestamp: Date.now() });
-        saveOfflineVotes(votes);
-
-        // Server offline; apply optimistic clearance
-        setEvents((prev) => {
-          const target = prev.find((e) => e.id === id);
-          if (!target) return prev;
-
-          const currentVotes = (target.resolutionVotes || 0) + 1;
-          if (currentVotes >= 2) {
-            const next = prev.filter((e) => e.id !== id);
-            persistLocally(next);
-            return next;
-          } else {
-            const next = prev.map((e) =>
-              e.id === id
-                ? { ...e, resolutionVotes: currentVotes, clearanceVotes: currentVotes }
-                : e
-            );
-            persistLocally(next);
-            return next;
-          }
-        });
-        return { success: true };
-      }
-    },
-    [persistLocally]
-  );
-
-  return {
-    events,
-    loading,
-    isLiveConnected,
-    offlineQueueCount,
-    syncOfflineQueue,
-    addEvent,
-    verifyEvent,
-    resolveEvent,
-    hasUserVoted,
-  };
+  return {events,loading,isLiveConnected,...actions};
 };

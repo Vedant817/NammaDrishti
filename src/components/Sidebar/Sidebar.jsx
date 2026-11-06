@@ -1,3 +1,4 @@
+import SavedActions from './SavedActions';
 import { API_BASE } from "../../services/api";
 import { authenticatedFetch as fetch } from "../../services/firebaseService";
 // src/components/Sidebar/Sidebar.jsx
@@ -16,7 +17,7 @@ import "./Sidebar.css";
 
 
 const Sidebar = ({
-  weather, onPlan, onReport, onFilterChange,
+  weather, onPlan, onReport, onFilterChange, savedActionsProps, actionSessionKey,
   publicContext = {official:{status:'loading',alerts:[]},traffic:{status:'loading',incidents:[]}},
   sourceClock = Date.now(),
   traffic = { status: 'loading', segments: [] },
@@ -120,6 +121,7 @@ const Sidebar = ({
         {activeTab === 'sources' && <PublicSourcesPanel context={publicContext} clock={sourceClock} onSelectLocation={onEventSelect}/>}
         {activeTab === 'traffic' && <TrafficPanel traffic={traffic} clock={clock} onSelectLocation={onEventSelect} onOverview={() => onTabChange('recap')} />}
         {delivery && <p role="status">{delivery==='LOCATION_RECORDED'?copy.locationSaved:delivery==='SAVE_FAILED'?copy.locationSaveFailed:copy.locationQueued} {t.live.call112}</p>}
+        {activeTab==='feed'&&savedActionsProps&&<SavedActions key={actionSessionKey} {...savedActionsProps}/>}
         {activeTab === "feed" && (
           <PersonalizedFeed
             events={events}

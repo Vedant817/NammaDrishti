@@ -1,7 +1,8 @@
+import {useOfflineCopy} from '../../data/offlineCopy';
 import { useDialog } from "../../hooks/useDialog";
 import { useInterfaceCopy } from '../../hooks/useInterfaceCopy';
 // src/components/Modals/ReportModal.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Button from "../Common/Button";
 import { useGeolocation } from "../../hooks/useGeolocation";
 import { useLanguage } from "../../context/LanguageContext";
@@ -14,11 +15,17 @@ const ReportModal = ({
   onClose,
   onSubmitReport,
   initialCoordinates,
+  initialReport,
 }) => {
   const dialogRef = useDialog(onClose);
   const { getPosition } = useGeolocation();
   const { t } = useLanguage();
   const copy=useInterfaceCopy();
+  const offline=useOfflineCopy();
+  const submissionId=useRef(initialReport?.id||`namma_${crypto.randomUUID()}`);
+  const alive=useRef(true);
+  const submitLock=useRef(false),photoSelection=useRef(0);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
 
   const reportT = {
     modalTitle: t?.report?.modalTitle || t?.reportModal?.title || "Report Civic or Traffic Incident",
@@ -50,6 +57,9 @@ const ReportModal = ({
     mediaUrl: null,
     waterDepth: "",
     vehiclePassability: "",
+    ...initialReport,
+    waterDepth:initialReport?.waterDepth||"",
+    vehiclePassability:initialReport?.vehiclePassability||"",
   });
 
   const [locationSource, setLocationSource] = useState(
@@ -82,40 +92,30 @@ const ReportModal = ({
     );
   };
 
-  const handleImageChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setCompressing(true);
-    setErrorMsg("");
-    try {
-      const result = await compressImage(file, 800, 800, 0.7);
-      if (result && result.dataUrl) {
-        setFormData((prev) => ({ ...prev, mediaUrl: result.dataUrl }));
-      } else {
-        const reader = new FileReader();
-        reader.onload = () => {
-          setFormData((prev) => ({ ...prev, mediaUrl: reader.result }));
-        };
-        reader.readAsDataURL(file);
-      }
-    } catch (err) {
-      console.warn("Client compression error, using fallback reader", err);
-    } finally {
-      setCompressing(false);
-    }
+  const handleImageChange=async(event)=>{
+    const input=event.target,file=input.files[0];if(!file)return;
+    const selection=++photoSelection.current;setCompressing(true);setErrorMsg('');
+    try{
+      const result=await compressImage(file,800,800,0.7);
+      if(!result?.dataUrl)throw new Error();
+      if(alive.current&&photoSelection.current===selection)setFormData(prev=>({...prev,mediaUrl:result.dataUrl}));
+    }catch{
+      if(alive.current&&photoSelection.current===selection){input.value='';setErrorMsg(offline.photoError);}
+    }finally{if(alive.current&&photoSelection.current===selection)setCompressing(false);}
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (submitting) return; // Prevent double-submit race condition
+    if (submitLock.current||submitting||compressing) return;
     setErrorMsg("");
 
+    if((formData.title?.trim().length||0)>200||(formData.ward?.length||0)>200||(formData.description?.trim().length||0)>2000){setErrorMsg(offline.fieldLimit);return;}
     if (!formData.description || !formData.description.trim()) {
       setErrorMsg("Please provide detailed field notes / description for fellow commuters.");
       return;
     }
 
+    submitLock.current=true;
     let resolvedCoords = formData.position;
 
     // Fallback: If no GPS or map pin, resolve live coordinates via Nominatim
@@ -132,12 +132,14 @@ const ReportModal = ({
       } catch (geoErr) {
         geocoded = null;
       } finally {
-        setSubmitting(false);
+        if(alive.current)setSubmitting(false);
       }
+      if(!alive.current){submitLock.current=false;return;}
 
       if (geocoded) {
         resolvedCoords = { lat: geocoded.lat, lng: geocoded.lng };
       } else {
+        submitLock.current=false;
         setErrorMsg(
           "No live geocode match found for this location. Use \"Auto-Detect GPS\", click the map to drop a pin before reporting, or name a specific Bengaluru landmark."
         );
@@ -149,10 +151,12 @@ const ReportModal = ({
     try {
       const res = await onSubmitReport({
         ...formData,
+        id:submissionId.current,
         waterDepth: formData.type === "Waterlogging" ? formData.waterDepth || null : null,
         vehiclePassability: formData.type === "Waterlogging" ? formData.vehiclePassability || null : null,
         position: resolvedCoords,
       });
+      if(!alive.current)return;
       if (res && res.error) {
         setErrorMsg(res.error);
         return;
@@ -161,7 +165,8 @@ const ReportModal = ({
     } catch (err) {
       setErrorMsg(err?.message || "Failed to submit hazard report. Please check connection and try again.");
     } finally {
-      setSubmitting(false);
+      submitLock.current=false;
+      if(alive.current)setSubmitting(false);
     }
   };
 
@@ -178,7 +183,7 @@ const ReportModal = ({
         </div>
 
         <form onSubmit={handleSubmit} className="report-form">
-          {errorMsg && <div className="report-error-banner">{errorMsg}</div>}
+          {errorMsg && <div role="alert" className="report-error-banner">{errorMsg}</div>}
 
           <div className="form-group">
             <label>{reportT.category}</label>
@@ -235,6 +240,7 @@ const ReportModal = ({
             <label htmlFor="report-title">{reportT.hazardTitle}</label>
             <input
               id="report-title"
+              maxLength={200}
               type="text"
               required
               placeholder="e.g. Waterlogging under the railway bridge"
@@ -248,6 +254,7 @@ const ReportModal = ({
               <label htmlFor="report-ward">{reportT.wardLocality}</label>
               <input
                 id="report-ward"
+                maxLength={200}
                 type="text"
                 required
                 placeholder="e.g. Silk Board, Panathur, Indiranagar"
@@ -273,6 +280,7 @@ const ReportModal = ({
             <label htmlFor="report-desc">{reportT.fieldNotes}</label>
             <textarea
               id="report-desc"
+              maxLength={2000}
               rows="3"
               required
               placeholder="Describe what you can see and how it affects the road."
@@ -305,6 +313,7 @@ const ReportModal = ({
             <input
               id="report-photo"
               type="file"
+              disabled={submitting}
               accept="image/*"
               onChange={handleImageChange}
               className="file-input"
@@ -312,7 +321,8 @@ const ReportModal = ({
             {compressing && <span className="compressing-hint">Compressing for low-bandwidth uplink...</span>}
             {formData.mediaUrl && (
               <div className="image-preview">
-                <img src={formData.mediaUrl} alt="Preview" />
+                <img src={formData.mediaUrl} alt={offline.photo} />
+                <button type="button" disabled={submitting||compressing} onClick={()=>setFormData(prev=>({...prev,mediaUrl:null}))}>{offline.removePhoto}</button>
               </div>
             )}
           </div>

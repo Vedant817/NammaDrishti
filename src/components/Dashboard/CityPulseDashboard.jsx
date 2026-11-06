@@ -1,3 +1,5 @@
+import {useOfflineCopy} from '../../data/offlineCopy';
+import {isActionIdentityCurrent} from '../../services/firebaseService';
 import { routeContext } from '../../services/routeContext';
 import { useReactiveRoute } from '../../hooks/useReactiveRoute';
 import { useTrafficData } from '../../hooks/useTrafficData';
@@ -38,11 +40,14 @@ const parseDeepLinkParams = () => {
 const DEEP_LINK = parseDeepLinkParams();
 
 const CityPulseDashboard = () => {
-  const { events, isLiveConnected, offlineQueueCount, addEvent, verifyEvent, resolveEvent } = useEventData();
+  const { events, isLiveConnected, offlineQueueCount, addEvent, verifyEvent, resolveEvent, actionIdentity, savedActions, actionGate, storageError, legacyActions, invalidActionCount, changeAction } = useEventData();
   const { weather } = useWeatherTelemetry();
   const { traffic, clock } = useTrafficData();
   const { context: publicContext, clock: sourceClock } = usePublicContext();
   const copy=useInterfaceCopy();
+  const offline=useOfflineCopy();
+  const [editingAction,setEditingAction]=useState(null);
+  const [reportIdentity,setReportIdentity]=useState(null);
 
   const [activeFilter, setActiveFilter] = useState("All");
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -56,6 +61,10 @@ const CityPulseDashboard = () => {
   const routeSources = routeContext(events, publicContext.traffic, sourceClock);
   useReactiveRoute(navigationRoute, setNavigationRoute, routeSources.hazards, isLiveConnected, routeSources.coverage);
   const [userLocation, setUserLocation] = useState(null);
+
+  useEffect(()=>{
+    setEditingAction(null);setShowReportModal(false);setReportPin(null);setSelectedEvent(null);setToastMessage(null);
+  },[actionIdentity?.uid,actionIdentity?.sessionKey]);
 
   // Deep-link camera: one-shot fly for ?view=... (only until the user interacts)
   const [initialCamera, setInitialCamera] = useState(
@@ -124,40 +133,27 @@ const CityPulseDashboard = () => {
   };
 
   const handleOpenReportModal = () => {
-    setShowReportModal(true);
+    setEditingAction(null);setReportIdentity(actionIdentity);setShowReportModal(true);
   };
 
   const handleSubmitReport = async (newReport) => {
-    const created = await addEvent(newReport);
-    if (created && created.error) {
-      return { error: created.error };
-    }
-    setSelectedEvent(created);
-    setReportPin(null);
-    showToast("Report added to the map.");
-    return { success: true };
+    const identity=reportIdentity;
+    if(!isActionIdentityCurrent(identity))return {error:offline['identity-changed']};
+    const result=editingAction?await changeAction(editingAction,'retry',newReport):await addEvent(newReport,identity);
+    if(!isActionIdentityCurrent(identity))return {error:offline['identity-changed']};
+    if(result?.errorCode)return {error:offline[result.errorCode]||offline['storage-unavailable']};
+    setEditingAction(null);setReportPin(null);setSidebarTab('feed');showToast(offline.saved);
+    return {success:true};
   };
-
-  const handleVerifyEvent = async (id) => {
-    const res = await verifyEvent(id, userLocation);
-    if (res?.alreadyVoted) {
-      showToast("⚠️ You have already verified this incident.");
-    } else if (res?.success) {
-      showToast("✓ Confirmation recorded (+1 consensus)!");
-    } else if (res?.error) {
-      showToast(`⚠️ ${res.error}`);
-    }
+  const handleVerifyEvent = async(id)=>{
+    const identity=actionIdentity,res=await verifyEvent(id,userLocation,identity,events.find(e=>e.id===id));
+    if(!isActionIdentityCurrent(identity))return;
+    showToast(res?.errorCode?offline[res.errorCode]||offline['storage-unavailable']:res?.alreadyVoted?offline.duplicate:offline.saved);
   };
-
-  const handleResolveEvent = async (id) => {
-    const res = await resolveEvent(id);
-    if (res?.alreadyVoted) {
-      showToast("⚠️ You have already voted to clear this hazard.");
-    } else if (res?.success) {
-      showToast("✓ Resolution vote cast! (2 citizen consensus required to clear)");
-    } else if (res?.error) {
-      showToast(`⚠️ ${res.error}`);
-    }
+  const handleResolveEvent = async(id)=>{
+    const identity=actionIdentity,res=await resolveEvent(id,identity,events.find(e=>e.id===id));
+    if(!isActionIdentityCurrent(identity))return;
+    showToast(res?.errorCode?offline[res.errorCode]||offline['storage-unavailable']:res?.alreadyVoted?offline.duplicate:offline.saved);
   };
 
   const handleFilterChange = (filter) => {
@@ -259,6 +255,8 @@ const CityPulseDashboard = () => {
         </main>
 
         <Sidebar
+          savedActionsProps={{actions:savedActions,gate:actionGate,storageError,legacy:legacyActions,invalidCount:invalidActionCount,onChange:changeAction,onEdit:action=>{setEditingAction(action);setReportIdentity(actionIdentity);setReportPin(null);setShowReportModal(true);}}}
+          actionSessionKey={(actionIdentity?.uid||'')+':'+(actionIdentity?.sessionKey||'')}
           weather={weather}
           onPlan={()=>setShowRouteModal(true)}
           onReport={handleOpenReportModal}
@@ -283,15 +281,17 @@ const CityPulseDashboard = () => {
       </div>
 
       {/* Citizen Report Modal */}
-      {showReportModal && (
+      {showReportModal&&reportIdentity?.uid===actionIdentity?.uid&&reportIdentity?.sessionKey===actionIdentity?.sessionKey&&isActionIdentityCurrent(reportIdentity)&&(
         <ReportModal
+          key={reportIdentity.uid+':'+reportIdentity.sessionKey}
           isOpen={showReportModal}
           onClose={() => {
-            setShowReportModal(false);
+            setShowReportModal(false);setEditingAction(null);
             setReportPin(null);
           }}
           onSubmitReport={handleSubmitReport}
-          initialCoordinates={reportPin}
+          initialReport={editingAction?.payload}
+          initialCoordinates={editingAction?.payload.position||reportPin}
         />
       )}
 

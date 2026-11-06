@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import AccountPanel from './AccountPanel';
 import { citizenRole, signInCitizen } from '../../services/firebaseService';
-vi.mock('../../services/firebaseService',()=>({citizenRole:vi.fn(),signInCitizen:vi.fn(),signOutCitizen:vi.fn(),resendCitizenVerification:vi.fn(),authenticatedFetch:vi.fn()}));
+vi.mock('../../services/firebaseService',()=>({subscribeActionIdentity:vi.fn(listener=>{listener({uid:'fixture',sessionKey:1});return()=>{};}),actionIdentitySnapshot:vi.fn(()=>({uid:'fixture',sessionKey:1})),isActionIdentityCurrent:vi.fn(()=>true),citizenRole:vi.fn(),signInCitizen:vi.fn(),signOutCitizen:vi.fn(),resendCitizenVerification:vi.fn(),authenticatedFetch:vi.fn()}));
 beforeEach(()=>{citizenRole.mockResolvedValue(null);signInCitizen.mockResolvedValue({});});
 test('account creation uses labelled fields, a dedicated mode and verification feedback',async()=>{
   render(<AccountPanel onClose={()=>{}}/>);

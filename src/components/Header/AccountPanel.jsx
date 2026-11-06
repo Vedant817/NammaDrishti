@@ -1,7 +1,7 @@
 import BackupStatus from './BackupStatus';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { UserRound, X, CheckCircle2 } from 'lucide-react';
-import { citizenRole, signInCitizen, signOutCitizen, resendCitizenVerification, authenticatedFetch } from '../../services/firebaseService';
+import { subscribeActionIdentity, actionIdentitySnapshot, isActionIdentityCurrent, citizenRole, signInCitizen, signOutCitizen, resendCitizenVerification, authenticatedFetch } from '../../services/firebaseService';
 import { API_BASE } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { useDialog } from '../../hooks/useDialog';
@@ -21,43 +21,59 @@ export default function AccountPanel({ onClose }) {
   const [audit, setAudit] = useState([]);
   const [operations, setOperations] = useState(null);
   const [reason, setReason] = useState('');
-  useEffect(() => { let active=true;setBusy(true);refresh().catch(()=>{if(active){setError(true);setStatus(t.account.failed);}}).finally(()=>{if(active)setBusy(false);});return()=>{active=false;}; }, []);
-
-  async function refresh() {
+  const session=useRef(null),epoch=useRef(0),operation=useRef(0),active=useRef(false),locked=useRef(false);
+  const current=(identity,version)=>active.current&&epoch.current===version&&session.current?.uid===identity?.uid&&session.current?.sessionKey===identity?.sessionKey&&(!identity||isActionIdentityCurrent(identity));
+  useEffect(()=>{
+    active.current=true;
+    const stop=subscribeActionIdentity(identity=>startRefresh(identity));
+    return()=>{active.current=false;epoch.current++;operation.current++;stop();};
+  },[]);
+  async function refresh(identity=session.current,version=epoch.current) {
+    if(!identity||!current(identity,version))return;
     setOperations(null);
-    const current = await citizenRole();
-    setRole(current); setError(false);
-    setStatus(current?.email ? current.verified ? t.account.verified : t.account.verify : '');
-    if (current?.moderator) {
-      const response = await authenticatedFetch(`${API_BASE}/moderation`);
-      if (!response.ok) throw new Error();
-      const data = await response.json(); setItems(data.incidents); setAudit(data.audit);
-      const ops = await authenticatedFetch(`${API_BASE}/operations`);
-      if (!ops.ok) throw new Error();
-      setOperations(await ops.json());
+    const value=await citizenRole(identity);
+    if(!current(identity,version))return;
+    setRole(value);setError(false);
+    setStatus(value?.email?value.verified?t.account.verified:t.account.verify:'');
+    if(value?.moderator){
+      const response=await authenticatedFetch(`${API_BASE}/moderation`,{expectedIdentity:identity});
+      if(!response.ok)throw new Error();const data=await response.json();
+      if(!current(identity,version))return;
+      setItems(data.incidents);setAudit(data.audit);
+      const responseOps=await authenticatedFetch(`${API_BASE}/operations`,{expectedIdentity:identity});
+      if(!responseOps.ok)throw new Error();const dataOps=await responseOps.json();
+      if(current(identity,version))setOperations(dataOps);
     }
   }
-  async function perform(task) {
-    if (busy) return;
-    setBusy(true); setStatus(''); setError(false);
-    try { await task(); }
-    catch { setError(true); setStatus(t.account.failed); }
-    finally { setBusy(false); }
+  async function startRefresh(identity){
+    session.current=identity;const version=++epoch.current,job=++operation.current;
+    locked.current=true;setBusy(true);setRole(null);setItems([]);setAudit([]);setOperations(null);setReason('');setPassword('');setEmail('');setStatus('');setError(false);
+    try{await refresh(identity,version);}catch{if(current(identity,version)){setError(true);setStatus(t.account.failed);}}
+    finally{if(active.current&&operation.current===job){locked.current=false;setBusy(false);}}
   }
-  function submit(event) {
+  async function perform(task){
+    if(locked.current)return;
+    const identity=session.current,version=epoch.current,job=++operation.current;
+    locked.current=true;setBusy(true);setStatus('');setError(false);
+    try{await task(identity,version);}
+    catch{if(current(identity,version)){setError(true);setStatus(t.account.failed);}}
+    finally{if(active.current&&operation.current===job){locked.current=false;setBusy(false);}}
+  }
+  function submit(event){
     event.preventDefault();
-    perform(async () => { await signInCitizen(email.trim(), password, register); setPassword(''); await refresh(); });
+    perform(async()=>{await signInCitizen(email.trim(),password,register);if(active.current)await startRefresh(actionIdentitySnapshot());});
   }
-  function moderate(id, action) {
-    perform(async () => {
-      const response = await authenticatedFetch(`${API_BASE}/moderation/${id}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,reason}) });
-      if (!response.ok) throw new Error();
-      setReason(''); await refresh();
+  function moderate(id,action){
+    perform(async(identity,version)=>{
+      const response=await authenticatedFetch(`${API_BASE}/moderation/${encodeURIComponent(id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,reason}),expectedIdentity:identity});
+      if(!response.ok)throw new Error();
+      if(current(identity,version)){setReason('');await refresh(identity,version);}
     });
   }
-  const signedIn = Boolean(role?.email);
+  const visibleRole=current(session.current,epoch.current)?role:null;
+  const signedIn = Boolean(visibleRole?.email);
   return <div className="modal-overlay account-overlay" onClick={onClose}>
-    <section ref={dialog} className={`account-panel ${role?.moderator ? 'account-panel--moderator' : ''}`} role="dialog" aria-modal="true" aria-labelledby="account-title" tabIndex={-1} onClick={event => event.stopPropagation()}>
+    <section ref={dialog} className={`account-panel ${visibleRole?.moderator ? 'account-panel--moderator' : ''}`} role="dialog" aria-modal="true" aria-labelledby="account-title" tabIndex={-1} onClick={event => event.stopPropagation()}>
       <header className="account-panel__header">
         <span className="account-panel__icon" aria-hidden="true"><UserRound size={22} strokeWidth={1.7}/></span>
         <h2 id="account-title">{t.account.title}</h2>
@@ -75,14 +91,14 @@ export default function AccountPanel({ onClose }) {
             <div className="account-panel__field"><label htmlFor="account-password">{t.account.password}</label><input id="account-password" type="password" name="password" required minLength={register ? 8 : 6} maxLength={128} value={password} autoComplete={register ? 'new-password' : 'current-password'} onChange={event => setPassword(event.target.value)}/>{register && <small>{t.account.passwordHint}</small>}</div>
             <button className="account-panel__primary" type="submit" disabled={busy}>{busy ? t.account.working : register ? t.account.create : t.account.signIn}</button>
           </form>
-        </> : <div className="account-panel__identity"><span className="account-panel__email">{role.email}</span><span className={`account-panel__verification ${role.verified ? 'is-verified' : ''}`}>{role.verified && <CheckCircle2 size={16}/>} {role.verified ? t.account.verified : t.account.verify}</span></div>}
+        </> : <div className="account-panel__identity"><span className="account-panel__email">{visibleRole.email}</span><span className={`account-panel__verification ${visibleRole.verified ? 'is-verified' : ''}`}>{visibleRole.verified && <CheckCircle2 size={16}/>} {visibleRole.verified ? t.account.verified : t.account.verify}</span></div>}
         {status && <p className={`account-panel__status ${error ? 'is-error' : ''}`} role={error ? 'alert' : 'status'}>{status}</p>}
         {signedIn && <div className="account-panel__actions">
-          <button type="button" disabled={busy} onClick={() => perform(refresh)}>{t.account.refresh}</button>
-          {!role.verified && <button type="button" disabled={busy} onClick={() => perform(async () => { await resendCitizenVerification(); setStatus(t.account.verify); })}>{t.account.resend}</button>}
-          <button type="button" disabled={busy} onClick={() => perform(async () => { await signOutCitizen();setRole(null);setItems([]);setStatus(''); })}>{t.live.signOut}</button>
+          <button type="button" disabled={busy} onClick={() => perform((identity,version)=>refresh(identity,version))}>{t.account.refresh}</button>
+          {!visibleRole.verified && <button type="button" disabled={busy} onClick={() => perform(async (identity,version) => { await resendCitizenVerification(identity); if(current(identity,version))setStatus(t.account.verify); })}>{t.account.resend}</button>}
+          <button type="button" disabled={busy} onClick={() => perform(async (identity) => { await signOutCitizen(identity);if(active.current)await startRefresh(actionIdentitySnapshot()); })}>{t.live.signOut}</button>
         </div>}
-        {role?.moderator && <section className="account-panel__moderation">
+        {visibleRole?.moderator && <section className="account-panel__moderation">
           <h3>{t.live.moderation}</h3>
           <label htmlFor="moderation-reason">{t.account.reason}</label><textarea id="moderation-reason" value={reason} maxLength={500} onChange={event => setReason(event.target.value)}/>
           {items.length === 0 && <p>{t.sidebar.emptyState}</p>}
