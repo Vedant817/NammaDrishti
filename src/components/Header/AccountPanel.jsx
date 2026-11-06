@@ -21,7 +21,7 @@ export default function AccountPanel({ onClose }) {
   const [audit, setAudit] = useState([]);
   const [operations, setOperations] = useState(null);
   const [reason, setReason] = useState('');
-  useEffect(() => { let active = true; citizenRole().then(value => { if (active) { setRole(value); if (value?.moderator) refresh().catch(() => { if (active) {setError(true);setStatus(t.account.failed);} }); } }).catch(() => {}); return () => { active = false; }; }, []);
+  useEffect(() => { let active=true;setBusy(true);refresh().catch(()=>{if(active){setError(true);setStatus(t.account.failed);}}).finally(()=>{if(active)setBusy(false);});return()=>{active=false;}; }, []);
 
   async function refresh() {
     setOperations(null);

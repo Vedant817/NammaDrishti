@@ -7,6 +7,7 @@ beforeEach(()=>{citizenRole.mockResolvedValue(null);signInCitizen.mockResolvedVa
 test('account creation uses labelled fields, a dedicated mode and verification feedback',async()=>{
   render(<AccountPanel onClose={()=>{}}/>);
   expect(screen.getByRole('dialog',{name:'Citizen account'})).toBeInTheDocument();
+  await waitFor(()=>expect(screen.getAllByRole('button',{name:'Sign in'}).at(-1)).toBeEnabled());
   fireEvent.click(screen.getByRole('button',{name:'Create an account'}));
   fireEvent.change(screen.getByLabelText('Email'),{target:{value:'citizen@example.com'}});
   fireEvent.change(screen.getByLabelText('Password'),{target:{value:'fixture-password'}});

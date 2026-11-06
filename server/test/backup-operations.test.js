@@ -84,3 +84,11 @@ test('backup starts while maintenance is still pending',async()=>{
  const run=runMaintenanceAndBackup(()=>pending,async()=>{calls++;return {status:'complete'};});
  await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,1);release();assert.equal((await run).success,true);
 });
+
+test('orphan deletion outages do not suppress new verified recovery points or hide cleanup failure',async()=>{
+ const h=harness(),get=h.blob.get;await h.service.run();const first=h.state.url;
+ h.blob.get=async()=>{throw new Error('read outage');};h.blob.del=async()=>{throw new Error('delete outage');};
+ await assert.rejects(h.service.run({force:true}));assert.equal(h.state.pendingUploads.length,1);
+ h.now+=900001;h.blob.get=get;
+ const result=await h.service.run();assert.equal(result.status,'complete');assert.notEqual(h.state.url,first);assert.ok(h.files.has(h.state.url));assert.equal(h.state.cleanupStatus,'failed');assert.equal(h.state.pendingUploads.length,1);
+});

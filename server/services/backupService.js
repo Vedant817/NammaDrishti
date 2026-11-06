@@ -72,7 +72,7 @@ function createBackupService({db,blob=require('@vercel/blob'),token=process.env.
       }
       return {status:'skipped',reason:'fresh'};
     }
-    let object,archivePath,committed=false,publicationAttempted=false;
+    let object,archivePath,committed=false,publicationAttempted=false,cleanupStatus='complete';
     async function clearPending(pathname) {
       const current=(await ref.get()).data()||{};
       const page=await blob.list({token,prefix:pathname,limit:1000});
@@ -83,7 +83,7 @@ function createBackupService({db,blob=require('@vercel/blob'),token=process.env.
     try {
       // Reconcile abandoned uploads only after twice the maximum request/lease duration.
       const previous=(await ref.get()).data()||{};
-      for(const entry of previous.pendingUploads||[])if(entry.at<clock()-600000)await clearPending(entry.path);
+      for(const entry of previous.pendingUploads||[])if(entry.at<clock()-600000){try{await clearPending(entry.path);}catch{cleanupStatus='failed';}}
       const archive=await capture(),bytes=gzipSync(Buffer.from(JSON.stringify(archive)));
       if(bytes.length>LIMIT*1.5) throw new Error('Backup budget exceeded');
       archivePath=prefix+new Date(now).toISOString().replace(/[:.]/g,'-')+'-'+owner+'.json.gz';
@@ -103,7 +103,7 @@ function createBackupService({db,blob=require('@vercel/blob'),token=process.env.
       await db.runTransaction(async tx=>{
         const current=(await tx.get(ref)).data();
         if(current?.owner!==owner || current.leaseUntil<=clock()) throw new Error('Backup lease lost');
-        tx.set(ref,{...current,leaseUntil:0,status:'complete',completedAt:clock(),lastCompletedTrigger:trigger,cleanupStatus:'complete',nextAttemptAt:0,pendingUploads:(current.pendingUploads||[]).filter(item=>item.path!==archivePath),url:object.url,records:Object.values(archive.payload).reduce((n,g)=>n+g.length,0),media:archive.media.length,bytes:bytes.length,externalMediaLinks:archive.externalMediaLinks,retentionStatus:'pending',retentionOwner:owner,retentionLeaseUntil:clock()+300000,nextRetentionAt:clock()+900000,...(trigger==='maintenance'?{lastMaintenanceOutcome:'complete'}:{})});
+        tx.set(ref,{...current,leaseUntil:0,status:'complete',completedAt:clock(),lastCompletedTrigger:trigger,cleanupStatus,nextAttemptAt:0,pendingUploads:(current.pendingUploads||[]).filter(item=>item.path!==archivePath),url:object.url,records:Object.values(archive.payload).reduce((n,g)=>n+g.length,0),media:archive.media.length,bytes:bytes.length,externalMediaLinks:archive.externalMediaLinks,retentionStatus:'pending',retentionOwner:owner,retentionLeaseUntil:clock()+300000,nextRetentionAt:clock()+900000,...(trigger==='maintenance'?{lastMaintenanceOutcome:'complete'}:{})});
       });
       committed=true;
       let retentionStatus='complete';
@@ -119,7 +119,6 @@ function createBackupService({db,blob=require('@vercel/blob'),token=process.env.
         if(current?.url===object?.url&&current.status==='complete')return {status:'complete',records:current.records,media:current.media,retentionStatus:current.retentionStatus};
         throw error;
       }
-      let cleanupStatus='complete';
       if(archivePath&&!committed) { try { if(object)await blob.del(object.url,{token});await clearPending(archivePath); } catch {cleanupStatus='failed';} }
       if(!committed) await db.runTransaction(async tx=>{
         const current=(await tx.get(ref)).data();

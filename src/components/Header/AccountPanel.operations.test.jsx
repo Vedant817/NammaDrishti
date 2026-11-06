@@ -13,3 +13,16 @@ test('a failed operations refresh removes the previously healthy backup card and
  await waitFor(()=>expect(screen.queryByText('Current verified snapshot')).not.toBeInTheDocument());
  expect(await screen.findByRole('alert')).toBeInTheDocument();
 });
+
+test('initial moderator refresh cannot overlap an explicit refresh and revive stale health',async()=>{
+ citizenRole.mockResolvedValue({email:'fixture@example.invalid',verified:true,moderator:true});
+ let release;
+ authenticatedFetch.mockImplementation(async url=>String(url).endsWith('/moderation')?{ok:true,json:async()=>({incidents:[],audit:[]})}:new Promise(resolve=>{release=resolve;}));
+ render(<AccountPanel onClose={()=>{}}/>);
+ const refresh=await screen.findByRole('button',{name:/Refresh/i});expect(refresh).toBeDisabled();
+ await waitFor(()=>expect(release).toBeTypeOf('function'));
+ fireEvent.click(refresh);expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+ release({ok:true,json:async()=>({sources:{},backup:{configured:true,health:'healthy',completedAt:Date.now()}})});
+ await waitFor(()=>expect(refresh).not.toBeDisabled());
+ expect(screen.getByText('Current verified snapshot')).toBeInTheDocument();
+});
