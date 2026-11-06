@@ -14,9 +14,11 @@ export function createIdentityTracker() {
     },
   };
 }
-export function createPinnedRequester({getSession,fetcher=(...args)=>fetch(...args)}) {
+export function createPinnedRequester({getSession,getEntryIdentity,fetcher=(...args)=>fetch(...args)}) {
   return async function request(url,options={}) {
-    const {expectedIdentity,...nativeOptions}=options;
+    const {expectedIdentity:explicitIdentity,...nativeOptions}=options;
+    const expectedIdentity=explicitIdentity||getEntryIdentity?.();
+    if(getEntryIdentity&&!expectedIdentity)throw identityChanged();
     const session=await getSession();
     const guard=()=>{
       if(!session?.identity || !session.isCurrent() || (expectedIdentity && (expectedIdentity.uid!==session.identity.uid || expectedIdentity.sessionKey!==session.identity.sessionKey)))throw identityChanged();

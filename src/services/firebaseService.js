@@ -1,4 +1,4 @@
-import {createIdentityTracker,createPinnedRequester} from './identityRequest';
+import {identityChanged,createIdentityTracker,createPinnedRequester} from './identityRequest';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithEmailAndPassword, createUserWithEmailAndPassword, EmailAuthProvider, linkWithCredential, sendEmailVerification, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
@@ -26,15 +26,16 @@ export function isActionIdentityCurrent(identity) {
 export function subscribeActionIdentity(listener) {
   if(!projectId){
     const update=()=>listener(identityTracker.observe(localIdentity()));
-    update();window.addEventListener('storage',update);
-    return()=>window.removeEventListener('storage',update);
+    const changed=event=>{if(!event.key||['nammadrishti_device_id_v1','nammapulse_device_id_v1'].includes(event.key))update();};
+    update();window.addEventListener('storage',changed);
+    return()=>window.removeEventListener('storage',changed);
   }
   const auth=citizenAuth();
   const stop=onAuthStateChanged(auth,user=>listener(identityTracker.observe(user)));
   ensureCitizen().catch(()=>listener(identityTracker.observe(auth.currentUser)));
   return stop;
 }
-const pinnedRequest=createPinnedRequester({getSession:async()=>{
+const pinnedRequest=createPinnedRequester({getEntryIdentity:actionIdentitySnapshot,getSession:async()=>{
   if(!projectId){const user=localIdentity(),identity=identityTracker.observe(user);return {identity,isCurrent:()=>identityTracker.isCurrent(identity,localIdentity())};}
   const auth=await ensureCitizen(),user=auth.currentUser,identity=identityTracker.observe(user);
   return {identity,isCurrent:()=>identityTracker.isCurrent(identity,auth.currentUser),getToken:()=>user.getIdToken()};
@@ -54,17 +55,22 @@ export async function signInCitizen(email,password,register=false) {
   await result.user.getIdToken(true);
   return result.user;
 }
-export async function citizenRole() {
+export async function citizenRole(expectedIdentity) {
   const auth=citizenAuth();await auth.authStateReady();
-  if(!auth.currentUser)return null;
-  await auth.currentUser.reload();const token=await auth.currentUser.getIdTokenResult(true);
-  return {email:auth.currentUser.email,verified:auth.currentUser.emailVerified,moderator:token.claims.moderator===true};
+  const user=auth.currentUser,identity=identityTracker.observe(user);
+  if(!user){if(expectedIdentity)throw identityChanged();return null;}
+  const guard=()=>{if(!identityTracker.isCurrent(identity,auth.currentUser)||(expectedIdentity&&(identity.uid!==expectedIdentity.uid||identity.sessionKey!==expectedIdentity.sessionKey)))throw identityChanged();};
+  guard();await user.reload();guard();const token=await user.getIdTokenResult(true);guard();
+  return {uid:user.uid,email:user.email,verified:user.emailVerified,moderator:token.claims.moderator===true};
 }
-export async function signOutCitizen() {return signOut(citizenAuth());}
-export async function resendCitizenVerification() {
-  const auth = citizenAuth(); await auth.authStateReady();
-  if (!auth.currentUser) throw new Error('Sign in required.');
-  return sendEmailVerification(auth.currentUser);
+export async function signOutCitizen(expectedIdentity=actionIdentitySnapshot()) {
+  if(!isActionIdentityCurrent(expectedIdentity))throw identityChanged();
+  return signOut(citizenAuth());
+}
+export async function resendCitizenVerification(expectedIdentity=actionIdentitySnapshot()) {
+  const auth=citizenAuth(),user=auth.currentUser;await auth.authStateReady();
+  if(!user||auth.currentUser!==user||!isActionIdentityCurrent(expectedIdentity))throw identityChanged();
+  return sendEmailVerification(user);
 }
 async function ensureCitizen() {
   const auth=citizenAuth();await auth.authStateReady();
@@ -88,5 +94,7 @@ export async function authenticatedFetch(url,options={}) {
   const mutation=options.method&&!['GET','HEAD','OPTIONS'].includes(options.method.toUpperCase());
   const privateRead=/\/(moderation|operations|sos\/status)(\/|$)/.test(String(url));
   if(!mutation&&!privateRead&&!options.expectedIdentity)return fetch(url,options);
-  return pinnedRequest(url,options);
+  const expectedIdentity=options.expectedIdentity||actionIdentitySnapshot();
+  if(!expectedIdentity)throw identityChanged();
+  return pinnedRequest(url,{...options,expectedIdentity});
 }

@@ -25,6 +25,7 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
     let action=await store.claim(identity.uid,id);
     if(!action)return {status:'waiting'};
     let response;
+    const previouslyUncertain=!!action.uncertain;
     try {
       guard(identity);
       const send=(path,body,timeout=15000)=>{
@@ -46,7 +47,7 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
         const body=await read(response);
         if(!response.ok)await reject(response,body);
         let url;try{url=new URL(body.mediaUrl,apiBase);}catch{throw retryError();}
-        if(typeof body.mediaUrl!=='string'||!body.mediaUrl.trim()||!['http:','https:'].includes(url.protocol))throw retryError();
+        if(typeof body.mediaUrl!=='string'||body.mediaUrl.length>2048||!/^(https?:\/\/|\/(?!\/))\S+$/i.test(body.mediaUrl)||!['http:','https:'].includes(url.protocol)||url.username||url.password||!url.pathname.endsWith('.webp'))throw retryError();
         const checkpoint=await store.update(identity.uid,id,action.revision,{payload:{...action.payload,mediaUrl:url.href}},{token:action.leaseToken});
         if(!checkpoint)return {status:'superseded'};
         action=checkpoint;
@@ -57,6 +58,13 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
       const p=action.payload;
       const payload=action.kind==='report'?Object.fromEntries(['id','title','type','urgency','description','ward','position','mediaUrl','waterDepth','vehiclePassability'].filter(k=>Object.hasOwn(p,k)).map(k=>[k,p[k]])):{...(action.kind==='verify'?{voterPosition:p.voterPosition}:{}),voterId:identity.uid};
       if(action.kind==='report')payload.voterId=identity.uid;
+      if(action.kind==='report'){
+        // Preserve an immutable uncertain submission across crashes/lost ACKs.
+        // It must be retried unchanged; editing it could lose new text when the
+        // server returns the original report for this same idempotency key.
+        const transmitted=await store.update(identity.uid,id,action.revision,{uncertain:true},{token:action.leaseToken});
+        if(!transmitted)return {status:'superseded'};action=transmitted;
+      }
       response=await send(path,payload);
       const body=await read(response);
       const duplicate=response.status===409&&body?.alreadyVoted===true&&action.kind!=='report';
@@ -78,7 +86,7 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
       const nextAt=state==='pending'?now()+delay(err.response||response,attempts,now()):0;
       // Failure and owner gate commit atomically. Stale workers cannot re-block
       // an action that another tab has explicitly retried or edited.
-      const updated=await store.update(identity.uid,id,action.revision,{state,reason,nextAt,attempts,httpStatus:err.status||null},{token:action.leaseToken,manual:true,gate:account?{blocked:true,until:0,reason}:state==='pending'?{blocked:false,until:nextAt,reason}:null});
+      const updated=await store.update(identity.uid,id,action.revision,{state,reason,nextAt,attempts,httpStatus:err.status||null,...(account||permanent?{uncertain:previouslyUncertain}:{})},{token:action.leaseToken,manual:true,gate:account?{blocked:true,until:0,reason}:state==='pending'?{blocked:false,until:nextAt,reason}:null});
       return {status:updated?state:'superseded',stop:account||state==='pending',reason};
     }
   }

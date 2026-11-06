@@ -91,3 +91,9 @@ test('server Retry-After longer than inferred backoff is honored across restart'
   try{await f.store.enqueue('A',vote('road'));await f.runner.drain(identity);await f.store.close();expect((await f.store.list('A')).gate.until).toBe(3601000);f.clock=901000;await f.runner.drain(identity);expect(request).toHaveBeenCalledTimes(1);f.clock=3601000;await f.runner.drain(identity);expect(request).toHaveBeenCalledTimes(2);}finally{await f.store.close();}
  }
 });
+test('lost report acknowledgement locks its payload against edits until canonical retry completes',async()=>{
+ let accepted;const f=fixture(async(url,options)=>{const body=JSON.parse(options.body);if(!accepted){accepted=body;throw new TypeError('lost ACK');}return reply(accepted);});
+ try{const input={...report,payload:{...report.payload,mediaUrl:null}};await f.store.enqueue('A',input);await f.runner.drain(identity);const row=(await f.store.list('A')).actions[0];expect(row.uncertain).toBe(true);
+  expect(await f.store.update('A',row.id,row.revision,{payload:{...row.payload,title:'New text that must not be lost'}},{manual:true})).toBeNull();f.clock=4000;await f.runner.drain(identity);expect((await f.store.list('A')).actions).toHaveLength(0);expect(accepted.title).toBe('Fixture');
+ }finally{await f.store.close();}
+});

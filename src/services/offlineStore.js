@@ -11,7 +11,7 @@ function payloadOK(kind,payload) {
   return idOK(payload.incidentId);
 }
 export function validAction(item,owner) {
-  return !!item&&item.owner===owner&&ownerOK(owner)&&idOK(item.id)&&KINDS.has(item.kind)&&STATES.has(item.state)&&payloadOK(item.kind,item.payload)&&idMatches(item)&&Number.isInteger(item.revision)&&item.revision>0&&Number.isFinite(item.createdAt)&&item.createdAt>=0&&Number.isFinite(item.updatedAt)&&item.updatedAt>=item.createdAt&&Number.isFinite(item.nextAt)&&item.nextAt>=0&&Number.isFinite(item.leaseUntil)&&item.leaseUntil>=0&&(item.leaseToken===null||typeof item.leaseToken==='string')&&Number.isInteger(item.attempts)&&item.attempts>=0;
+  return !!item&&item.owner===owner&&ownerOK(owner)&&idOK(item.id)&&KINDS.has(item.kind)&&STATES.has(item.state)&&typeof item.uncertain==='boolean'&&payloadOK(item.kind,item.payload)&&idMatches(item)&&Number.isInteger(item.revision)&&item.revision>0&&Number.isFinite(item.createdAt)&&item.createdAt>=0&&Number.isFinite(item.updatedAt)&&item.updatedAt>=item.createdAt&&Number.isFinite(item.nextAt)&&item.nextAt>=0&&Number.isFinite(item.leaseUntil)&&item.leaseUntil>=0&&(item.leaseToken===null||typeof item.leaseToken==='string')&&Number.isInteger(item.attempts)&&item.attempts>=0;
 }
 export function legacyActionsPresent(storage=globalThis.localStorage) {
   try {
@@ -82,7 +82,7 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
           const all=actions.index('owner').getAll(owner);all.onsuccess=()=>{
             const bytes=JSON.stringify(input.payload).length*2+all.result.reduce((sum,item)=>sum+JSON.stringify(item).length*2,0);
             if(all.result.length>=MAX_ACTIONS||bytes>MAX_BYTES){set({error:'storage-full'});return;}
-            const time=now(),action={owner,id:input.id,kind:input.kind,payload:structuredClone(input.payload),state:'pending',reason:null,attempts:0,nextAt:0,revision:1,leaseToken:null,leaseUntil:0,createdAt:time,updatedAt:time};
+            const time=now(),action={owner,id:input.id,kind:input.kind,payload:structuredClone(input.payload),state:'pending',uncertain:false,reason:null,attempts:0,nextAt:0,revision:1,leaseToken:null,leaseUntil:0,createdAt:time,updatedAt:time};
             actions.add(action);set({action});
           };
         };
@@ -105,10 +105,6 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
     });
     if(result)changed(owner);return result;
   }
-  async function setGate(owner,{until=0,blocked=false,reason=null}={}) {
-    owned(owner);if(!Number.isFinite(until)||until<0)throw error('invalid-action');
-    await transaction(['owners'],'readwrite',({owners})=>owners.put({owner,until,blocked:!!blocked,reason}));changed(owner);
-  }
   async function update(owner,id,revision,patch,{token=null,manual=false,gate=null,resetGate=false}={}) {
     owned(owner);
     try{patch=structuredClone(patch);}catch{throw error('invalid-action');}if(!idOK(id))throw error('invalid-action');
@@ -117,7 +113,8 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
       const get=actions.get([owner,id]);get.onsuccess=()=>{
         const current=get.result;
         if(!validAction(current,owner)||current.revision!==revision||(token?current.leaseToken!==token||current.leaseUntil<=now():current.leaseUntil>now())){set(null);return;}
-        const safe=Object.fromEntries(['state','reason','nextAt','attempts','httpStatus','payload'].filter(key=>Object.hasOwn(patch,key)).map(key=>[key,patch[key]]));
+        if(manual&&!token&&patch.payload&&(current.state!=='failed'||current.uncertain)){set(null);return;}
+        const safe=Object.fromEntries(['state','uncertain','reason','nextAt','attempts','httpStatus','payload'].filter(key=>Object.hasOwn(patch,key)).map(key=>[key,patch[key]]));
         const next={...current,...safe,revision:current.revision+1,updatedAt:now(),...(manual?{leaseToken:null,leaseUntil:0}:{})};
         if(!validAction(next,owner)){set(null);return;}
         const all=actions.index('owner').getAll(owner);all.onsuccess=()=>{
@@ -153,7 +150,7 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
     });
     if(result)changed(owner);return result;
   }
-  return {list,enqueue,claim,update,complete,discard,setGate,subscribe(listener){
+  return {list,enqueue,claim,update,complete,discard,subscribe(listener){
     listeners.add(listener);
     if(!channel&&typeof BroadcastChannel!=='undefined'){try{channel=new BroadcastChannel(name);channel.onmessage=event=>{if(ownerOK(event.data?.owner))for(const cb of listeners){try{cb(event.data.owner);}catch{}}};}catch{}}
     return()=>{listeners.delete(listener);if(!listeners.size){channel?.close();channel=null;}};

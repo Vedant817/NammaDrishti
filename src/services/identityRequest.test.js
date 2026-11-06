@@ -25,3 +25,8 @@ test('a caller cannot dispatch owner A work through owner B session',async()=>{
  const request=createPinnedRequester({getSession:async()=>({identity,isCurrent:()=>true,getToken:async()=>'other'}),fetcher});
  await expect(request('/incidents',{method:'POST',expectedIdentity:a})).rejects.toMatchObject({code:'identity-changed'});expect(fetcher).not.toHaveBeenCalled();
 });
+test('generic private actions pin their entry identity before asynchronous session readiness',async()=>{
+ const tracker=createIdentityTracker(),a={uid:'A'},b={uid:'B'},ready=deferred(),fetcher=vi.fn();let current=a;tracker.observe(a);
+ const request=createPinnedRequester({getEntryIdentity:()=>tracker.observe(current),getSession:async()=>{await ready.promise;const user=current,identity=tracker.observe(user);return {identity,isCurrent:()=>tracker.isCurrent(identity,current),getToken:async()=>'B-fixture-token'};},fetcher});
+ const pending=request('/sos/dispatch',{method:'POST'});current=b;tracker.observe(b);ready.resolve();await expect(pending).rejects.toMatchObject({code:'identity-changed'});expect(fetcher).not.toHaveBeenCalled();
+});
