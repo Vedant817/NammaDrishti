@@ -181,8 +181,8 @@ const PersonalizedFeed = ({
                       <span>{item.verificationCount || 1} {t.actions.confirmations}</span>
                       {item.isVerified && <span className="verified-glyph">✓</span>}
                     </div>
-                    {onVerifyEvent && <button type="button" className="copy-link-btn" disabled={hasUserVoted?.(item.id,'verify')===true} aria-label={`${ui.confirmAction} — ${item.title}`} onClick={() => onVerifyEvent(item.id)}>{ui.confirmAction}</button>}
-                    {onResolveEvent && <button type="button" className="copy-link-btn" disabled={hasUserVoted?.(item.id,'clear')===true} aria-label={`${ui.clearAction} — ${item.title}`} onClick={() => onResolveEvent(item.id)}>{ui.clearAction}</button>}
+                    {onVerifyEvent && <button type="button" className="feed-action-btn" disabled={hasUserVoted?.(item.id,'verify')===true} aria-label={`${ui.confirmAction} — ${item.title}`} onClick={() => onVerifyEvent(item.id)}>{ui.confirmAction}</button>}
+                    {onResolveEvent && <button type="button" className="feed-action-btn" disabled={hasUserVoted?.(item.id,'clear')===true} aria-label={`${ui.clearAction} — ${item.title}`} onClick={() => onResolveEvent(item.id)}>{ui.clearAction}</button>}
                   </div>
                 </div>
               </article>
