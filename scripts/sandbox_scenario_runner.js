@@ -164,6 +164,7 @@ async function runScenarioSandbox() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          observedAt: Date.now(),
           voterPosition: { lat: 12.9262, lng: 77.6748 }, // ~50m away
           voterId: 'voter_sneha_ground',
         }),
@@ -176,6 +177,7 @@ async function runScenarioSandbox() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          observedAt: Date.now(),
           voterPosition: { lat: 12.9719, lng: 77.6412 }, // ~5km away
           voterId: 'voter_manoj_remote',
         }),
@@ -188,6 +190,7 @@ async function runScenarioSandbox() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          observedAt: Date.now(),
           voterPosition: { lat: 12.9262, lng: 77.6748 },
           voterId: 'voter_sneha_ground',
         }),
@@ -359,7 +362,7 @@ async function runScenarioSandbox() {
       const resVote1 = await fetch(`${BASE_URL}/api/incidents/${targetId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voterId: 'voter_citizen_clear_1' }),
+        body: JSON.stringify({ observedAt: Date.now(), voterId: 'voter_citizen_clear_1' }),
       });
       const dataVote1 = await resVote1.json();
       console.log(`  ✓ 5a. Clearance Vote 1 Recorded: "${dataVote1.message}" (Cleared: ${dataVote1.cleared})`);
@@ -368,7 +371,7 @@ async function runScenarioSandbox() {
       const resVoteSybil = await fetch(`${BASE_URL}/api/incidents/${targetId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voterId: 'voter_citizen_clear_1' }),
+        body: JSON.stringify({ observedAt: Date.now(), voterId: 'voter_citizen_clear_1' }),
       });
       if (resVoteSybil.status === 409) {
         console.log(`  ✓ 5b. Anti-Sybil Clearance Protection: Repeat vote from same citizen acknowledged with HTTP 409.`);
@@ -380,7 +383,7 @@ async function runScenarioSandbox() {
       const resVote2 = await fetch(`${BASE_URL}/api/incidents/${targetId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voterId: 'voter_citizen_clear_2' }),
+        body: JSON.stringify({ observedAt: Date.now(), voterId: 'voter_citizen_clear_2' }),
       });
       const dataVote2 = await resVote2.json();
       console.log(`  ✓ 5c. Clearance Vote 2 Recorded: Consensus reached! Hazard cleared from live map (Cleared: ${dataVote2.cleared})`);

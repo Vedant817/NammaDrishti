@@ -63,8 +63,8 @@ test('review regressions: access control, input validation and cluster integrity
     assert.equal(response.status, 200);
     assert.equal((await response.json()).waterDepth, '> 2.0 ft (Engine Submersion)');
     assert.equal((await received).vehiclePassability, 'Completely Impassable');
-    assert.equal((await post(`/api/incidents/${created.id}/verify`, { voterId: 'second' })).status, 409);
-    assert.equal((await post(`/api/incidents/${created.id}/verify`, { voterId: 'third' })).status, 200);
+    assert.equal((await post(`/api/incidents/${created.id}/verify`, { voterId: 'second', observedAt: Date.now() })).status, 409);
+    assert.equal((await post(`/api/incidents/${created.id}/verify`, { voterId: 'third', observedAt: Date.now() })).status, 200);
     const beforeReport = (await (await fetch(base + '/api/incidents')).json()).find(item => item.id === created.id);
     const reverseOrder = await (await post('/api/incidents', { ...report, voterId: 'third', waterDepth: '> 2.0 ft (Engine Submersion)' })).json();
     assert.equal(reverseOrder.verificationCount, beforeReport.verificationCount, 'vote then report must not count twice');

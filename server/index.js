@@ -189,8 +189,14 @@ try {
       incidents = incidents.map((inc) => {
         const lat = inc.position?.lat || 12.9716;
         const lng = inc.position?.lng || 77.5946;
+        // Pre-fix records may carry official-title reportedBy values; the
+        // write path rejects those, so the load path must re-sanitize them.
+        const cleanReporter = typeof inc.reportedBy === 'string'
+          ? inc.reportedBy.replace(/(bengaluru traffic police|btp|bbmp|official|police|highway patrol|patrol|traffic monitor|monitor|authority)/gi, 'Citizen').trim() || 'Citizen Contributor'
+          : inc.reportedBy;
         return {
           ...inc,
+          reportedBy: cleanReporter,
           createdAt: inc.createdAt || null,
           hexIndex: inc.hexIndex || getHexIndex(lat, lng, 8),
           verificationScore: inc.verificationScore || inc.verificationCount || 1.0,
@@ -393,7 +399,7 @@ app.get('/api/incidents', (req, res) => {
   }
   if (verified !== undefined) {
     const isVer = verified === 'true';
-    filtered = filtered.filter((i) => (i.isVerified || (i.verificationCount && i.verificationCount >= 3)) === isVer);
+    filtered = filtered.filter((i) => (i.isVerified === true) === isVer);
   }
   if (hex) {
     const ring = getHexRing(hex);
@@ -683,8 +689,9 @@ app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
   const { voterPosition, voterId, observedAt } = req.body || {};
   // Votes inherit the same 30-minute freshness window as reports: a stale
   // approval must fail closed as OBSERVATION_EXPIRED, not record a 200.
+  // observedAt is required — an omitted value is not evidence of presence.
   const receivedAt = Date.now();
-  if (observedAt !== undefined && (!Number.isFinite(observedAt) || observedAt < receivedAt - 30 * 60000 || observedAt > receivedAt + 5 * 60000)) return res.status(422).json({ code: 'OBSERVATION_EXPIRED', error: 'Check the location again before voting on an old observation.' });
+  if (!Number.isFinite(observedAt) || observedAt < receivedAt - 30 * 60000 || observedAt > receivedAt + 5 * 60000) return res.status(422).json({ code: 'OBSERVATION_EXPIRED', error: 'Check the location again before voting on an old observation.' });
   const incident = incidents.find((i) => i.id === id && !i.moderationHidden);
 
   if (!incident) {
@@ -762,7 +769,7 @@ app.post('/api/incidents/:id/resolve', resolveLimiter, async (req, res) => {
   const { id } = req.params;
   const { observedAt } = req.body || {};
   const receivedAt = Date.now();
-  if (observedAt !== undefined && (!Number.isFinite(observedAt) || observedAt < receivedAt - 30 * 60000 || observedAt > receivedAt + 5 * 60000)) return res.status(422).json({ code: 'OBSERVATION_EXPIRED', error: 'Check the location again before voting on an old observation.' });
+  if (!Number.isFinite(observedAt) || observedAt < receivedAt - 30 * 60000 || observedAt > receivedAt + 5 * 60000) return res.status(422).json({ code: 'OBSERVATION_EXPIRED', error: 'Check the location again before voting on an old observation.' });
   const index = incidents.findIndex((i) => i.id === id && !i.moderationHidden);
 
   if (index === -1) {
@@ -853,7 +860,7 @@ app.get('/api/sos/dispatches',async(req,res)=>{
 app.get('/api/sos/status/:id',async(req,res)=>{
   try {
     const token=/^Bearer (.+)$/.exec(req.headers.authorization||'');
-    const uid=firebaseStore&&token?(await firebaseStore.auth.verifyIdToken(token[1])).uid:null;
+    const uid=firebaseStore&&token?(await firebaseStore.auth.verifyIdToken(token[1],true)).uid:null;
     const item=await records.get('emergencyOutbox',req.params.id);
     if(!item || (!hasAuthorityAccess(req.headers['x-authority-token']) && (!uid || uid!==item.uid)))return res.status(404).json({error:'Dispatch not found'});
     res.json({id:item.id,status:item.status,attempts:item.attempts});

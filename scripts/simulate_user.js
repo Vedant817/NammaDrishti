@@ -145,7 +145,7 @@ async function runHeavyUserSimulation() {
     const onGroundVerify = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterPosition: { lat: simLat + 0.001, lng: simLng }, voterId: 'commuter_onground' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterPosition: { lat: simLat + 0.001, lng: simLng }, voterId: 'commuter_onground' }),
     });
     const onGroundData = await onGroundVerify.json();
     assert.equal(onGroundVerify.status,200);assert.equal(onGroundData.groundVerified,false);
@@ -155,7 +155,7 @@ async function runHeavyUserSimulation() {
     const resolveVote1Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'commuter_citizen_1' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'commuter_citizen_1' }),
     });
     const resolveVote1 = await resolveVote1Res.json();
     assert.equal(resolveVote1Res.status,200);assert.equal(resolveVote1.cleared,false);
@@ -164,7 +164,7 @@ async function runHeavyUserSimulation() {
     const resolveVote2Res = await fetch(`${BASE_URL}/api/incidents/${createdIncident.id}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'commuter_citizen_2' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'commuter_citizen_2' }),
     });
     const resolveVote2 = await resolveVote2Res.json();
     assert.equal(resolveVote2Res.status,200);assert.equal(resolveVote2.cleared,true);

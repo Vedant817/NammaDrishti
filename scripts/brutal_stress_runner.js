@@ -197,7 +197,7 @@ async function runBrutalStressSuite() {
     const concurrentSameVoter = Array.from({ length: 15 }, () =>
       makeRequest('/api/incidents/brutal_base_silk_board/verify', {
         method: 'POST',
-        body: { voterId: 'brutal_sybil_bot', voterPosition: { lat: 12.9171, lng: 77.6238 } },
+        body: { observedAt: Date.now(), voterId: 'brutal_sybil_bot', voterPosition: { lat: 12.9171, lng: 77.6238 } },
       })
     );
     const sameVoterResults = await Promise.all(concurrentSameVoter);
@@ -215,15 +215,15 @@ async function runBrutalStressSuite() {
     // 1b: Multi-Citizen Clearance Consensus Race
     const resA = makeRequest('/api/incidents/brutal_base_silk_board/resolve', {
       method: 'POST',
-      body: { voterId: 'citizen_clearance_1' },
+      body: { observedAt: Date.now(), voterId: 'citizen_clearance_1' },
     });
     const resB = makeRequest('/api/incidents/brutal_base_silk_board/resolve', {
       method: 'POST',
-      body: { voterId: 'citizen_clearance_2' },
+      body: { observedAt: Date.now(), voterId: 'citizen_clearance_2' },
     });
     const resC = makeRequest('/api/incidents/brutal_base_silk_board/resolve', {
       method: 'POST',
-      body: { voterId: 'citizen_clearance_3' },
+      body: { observedAt: Date.now(), voterId: 'citizen_clearance_3' },
     });
     await Promise.all([resA, resB, resC]);
 
