@@ -30,6 +30,13 @@ test('storage failure returns a recoverable error without claiming a saved actio
  globalThis.indexedDB=undefined;const view=renderHook(()=>useOfflineActions());await waitFor(()=>expect(view.result.current.actionIdentity?.uid).toBe('A'));
  await act(async()=>{expect(await view.result.current.addEvent(report,auth.identity)).toEqual({errorCode:'storage-unavailable'});});expect(view.result.current.savedActions).toHaveLength(0);expect(view.result.current.storageError).toBe('storage-unavailable');
 });
+test('fresh re-observation of an uncertain report mints a new id instead of reusing the dedup key',async()=>{
+ const view=renderHook(()=>useOfflineActions());await waitFor(()=>expect(view.result.current.actionIdentity?.uid).toBe('A'));
+ await act(async()=>{await view.result.current.addEvent(report,auth.identity);});
+ const stale={...view.result.current.savedActions[0],state:'failed',reason:'stale',uncertain:true};
+ await act(async()=>{expect(await view.result.current.changeAction(stale,'retry',{...report,confirmedFreshObservation:true})).toEqual({saved:true});});
+ const actions=view.result.current.savedActions;expect(actions).toHaveLength(1);expect(actions[0].id).not.toBe('stable');expect(actions[0].uncertain).toBe(false);expect(auth.request).not.toHaveBeenCalled();
+});
 test('queued votes retain recognizable road names without claiming public consensus',async()=>{
  const view=renderHook(()=>useOfflineActions());await waitFor(()=>expect(view.result.current.actionIdentity?.uid).toBe('A'));
  await act(async()=>{await view.result.current.verifyEvent('road',null,auth.identity,{title:'Fixture junction',ward:'Fixture ward'});});

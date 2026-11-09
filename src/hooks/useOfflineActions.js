@@ -52,10 +52,23 @@ export function useOfflineActions(onConfirmed) {
   const changeAction=useCallback(async(action,operation,payload)=>{
     const i=identityRef.current;if(!i||action.owner!==i.uid||!current(i))return {errorCode:'identity-changed'};
     if(operation!=='discard'&&(action.reason==='stale'||Date.now()-(action.observedAt??action.createdAt)>MAX_ACTION_AGE_MS)&&(!payload||!payload.confirmedFreshObservation))return {errorCode:'action-stale'};
+    // A fresh re-observation of an uncertain report must not reuse its
+    // idempotency key: the server may already hold the original, and a 200
+    // dedup reply would silently discard the citizen's new edits.
+    if(operation!=='discard'&&action.kind==='report'&&action.uncertain&&payload?.confirmedFreshObservation){
+      try{
+        const removed=await offlineStore.discard(i.uid,action.id,action.revision);
+        if(!removed){await refresh(i);return {errorCode:'action-changed'};}
+        const freshId='namma_'+crypto.randomUUID();
+        const result=await persist({id:freshId,kind:'report',payload:{...action.payload,...payload,id:freshId}},i);
+        if(result?.errorCode)return result;
+        await refresh(i);void syncOfflineQueue();return {saved:true};
+      }catch(err){if(current(i))setStorageError(err.code||'storage-unavailable');return {errorCode:err.code||'storage-unavailable'};}
+    }
     try{
       let result;
       if(operation==='discard')result=await offlineStore.discard(i.uid,action.id,action.revision);
-      else result=await offlineStore.update(i.uid,action.id,action.revision,{state:'pending',reason:null,nextAt:0,attempts:0,httpStatus:null,...(payload?{payload:action.kind==='report'?{...payload,id:action.id}:{...action.payload,confirmedFreshObservation:true}}:{})},{manual:true,gate:{until:0,blocked:false},resetGate:true});
+      else result=await offlineStore.update(i.uid,action.id,action.revision,{state:'pending',reason:null,nextAt:0,attempts:0,httpStatus:null,...(payload?.confirmedFreshObservation?{uncertain:false}:{}) ,...(payload?{payload:action.kind==='report'?{...payload,id:action.id}:{...action.payload,confirmedFreshObservation:true}}:{})},{manual:true,gate:{until:0,blocked:false},resetGate:true});
       if(!current(i))return {errorCode:'identity-changed'};
       if(!result){await refresh(i);return {errorCode:'action-changed'};}
       await refresh(i);if(operation!=='discard')void syncOfflineQueue();return {saved:true};

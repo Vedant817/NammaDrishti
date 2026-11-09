@@ -45,6 +45,7 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
         guard(identity);return body;
       }
       async function reject(res,body) {
+        if(res.status===422&&body?.code==='OBSERVATION_EXPIRED')throw Object.assign(new Error('Observation needs review'),{code:'outdated'});
         const blocked=res.status===401||(res.status===403&&body?.code==='EMAIL_VERIFICATION_REQUIRED');
         const transient=res.status===408||res.status===425||res.status===429||res.status>=500;
         throw Object.assign(new Error('Request rejected'),{code:blocked?'account-required':transient?'retryable':'rejected',status:res.status,response:res});
@@ -109,12 +110,23 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
   }
   async function drain(identity) {
     guard(identity);
-    const snapshot=await store.list(identity.uid);
-    for(const item of snapshot.actions) {
-      if(!isCurrent(identity))break;
-      if(item.state!=='pending'||item.nextAt>now()||item.leaseUntil>now())continue;
-      const result=await run(identity,item.id);
-      if(result.stop||result.status==='identity-changed')break;
+    // Repeat until a fresh snapshot shows nothing sendable, so actions
+    // enqueued while this drain was awaiting the network are not stranded.
+    for(;;) {
+      const snapshot=await store.list(identity.uid);
+      let ran=false,progress=false,waiting=false;
+      for(const item of snapshot.actions) {
+        if(!isCurrent(identity))break;
+        if(item.state!=='pending'||item.nextAt>now()||item.leaseUntil>now())continue;
+        ran=true;
+        const result=await run(identity,item.id);
+        if(result.status==='sent')progress=true;
+        if(result.status==='waiting')waiting=true;
+        if(result.stop||result.status==='identity-changed')break;
+      }
+      if(!ran||waiting||!isCurrent(identity))break;
+      const after=await store.list(identity.uid);
+      if(!after.actions.some(item=>item.state==='pending'&&item.nextAt<=now()&&item.leaseUntil<=now()))break;
     }
   }
   return {run,drain};

@@ -20,6 +20,14 @@ test('different same-timestamp votes acknowledge independently; transient failur
   await f.store.close();const saved=await f.store.list('A');expect(saved.actions.map(a=>a.id)).toEqual(['verify:two']);expect(saved.actions[0]).toMatchObject({nextAt:121000,state:'pending'});expect(saved.markers.map(m=>m.id)).toEqual(['verify:one']);await f.runner.drain(identity);expect(request).toHaveBeenCalledTimes(2);
  }finally{await f.store.close();}
 });
+test('server OBSERVATION_EXPIRED maps to stale so the user reviews instead of retrying',async()=>{
+ const request=vi.fn().mockResolvedValueOnce(reply({code:'OBSERVATION_EXPIRED',error:'expired'},422));const f=fixture(request);
+ try{await f.store.enqueue('A',vote('road'));await f.runner.drain(identity);expect((await f.store.list('A')).actions[0]).toMatchObject({state:'failed',reason:'stale'});}finally{await f.store.close();}
+});
+test('drain picks up actions enqueued while draining instead of stranding them',async()=>{
+ const gate=deferred();const f=fixture(async url=>{await gate.promise;const id=url.match(/\/incidents\/([^/]+)\//)?.[1]||'one';return reply(ack(id));});
+ try{await f.store.enqueue('A',vote('one'));const draining=f.runner.drain(identity);await Promise.resolve();await f.store.enqueue('A',vote('two'));gate.resolve();await draining;expect((await f.store.list('A')).actions).toHaveLength(0);expect((await f.store.list('A')).markers.map(m=>m.id).sort()).toEqual(['verify:one','verify:two']);}finally{await f.store.close();}
+});
 test('lost or malformed successful acknowledgement retains the durable action',async()=>{
  for(const body of [null,{}, {id:'wrong'},'truncated']) {
   const request=vi.fn(async()=>body==='truncated'?new Response('{',{status:201}):reply(body,201)),f=fixture(request);
