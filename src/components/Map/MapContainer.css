@@ -60,6 +60,7 @@
 
 .popup-actions button {
   flex: 1;
+  min-height: 44px;
   padding: 6px 8px;
   border-radius: var(--radius-xs);
   font-size: 0.72rem;

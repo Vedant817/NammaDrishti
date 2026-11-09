@@ -137,13 +137,13 @@ const PersonalizedFeed = ({
                     {(t.filters && t.filters[item.type]) || item.type}
                   </span>
                   {item.clusterCount > 1 && (
-                    <span className="card-cluster-pill" title="Multiple citizen reports merged within 200m">
-                      🔗 {item.clusterCount} merged
+                    <span className="card-cluster-pill" title={ui.mergedHint}>
+                      🔗 {item.clusterCount} {ui.merged}
                     </span>
                   )}
                   {item.groundVerified && (
-                    <span className="card-ground-pill" title="Verified within 1.5km of incident location">
-                      📍 On-Ground
+                    <span className="card-ground-pill" title={ui.groundHint}>
+                      📍 {ui.onGround}
                     </span>
                   )}
                   <span className="card-time">{incidentTime(item,lang)}</span>
@@ -153,7 +153,7 @@ const PersonalizedFeed = ({
                 <p className="card-desc">{item.description}</p>
                 {item.waterDepth && (
                   <div className="card-water-depth-pill" style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4', padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', marginTop: '6px', marginBottom: '4px' }}>
-                    <span>🌊 Depth: <strong>{item.waterDepth}</strong></span>
+                    <span>🌊 {ui.depthLabel} <strong>{item.waterDepth}</strong></span>
                     {item.vehiclePassability && <span>• 🚫 {item.vehiclePassability}</span>}
                   </div>
                 )}
@@ -165,7 +165,7 @@ const PersonalizedFeed = ({
                       type="button"
                       className="copy-link-btn"
                       onClick={(e) => handleCopyLink(e, item)}
-                      title="Copy a direct link that opens this incident on the map"
+                      title={ui.copyLinkHint}
                     >
                       {copiedEventId === item.id ? ui.copied : ui.copyLink}
                     </button>
@@ -173,7 +173,7 @@ const PersonalizedFeed = ({
                       type="button"
                       className="whatsapp-share-btn"
                       onClick={(e) => handleWhatsAppShare(e, item)}
-                      title="Share emergency hazard alert via WhatsApp"
+                      title={ui.shareHint}
                     >
                       {ui.shareBtn}
                     </button>
@@ -181,8 +181,8 @@ const PersonalizedFeed = ({
                       <span>{item.verificationCount || 1} {t.actions.confirmations}</span>
                       {item.isVerified && <span className="verified-glyph">✓</span>}
                     </div>
-                    {onVerifyEvent && <button type="button" className="copy-link-btn" disabled={hasUserVoted?.(item.id,'verify')===true} onClick={() => onVerifyEvent(item.id)}>{ui.confirmAction}</button>}
-                    {onResolveEvent && <button type="button" className="copy-link-btn" disabled={hasUserVoted?.(item.id,'clear')===true} onClick={() => onResolveEvent(item.id)}>{ui.clearAction}</button>}
+                    {onVerifyEvent && <button type="button" className="copy-link-btn" disabled={hasUserVoted?.(item.id,'verify')===true} aria-label={`${ui.confirmAction} — ${item.title}`} onClick={() => onVerifyEvent(item.id)}>{ui.confirmAction}</button>}
+                    {onResolveEvent && <button type="button" className="copy-link-btn" disabled={hasUserVoted?.(item.id,'clear')===true} aria-label={`${ui.clearAction} — ${item.title}`} onClick={() => onResolveEvent(item.id)}>{ui.clearAction}</button>}
                   </div>
                 </div>
               </article>

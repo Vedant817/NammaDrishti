@@ -4,7 +4,7 @@
 .account-panel__header { display: flex; align-items: center; gap: 12px; padding: 22px 24px; border-bottom: 1px solid var(--border-subtle, #d7e0e5); flex-shrink: 0; }
 .account-panel__icon { display: grid; place-items: center; height: 42px; width: 42px; flex-shrink: 0; border-radius: 9px; color: var(--brand-accent, #176582); background: var(--bg-elevated, #edf3f6); }
 .account-panel__header h2 { margin: 0; font: 500 28px/1.15 var(--font-display, sans-serif); }
-.account-panel__close { margin-left: auto; flex-shrink: 0; display: grid; place-items: center; width: 40px; height: 40px; background: transparent; border: 1px solid var(--border-subtle, #d7e0e5); color: var(--text-secondary); border-radius: 6px; cursor: pointer; }
+.account-panel__close { margin-left: auto; flex-shrink: 0; display: grid; place-items: center; width: 44px; height: 44px; background: transparent; border: 1px solid var(--border-subtle, #d7e0e5); color: var(--text-secondary); border-radius: 6px; cursor: pointer; }
 .account-panel__body { padding: 24px; overflow-y: auto; overscroll-behavior: contain; }
 .account-panel__intro { margin: 0 0 22px; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
 .account-panel__modes { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 24px; border: 1px solid var(--border-light, #bdcdd6); border-radius: 6px; overflow: hidden; }
@@ -28,7 +28,7 @@
 .account-panel__verification { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
 .account-panel__verification.is-verified { color: #176545; align-items: center; }
 .account-panel__actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 20px; }
-.account-panel__actions button, .account-panel__report button { min-height: 42px; padding: 9px 12px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 5px; color: var(--brand-accent); font: 600 13px var(--font-sans, sans-serif); cursor: pointer; }
+.account-panel__actions button, .account-panel__report button { min-height: 44px; padding: 9px 12px; background: var(--bg-surface); border: 1px solid var(--border-light); border-radius: 5px; color: var(--brand-accent); font: 600 13px var(--font-sans, sans-serif); cursor: pointer; }
 .account-panel__moderation { border-top: 1px solid var(--border-subtle); margin-top: 24px; padding-top: 22px; }
 .account-panel__moderation h3 { margin: 0 0 18px; font: 500 24px var(--font-display); }
 .account-panel__report { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border-subtle); }

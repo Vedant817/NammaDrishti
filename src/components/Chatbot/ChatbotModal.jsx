@@ -8,11 +8,11 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import "./ChatbotModal.css";
 
 const QUICK_PROMPTS = [
-  "Is Silk Board jammed?",
-  "Any flooded underpasses?",
-  "Rain radar status?",
-  "How to report a pothole?",
-  "Emergency helplines",
+  { query: "Is Silk Board jammed?", keys: ["Is Silk Board jammed?", "ಸಿಲ್ಕ್ ಬೋರ್ಡ್‌ನಲ್ಲಿ ಜಾಮ್ ಇದೆಯೇ?", "क्या सिल्क बोर्ड पर जाम है?"] },
+  { query: "Any flooded underpasses?", keys: ["Any flooded underpasses?", "ಯಾವುದೇ ಅಂಡರ್‌ಪಾಸ್ ಪ್ರವಾಹ?", "कोई अंडरपास भरा है?"] },
+  { query: "Rain radar status?", keys: ["Rain radar status?", "ಮಳೆಯ ರಡಾರ್ ಸ್ಥಿತಿ?", "बारिश रडार की स्थिति?"] },
+  { query: "How to report a pothole?", keys: ["How to report a pothole?", "ಗುಂಡಿಯ ಬಗ್ಗೆ ಹೇಗೆ ವರದಿ ಮಾಡುವುದು?", "गड्ढे की रिपोर्ट कैसे करें?"] },
+  { query: "Emergency helplines", keys: ["Emergency helplines", "ತುರ್ತು ಸಹಾಯ ಸಂಖ್ಯೆಗಳು", "आपातकालीन हेल्पलाइन"] },
 ];
 
 
@@ -177,12 +177,12 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
           <div className="quick-prompts-bar">
             {QUICK_PROMPTS.map((prompt) => (
               <button
-                key={t.ui[prompt] || prompt}
+                key={prompt.query}
                 type="button"
                 className="quick-prompt-chip"
-                onClick={() => handleSendMessage(prompt)}
+                onClick={() => handleSendMessage(prompt.query)}
               >
-                {t.ui[prompt] || prompt}
+                {prompt.keys[lang === 'kn' ? 1 : lang === 'hi' ? 2 : 0] || t.ui[prompt.query] || prompt.query}
               </button>
             ))}
           </div>
@@ -213,7 +213,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
               type="button"
               className={`voice-mic-btn ${isListening ? "listening" : ""}`}
               onClick={toggleListening}
-              title={isListening ? "Listening... click to stop" : "Speak your query (Speech to Text)"}
+              title={isListening ? ({en:"Listening... click to stop",kn:"ಕೇಳಲಾಗುತ್ತಿದೆ... ನಿಲ್ಲಿಸಲು ಒತ್ತಿ",hi:"सुन रहे हैं... रोकने के लिए दबाएँ"})[lang] || "Listening... click to stop" : ({en:"Speak your query (Speech to Text)",kn:"ನಿಮ್ಮ ಪ್ರಶ್ನೆ ಮಾತನಾಡಿ (ಧ್ವನಿ ಪಠ್ಯ)",hi:"अपना सवाल बोलें (स्पीच टू टेक्स्ट)"})[lang] || "Speak your query (Speech to Text)"}
             >
               {isListening ? "🎙️..." : "🎤"}
             </button>

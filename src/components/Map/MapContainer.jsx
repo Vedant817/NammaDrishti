@@ -102,6 +102,7 @@ const CustomMapContainer = ({
   onMapClick = null,
   onVerifyEvent = null,
   onResolveEvent = null,
+  hasUserVoted = null,
   reportPin = null,
   navigationRoute = null,
   onClearNavigationRoute = () => {},
@@ -585,6 +586,8 @@ const CustomMapContainer = ({
                     <button
                       type="button"
                       className="popup-btn confirm"
+                      disabled={hasUserVoted?.(event.id,'verify')===true}
+                      aria-label={`${t.actions.confirm} — ${event.title}`}
                       onClick={() => onVerifyEvent && onVerifyEvent(event.id)}
                     >
                       {t.actions.confirm}
@@ -592,6 +595,8 @@ const CustomMapContainer = ({
                     <button
                       type="button"
                       className="popup-btn resolve"
+                      disabled={hasUserVoted?.(event.id,'clear')===true}
+                      aria-label={`${t.actions.markCleared} — ${event.title}`}
                       onClick={() => onResolveEvent && onResolveEvent(event.id)}
                     >
                       {t.actions.markCleared}

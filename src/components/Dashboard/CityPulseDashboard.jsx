@@ -215,6 +215,7 @@ const CityPulseDashboard = () => {
             onEventSelect={handleEventSelect}
             onVerifyEvent={handleVerifyEvent}
             onResolveEvent={handleResolveEvent}
+            hasUserVoted={hasUserVoted}
             onMapClick={handleMapPinSelected}
             onOpenReportModal={handleOpenReportModal}
             navigationRoute={navigationRoute}

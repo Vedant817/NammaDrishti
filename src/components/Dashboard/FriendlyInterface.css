@@ -10,7 +10,7 @@
 .sidebar-scrollable-body .filter-panel-bar { padding:0; border:0; background:transparent; overflow:visible; }
 .sidebar-scrollable-body .filter-chips-list { min-width:0; flex-wrap:wrap; gap:8px; }
 .sidebar-scrollable-body .filter-source-label { display:none; }
-.sidebar-scrollable-body .filter-chip { min-height:40px; padding:8px 10px; border:1px solid var(--border-subtle); border-radius:6px; font-size:12px; }
+.sidebar-scrollable-body .filter-chip { min-height:44px; padding:8px 10px; border:1px solid var(--border-subtle); border-radius:6px; font-size:12px; }
 .sidebar-scrollable-body .filter-chip.active { background:var(--bg-hover); border-color:var(--brand-accent); }
 .header-settings { position:relative; }
 .header-settings>summary { cursor:pointer; list-style:none; padding:9px 12px; min-height:44px; border:1px solid var(--border-subtle); border-radius:5px; }
@@ -30,7 +30,7 @@
 .map-layer-options>.toolbar-btn[aria-pressed="true"]::after { content:'✓'; }
 .map-toolbar--simple>.map-layer-status,.map-toolbar--simple>[role="status"] { flex-basis:auto; border:1px solid var(--border-subtle); border-radius:5px; padding:7px 10px; background:var(--bg-surface); font-size:12px; max-width:100%; }
 .map-selection-notice { position:absolute; left:24px; bottom:100px; z-index:1000; background:var(--bg-surface); border:1px solid var(--border-light); box-shadow:var(--shadow-elevated); padding:10px 12px; border-radius:8px; display:flex; align-items:center; flex-wrap:wrap; gap:8px; max-width:calc(100% - 48px); font-size:13px; }
-.map-selection-notice button { min-height:36px; border:0; border-radius:4px; padding:7px 10px; color:var(--brand-accent); background:var(--bg-hover); font-weight:600; }
+.map-selection-notice button { min-height:44px; border:0; border-radius:4px; padding:7px 10px; color:var(--brand-accent); background:var(--bg-hover); font-weight:600; }
 @media(max-width:1050px) { .sidebar-container { width:350px; } .sidebar-scrollable-body { padding:20px; } }
 @media(max-width:750px) {
   .dashboard-header { position:relative; }

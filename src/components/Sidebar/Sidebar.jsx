@@ -108,7 +108,9 @@ const Sidebar = ({
     <aside className="sidebar-container">
       <nav className="sidebar-tab-nav" aria-label={copy.today+' / '+copy.reports+' / '+copy.help}>
         {[['today',copy.today],['feed',copy.reports],['helpline',copy.help]].map(([id,label])=>{
-          const active=id==='today'? !['feed','helpline'].includes(activeTab):activeTab===id;
+          // Strict match: sources/traffic/recap sub-views must not fake-match
+          // Today. They render under the back-to-today path instead.
+          const active=activeTab===id;
           return <button key={id} type="button" aria-current={active?'page':undefined} className={`sidebar-tab-btn ${active?'active':''}`} onClick={()=>onTabChange(id)}>{label}</button>;
         })}
       </nav>
@@ -174,7 +176,7 @@ const Sidebar = ({
                 <div className="sos-active-panel">
                   {sosStatus.isVerifiedGps ? (
                     <div className="sos-coords-row">
-                      <span>✓ GPS Acquired:</span>
+                      <span>✓ {copy.gpsAcquired}</span>
                       <strong>{sosStatus.lat.toFixed(4)}, {sosStatus.lng.toFixed(4)}</strong>
                     </div>
                   ) : (
@@ -184,7 +186,7 @@ const Sidebar = ({
                   )}
                   {sosStatus.popupBlocked && (
                     <div className="sos-coords-row" style={{ color: "#F59E0B", fontSize: "0.82rem" }}>
-                      <span>ℹ️ Location ready. Choose how to share it below:</span>
+                      <span>ℹ️ {copy.locationReady}</span>
                     </div>
                   )}
                   <div className="sos-actions-row" style={{ flexWrap: 'wrap' }}>
@@ -194,7 +196,7 @@ const Sidebar = ({
                       rel="noopener noreferrer"
                       className="sos-whatsapp-btn"
                     >
-                      💬 Send WhatsApp SOS
+                      💬 {copy.whatsappSos}
                     </a>
                     <a
                       href={`sms:?body=${encodeURIComponent(
@@ -205,7 +207,7 @@ const Sidebar = ({
                       📱 SMS
                     </a>
                     <a href="tel:112" className="sos-dial-btn">
-                      📞 Call 112 (Police/Med)
+                      📞 {copy.call112Police}
                     </a>
                   </div>
                 </div>

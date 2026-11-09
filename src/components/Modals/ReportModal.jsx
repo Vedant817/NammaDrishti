@@ -89,7 +89,7 @@ const ReportModal = ({
         setErrorMsg("");
       },
       (err) => {
-        setErrorMsg("Could not fetch GPS. Please select location on map or type landmark name.");
+        setErrorMsg(copy.gpsError);
       }
     );
   };
@@ -113,7 +113,7 @@ const ReportModal = ({
 
     if((formData.title?.trim().length||0)>200||(formData.ward?.length||0)>200||(formData.description?.trim().length||0)>2000){setErrorMsg(offline.fieldLimit);return;}
     if (!formData.description || !formData.description.trim()) {
-      setErrorMsg("Please provide detailed field notes / description for fellow commuters.");
+      setErrorMsg(copy.descRequired);
       return;
     }
 
@@ -143,9 +143,7 @@ const ReportModal = ({
         resolvedCoords = { lat: geocoded.lat, lng: geocoded.lng };
       } else {
         submitLock.current=false;
-        setErrorMsg(
-          "No live geocode match found for this location. Use \"Auto-Detect GPS\", click the map to drop a pin before reporting, or name a specific Bengaluru landmark."
-        );
+        setErrorMsg(copy.geocodeMissing);
         return;
       }
     }
@@ -167,7 +165,7 @@ const ReportModal = ({
       }
       onClose();
     } catch (err) {
-      setErrorMsg(err?.message || "Failed to submit hazard report. Please check connection and try again.");
+      setErrorMsg(err?.message || copy.submitFailed);
     } finally {
       submitLock.current=false;
       if(alive.current)setSubmitting(false);
