@@ -1,4 +1,5 @@
 import {incidentTime} from '../../utils/incidentTime';
+import {useInterfaceCopy} from '../../hooks/useInterfaceCopy';
 // src/components/Sidebar/PersonalizedFeed.jsx
 import React, { useState } from "react";
 import { MapPin } from "lucide-react";
@@ -14,11 +15,15 @@ const PersonalizedFeed = ({
   allEvents = null,
   selectedEvent,
   onEventSelect,
+  onVerifyEvent,
+  onResolveEvent,
+  hasUserVoted,
   activeFilter = "All",
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedEventId, setCopiedEventId] = useState(null);
   const { t,lang } = useLanguage();
+  const ui = useInterfaceCopy();
 
   // Direct link that re-opens this incident on the map (?incident=<id>)
   const buildIncidentLink = (item) => {
@@ -94,6 +99,7 @@ const PersonalizedFeed = ({
           <button
             type="button"
             className="clear-search-btn"
+            aria-label={ui.clearSearch || t.ui["Clear search"] || 'Clear search'}
             onClick={() => setSearchQuery("")}
           >
             ✕
@@ -113,7 +119,7 @@ const PersonalizedFeed = ({
         {filteredEvents.length === 0 ? (
           <div className="feed-empty-state">
             <MapPin size={28} strokeWidth={1.4} aria-hidden="true" />
-            <h5>{searchQuery ? "No matching reports" : t.sidebar.emptyState}</h5><p>{searchQuery ? "Try another area or clear your search." : "Reports from people nearby will appear here. See something on your route? Add it to the map."}</p>
+            <h5>{searchQuery ? ui.noMatches : t.sidebar.emptyState}</h5><p>{searchQuery ? ui.tryOther : "Reports from people nearby will appear here. See something on your route? Add it to the map."}</p>
           </div>
         ) : (
           filteredEvents.map((item) => {
@@ -161,7 +167,7 @@ const PersonalizedFeed = ({
                       onClick={(e) => handleCopyLink(e, item)}
                       title="Copy a direct link that opens this incident on the map"
                     >
-                      {copiedEventId === item.id ? "Copied" : "Copy link"}
+                      {copiedEventId === item.id ? ui.copied : ui.copyLink}
                     </button>
                     <button
                       type="button"
@@ -169,12 +175,14 @@ const PersonalizedFeed = ({
                       onClick={(e) => handleWhatsAppShare(e, item)}
                       title="Share emergency hazard alert via WhatsApp"
                     >
-                      Share
+                      {ui.shareBtn}
                     </button>
                     <div className="card-verifications">
                       <span>{item.verificationCount || 1} {t.actions.confirmations}</span>
                       {item.isVerified && <span className="verified-glyph">✓</span>}
                     </div>
+                    {onVerifyEvent && <button type="button" className="copy-link-btn" disabled={hasUserVoted?.(item.id,'verify')===true} onClick={() => onVerifyEvent(item.id)}>{ui.confirmAction}</button>}
+                    {onResolveEvent && <button type="button" className="copy-link-btn" disabled={hasUserVoted?.(item.id,'clear')===true} onClick={() => onResolveEvent(item.id)}>{ui.clearAction}</button>}
                   </div>
                 </div>
               </article>

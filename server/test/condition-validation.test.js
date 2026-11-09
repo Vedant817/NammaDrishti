@@ -20,4 +20,8 @@ test('condition fields are enum-validated, official titles rejected, and coverag
   assert.equal((await post('/api/incidents', { ...report, reportedBy: 'x'.repeat(61) })).status, 400);
   assert.equal((await post('/api/incidents', { ...report, position: { lat: 28.6, lng: 77.2 } })).status, 400);
   assert.equal((await post('/api/incidents', { ...report, position: { lat: 13.30, lng: 77.70 } })).status, 201);
+  const created = await (await post('/api/incidents', { ...report, title: 'Vote freshness', position: { lat: 12.97, lng: 77.59 } })).json();
+  assert.equal((await post('/api/incidents/' + created.id + '/verify', { observedAt: Date.now() - 31 * 60000 })).status, 422);
+  assert.equal((await post('/api/incidents/' + created.id + '/verify', { observedAt: Date.now() - 1000 })).status, 200);
+  assert.equal((await post('/api/incidents/' + created.id + '/resolve', { observedAt: Date.now() - 31 * 60000 })).status, 422);
 });

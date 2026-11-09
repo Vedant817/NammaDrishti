@@ -11,7 +11,7 @@ async function answer({message,language,incidents,liveData}) {
   let weather=null;
   if(/rain|weather|radar|storm|ಮಳೆ|ಹವಾಮಾನ|बारिश|मौसम/.test(query)||process.env.GEMINI_API_KEY){try{weather=await liveData.weather();}catch{}}
   const tokens=query.split(/\s+/).filter(w=>w.length>2);
-  const matches=publicItems.filter(i=>tokens.some(w=>`${i.ward} ${i.title} ${i.type}`.toLowerCase().includes(w))).slice(0,5);
+  const matches=allItems.filter(i=>tokens.some(w=>`${i.ward} ${i.title} ${i.type}`.toLowerCase().includes(w))).slice(0,5);
   let reply=`${copy.count}: ${allItems.length}.\n${matches.length?matches.map(i=>`${i.title}: ${i.description} (${i.createdAt})`).join('\n'):copy.none}`;
   if(/rain|weather|radar|storm|ಮಳೆ|ಹವಾಮಾನ|बारिश|मौसम/.test(query))reply=weather&&!weather.isOffline?`${copy.weather}: ${weather.precipitationAmountMm} mm / ${weather.intervalSeconds/60} min · ${weather.observedAt}.`:copy.unavailable;
   if(/report|pothole|ವರದಿ|रिपोर्ट/.test(query))reply=copy.help;

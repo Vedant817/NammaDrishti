@@ -35,8 +35,9 @@ const corsOrigins = [
   ...(process.env.FRONTEND_ORIGINS ? process.env.FRONTEND_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) : []),
 ];
 function corsOrigin(origin, cb) {
+  // Disallowed origins get a clean no-ACAO denial, not an error response.
   if (!origin || corsOrigins.includes(origin)) return cb(null, true);
-  return cb(new Error('CORS request not allowed'));
+  return cb(null, false);
 }
 app.use(cors({
   origin: corsOrigin,
@@ -363,7 +364,7 @@ app.get('/api/health', (req, res) => {
   res.status(storageReady ? 200 : 503).json({
     status: storageReady ? 'online' : 'initializing',
     app: 'NammaDrishti Real-Time Civic & Transit Radar Backend',
-    activeIncidents: incidents.length,
+    activeIncidents: incidents.filter((i) => !i.moderationHidden).length,
     storage: firebaseStore ? 'firestore' : 'local-json',
     authentication: firebaseStore ? 'firebase' : 'device-id',
     replicaMode: firebaseStore ? 'fenced-writer-with-live-snapshots' : 'single-process',
@@ -679,7 +680,11 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
 // 3. PROXIMITY-WEIGHTED VERIFICATION ENDPOINT
 app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
   const { id } = req.params;
-  const { voterPosition, voterId } = req.body || {};
+  const { voterPosition, voterId, observedAt } = req.body || {};
+  // Votes inherit the same 30-minute freshness window as reports: a stale
+  // approval must fail closed as OBSERVATION_EXPIRED, not record a 200.
+  const receivedAt = Date.now();
+  if (observedAt !== undefined && (!Number.isFinite(observedAt) || observedAt < receivedAt - 30 * 60000 || observedAt > receivedAt + 5 * 60000)) return res.status(422).json({ code: 'OBSERVATION_EXPIRED', error: 'Check the location again before voting on an old observation.' });
   const incident = incidents.find((i) => i.id === id && !i.moderationHidden);
 
   if (!incident) {
@@ -755,6 +760,9 @@ app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
 // 4. MULTI-CITIZEN CLEARANCE ENDPOINT
 app.post('/api/incidents/:id/resolve', resolveLimiter, async (req, res) => {
   const { id } = req.params;
+  const { observedAt } = req.body || {};
+  const receivedAt = Date.now();
+  if (observedAt !== undefined && (!Number.isFinite(observedAt) || observedAt < receivedAt - 30 * 60000 || observedAt > receivedAt + 5 * 60000)) return res.status(422).json({ code: 'OBSERVATION_EXPIRED', error: 'Check the location again before voting on an old observation.' });
   const index = incidents.findIndex((i) => i.id === id && !i.moderationHidden);
 
   if (index === -1) {
@@ -887,11 +895,14 @@ async function requireModerator(req,res,next) {
 app.get('/api/moderation', requireModerator, async(req,res)=>{
   try {
     const rows = incidents.map((item) => {
-      const visible = publicIncident(item) || {};
-      return { ...visible, reporterCount: Array.isArray(item.reporters) ? item.reporters.length : 0, voterCount: Array.isArray(item.verifiedVoters) ? item.verifiedVoters.length : 0, clearanceVotes: item.clearanceVotes || 0 };
+      // Moderators see hidden rows too (with id for the restore action), but
+      // never voter/reporter identity arrays — counts only.
+      const visible = publicIncident(item) || { id: item.id };
+      return { ...visible, title: item.title, description: item.description, position: item.position, type: item.type, ward: item.ward, urgency: item.urgency, moderationHidden: !!item.moderationHidden, reporterCount: Array.isArray(item.reporters) ? item.reporters.length : 0, voterCount: Array.isArray(item.verifiedVoters) ? item.verifiedVoters.length : 0, clearanceVotes: item.clearanceVotes || 0 };
     });
     const audit = await records.list('moderationAudit');
-    res.json({ incidents: rows.slice(0, 200), truncated: rows.length > 200, total: rows.length, audit: audit.slice(0, 200) });
+    const auditRows = audit.map(({ actor, ...row }) => row);
+    res.json({ incidents: rows.slice(0, 200), truncated: rows.length > 200, total: rows.length, audit: auditRows.slice(0, 200) });
   } catch { res.status(503).json({ error: 'Audit unavailable' }); }
 });
 app.post('/api/moderation/:id', requireModerator, async(req,res)=>{

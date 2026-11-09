@@ -196,6 +196,7 @@ const ReportModal = ({
                 <button
                   type="button"
                   key={cat}
+                  aria-pressed={formData.type===cat}
                   className={`chip ${formData.type === cat ? "active" : ""}`}
                   onClick={() => setFormData({ ...formData, type: cat })}
                 >

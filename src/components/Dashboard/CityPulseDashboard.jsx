@@ -41,7 +41,7 @@ const parseDeepLinkParams = () => {
 const DEEP_LINK = parseDeepLinkParams();
 
 const CityPulseDashboard = () => {
-  const { events, isLiveConnected, offlineQueueCount, addEvent, verifyEvent, resolveEvent, actionIdentity, savedActions, actionGate, storageError, legacyActions, invalidActionCount, changeAction } = useEventData();
+  const { events, isLiveConnected, offlineQueueCount, addEvent, verifyEvent, resolveEvent, hasUserVoted, actionIdentity, savedActions, actionGate, storageError, legacyActions, invalidActionCount, changeAction } = useEventData();
   const { weather } = useWeatherTelemetry();
   const { traffic, clock } = useTrafficData();
   const { context: publicContext, clock: sourceClock } = usePublicContext();
@@ -272,6 +272,7 @@ const CityPulseDashboard = () => {
           onEventSelect={handleEventSelect}
           onVerifyEvent={handleVerifyEvent}
           onResolveEvent={handleResolveEvent}
+          hasUserVoted={hasUserVoted}
           activeTab={sidebarTab}
           onTabChange={tab=>{setSidebarTab(tab);if(tab!=='feed')setActiveFilter('All');}}
           activeFilter={activeFilter}

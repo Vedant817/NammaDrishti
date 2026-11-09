@@ -33,8 +33,9 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
   ]);
   // Reset the greeting when the UI language changes so the conversation does
   // not keep a stale-language intro.
+  // Refresh only the greeting on a language change; keep conversation history.
   useEffect(() => {
-    setMessages([{ type: 'bot', text: t.live.assistantIntro }]);
+    setMessages((prev) => (prev.some((m) => m.type === 'user') ? prev : [{ type: 'bot', text: t.live.assistantIntro }]));
   }, [lang, t]);
 
   const [input, setInput] = useState("");

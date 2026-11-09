@@ -66,7 +66,7 @@ export function createActionRunner({store,request,isCurrent,apiBase,now=Date.now
       const p=action.payload;
       const payload=action.kind==='report'?Object.fromEntries(['id','title','type','urgency','description','ward','position','mediaUrl','waterDepth','vehiclePassability'].filter(k=>Object.hasOwn(p,k)).map(k=>[k,p[k]])):{...(action.kind==='verify'?{voterPosition:p.voterPosition}:{}),voterId:identity.uid};
       if(action.kind==='report')payload.voterId=identity.uid;
-      if(action.kind==='report')payload.observedAt=observedAt;
+      payload.observedAt=observedAt;
       if(action.kind==='report'){
         // Preserve an immutable uncertain submission across crashes/lost ACKs.
         // It must be retried unchanged; editing it could lose new text when the
