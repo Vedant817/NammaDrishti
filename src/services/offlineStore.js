@@ -7,7 +7,7 @@ const ownerOK=owner=>typeof owner==='string'&&owner.length>0&&owner.length<=128;
 const idOK=id=>typeof id==='string'&&id.length>0&&id.length<=300;
 function payloadOK(kind,payload) {
   if(!payload||typeof payload!=='object'||Array.isArray(payload))return false;
-  if(kind==='report')return idOK(payload.id)&&typeof payload.title==='string'&&typeof payload.description==='string'&&Number.isFinite(payload.position?.lat)&&Number.isFinite(payload.position?.lng)&&payload.position.lat>=12.7&&payload.position.lat<=13.28&&payload.position.lng>=77.3&&payload.position.lng<=77.88;
+  if(kind==='report')return idOK(payload.id)&&typeof payload.title==='string'&&typeof payload.description==='string'&&Number.isFinite(payload.position?.lat)&&Number.isFinite(payload.position?.lng)&&payload.position.lat>=12.6&&payload.position.lat<=13.35&&payload.position.lng>=77.25&&payload.position.lng<=77.95;
   return idOK(payload.incidentId);
 }
 export function validAction(item,owner) {
@@ -114,7 +114,7 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
       const get=actions.get([owner,id]);get.onsuccess=()=>{
         const current=get.result;
         if(!validAction(current,owner)||current.revision!==revision||(token?current.leaseToken!==token||current.leaseUntil<=now():current.leaseUntil>now())){set(null);return;}
-        if(manual&&!token&&patch.payload&&(current.state!=='failed'||current.uncertain)){set(null);return;}
+        if(manual&&!token&&patch.payload&&current.state!=='failed'){set(null);return;}
         const safe=Object.fromEntries(['state','uncertain','reason','nextAt','attempts','httpStatus','payload'].filter(key=>Object.hasOwn(patch,key)).map(key=>[key,patch[key]]));
         const next={...current,...safe,...(manual&&!token&&patch.payload?{observedAt:now()}:{}),revision:current.revision+1,updatedAt:Math.max(now(),current.updatedAt),...(manual?{leaseToken:null,leaseUntil:0}:{})};
         if(!validAction(next,owner)){set(null);return;}

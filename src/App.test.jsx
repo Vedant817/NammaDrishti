@@ -12,7 +12,7 @@ describe('NammaDrishti Core Platform Tests', () => {
 
   test('renders hazard filter chips and calculates active incidents', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button',{name:'Reports'}));
+    fireEvent.click(screen.getByRole('tab',{name:'Reports'}));
     expect(screen.getByText('All Hazards')).toBeInTheDocument();
     expect(screen.getAllByText('Traffic Jams').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Waterlogging').length).toBeGreaterThan(0);
@@ -29,12 +29,12 @@ describe('NammaDrishti Core Platform Tests', () => {
 
   test('switches sidebar tabs between Reports, Overview, and Helplines with Emergency SOS', () => {
     render(<App />);
-    const helplineTab = screen.getAllByRole('button',{name:'Help'})[0];
+    const helplineTab = screen.getByRole('tab',{name:'Help'});
     fireEvent.click(helplineTab);
     expect(screen.getByText(/Bengaluru Emergency Helplines/i)).toBeInTheDocument();
     expect(screen.getByText(/Share emergency location/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button',{name:'Today'}));
+    fireEvent.click(screen.getByRole('tab',{name:'Today'}));
     const diagnosticTab = screen.getByRole('button',{name:/Rain & weather/});
     fireEvent.click(diagnosticTab);
     expect(screen.getByText(/Bengaluru overview/i)).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe('NammaDrishti Core Platform Tests', () => {
 
     expect(screen.getByText('ಬೆಂಗಳೂರು')).toBeInTheDocument();
     expect(screen.getByText('ನೈಜ-ಸಮಯದ ನಾಗರಿಕ ಮತ್ತು ಸಂಚಾರ ಮಾಹಿತಿ')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button',{name:'ವರದಿಗಳು'}));
+    fireEvent.click(screen.getByRole('tab',{name:'ವರದಿಗಳು'}));
     expect(screen.getByText('ಎಲ್ಲಾ ಅಪಾಯಗಳು')).toBeInTheDocument();
   });
 });

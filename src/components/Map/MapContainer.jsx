@@ -292,6 +292,7 @@ const CustomMapContainer = ({
             <button
               type="button"
               className="toolbar-btn"
+              aria-pressed={isPlayingRadar}
               onClick={() => setIsPlayingRadar((p) => !p)}
               title="Animate past radar observations"
             >
@@ -308,6 +309,7 @@ const CustomMapContainer = ({
                 setRadarIndex(Number(e.target.value));
               }}
               aria-label="Scrub monsoon radar timeline"
+              aria-valuetext={formatRadarLabel(currentRadarFrame)}
             />
             <span className="radar-frame-label">{formatRadarLabel(currentRadarFrame)}</span>
             <button

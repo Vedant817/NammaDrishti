@@ -55,7 +55,7 @@ export function useOfflineActions(onConfirmed) {
     try{
       let result;
       if(operation==='discard')result=await offlineStore.discard(i.uid,action.id,action.revision);
-      else result=await offlineStore.update(i.uid,action.id,action.revision,{state:'pending',reason:null,nextAt:0,attempts:0,httpStatus:null,...(payload?{payload:{...payload,id:action.id}}:{})},{manual:true,gate:{until:0,blocked:false},resetGate:true});
+      else result=await offlineStore.update(i.uid,action.id,action.revision,{state:'pending',reason:null,nextAt:0,attempts:0,httpStatus:null,...(payload?{payload:action.kind==='report'?{...payload,id:action.id}:{...action.payload,confirmedFreshObservation:true}}:{})},{manual:true,gate:{until:0,blocked:false},resetGate:true});
       if(!current(i))return {errorCode:'identity-changed'};
       if(!result){await refresh(i);return {errorCode:'action-changed'};}
       await refresh(i);if(operation!=='discard')void syncOfflineQueue();return {saved:true};

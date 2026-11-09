@@ -236,7 +236,7 @@ async function runBrutalStressSuite() {
       !silkStillPresent
     );
 
-    // 1c: Impersonation Attack & Authority Sanitization
+    // 1c: Impersonation Attack — official titles are rejected, never stored.
     const impersonationRes = await makeRequest('/api/incidents', {
       method: 'POST',
       body: {
@@ -247,13 +247,11 @@ async function runBrutalStressSuite() {
         reportedBy: 'BTP Official Police Patrol Commander',
       },
     });
-    const cleanReporter = impersonationRes.data?.reportedBy;
-    const isSanitized = cleanReporter && !cleanReporter.toLowerCase().includes('police') && !cleanReporter.toLowerCase().includes('btp');
     recordFinding(
       'Senior Security & Concurrency',
-      'Authoritative Impersonation Sanitization',
-      `Title scrubbed to: "${cleanReporter}"`,
-      Boolean(isSanitized)
+      'Authoritative Impersonation Rejection',
+      `Official-title payload rejected with status ${impersonationRes.status}`,
+      impersonationRes.status === 400
     );
 
     // 1d: Oversized String Payload Attack (>2000 chars)
@@ -301,10 +299,13 @@ async function runBrutalStressSuite() {
       { name: 'Infinity Longitude', pos: { lat: 12.9716, lng: Infinity }, expectedStatus: 400 },
       { name: 'Latitude Overflow (+120)', pos: { lat: 120, lng: 77.5946 }, expectedStatus: 400 },
       { name: 'Longitude Underflow (-200)', pos: { lat: 12.9716, lng: -200 }, expectedStatus: 400 },
-      { name: 'Null Island (0, 0)', pos: { lat: 0, lng: 0 }, expectedStatus: 201 },
-      { name: 'North Pole Edge (90, 0)', pos: { lat: 90, lng: 0 }, expectedStatus: 201 },
-      { name: 'South Pole Edge (-90, 0)', pos: { lat: -90, lng: 0 }, expectedStatus: 201 },
-      { name: 'International Date Line (25, -180)', pos: { lat: 25, lng: -180 }, expectedStatus: 201 },
+      // Repo is fenced to the Bengaluru metro (BMRDA): valid-but-outside-city
+      // coordinates must be rejected, not persisted as Bengaluru hazards.
+      { name: 'Null Island (0, 0)', pos: { lat: 0, lng: 0 }, expectedStatus: 400 },
+      { name: 'North Pole Edge (90, 0)', pos: { lat: 90, lng: 0 }, expectedStatus: 400 },
+      { name: 'South Pole Edge (-90, 0)', pos: { lat: -90, lng: 0 }, expectedStatus: 400 },
+      { name: 'International Date Line (25, -180)', pos: { lat: 25, lng: -180 }, expectedStatus: 400 },
+      { name: 'Metro Fringe (Airport)', pos: { lat: 13.30, lng: 77.70 }, expectedStatus: 201 },
     ];
 
     for (const bc of boundaryCoordinates) {

@@ -31,6 +31,12 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
       text: t.live.assistantIntro,
     },
   ]);
+  // Reset the greeting when the UI language changes so the conversation does
+  // not keep a stale-language intro.
+  useEffect(() => {
+    setMessages([{ type: 'bot', text: t.live.assistantIntro }]);
+  }, [lang, t]);
+
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -120,13 +126,15 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
       };
       recognitionRef.current = recognition;
     }
-  }, []);
+  }, [lang]);
 
+  const [voiceNotice, setVoiceNotice] = useState('');
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert("Voice recognition is not supported in this browser. Please use Chrome or Edge.");
+      setVoiceNotice(t.ui["Voice input is not supported in this browser"] || "Voice input is not supported in this browser. Use Chrome or Edge.");
       return;
     }
+    setVoiceNotice('');
     if (isListening) {
       recognitionRef.current.stop();
     } else {
@@ -179,6 +187,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
           </div>
 
           <div className="messages">
+            {voiceNotice && <p role="status" className="voice-notice">{voiceNotice}</p>}
             {messages.map((message, index) => (
               <div key={index} className={`message ${message.type}`}>
                 <div className="message-content">

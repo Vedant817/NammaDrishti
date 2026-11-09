@@ -1,5 +1,5 @@
 const POINTS = [{id:'silk',name:'Silk Board',lat:12.9171,lng:77.6238},{id:'orr',name:'ORR Bellandur',lat:12.935,lng:77.685},{id:'tin',name:'Tin Factory',lat:12.9972,lng:77.6672},{id:'hebbal',name:'Hebbal',lat:13.0358,lng:77.597}];
-const insideCity = (lat,lng) => Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=12.7&&lat<=13.28&&lng>=77.3&&lng<=77.88;
+const insideCity = (lat,lng) => Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=12.6&&lat<=13.35&&lng>=77.25&&lng<=77.95;
 const { cityDate, CITY_ZONE } = require('./sourceTime');
 async function textFetch(url, options={}) {
   const res=await fetch(url,{...options,signal:AbortSignal.timeout(7000),redirect:'error'});

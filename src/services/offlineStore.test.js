@@ -75,7 +75,20 @@ test('an oversized draft is rejected without erasing earlier committed work',asy
 test('clock rollback cannot turn a valid saved record into an unreadable draft',async()=>{
  const h=harness();try{await h.a.enqueue('A',report('clock'));h.clock=900;const row=await h.a.claim('A','clock');expect(row.updatedAt).toBe(1000);expect((await h.a.list('A')).invalidCount).toBe(0);const updated=await h.a.update('A',row.id,row.revision,{state:'failed'},{token:row.leaseToken,manual:true});expect(updated.updatedAt).toBe(1000);expect(await h.a.discard('A',updated.id,updated.revision)).toBe(true);}finally{await h.a.close();await h.b.close();}
 });
+test('metro bounds accept peripheral Bengaluru reports',async()=>{
+ const h=harness();try{
+  const airport={kind:'report',id:'airport',payload:{id:'airport',title:'Junction',description:'Flooded',position:{lat:13.30,lng:77.70}}};
+  expect((await h.a.enqueue('A',airport)).action.id).toBe('airport');
+  await expect(h.a.enqueue('A',{kind:'report',id:'delhi',payload:{id:'delhi',title:'X',description:'Z',position:{lat:28.6,lng:77.2}}})).rejects.toMatchObject({code:'invalid-action'});
+  const action=await h.a.claim('A','airport');
+  const failed=await h.a.update('A',action.id,action.revision,{state:'failed',reason:'stale',uncertain:true,attempts:1},{token:action.leaseToken,manual:true});
+  expect(failed).not.toBeNull();
+  const edited=await h.a.update('A',failed.id,failed.revision,{state:'pending',reason:null,nextAt:0,attempts:0,payload:{...failed.payload,title:'Re-observed'}});
+  expect(edited).not.toBeNull();expect(edited.payload.title).toBe('Re-observed');
+ }finally{await h.a.close();await h.b.close();}
+});
 test('legacy detection tolerates a browser SecurityError while acquiring storage',()=>{
  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){throw new DOMException('Denied','SecurityError');}});
  try{expect(()=>legacyActionsPresent()).not.toThrow();}finally{Object.defineProperty(globalThis,'localStorage',descriptor);}
 });
+

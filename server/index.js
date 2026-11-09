@@ -12,6 +12,7 @@ const { getHexIndex, getHexRing } = require('./services/spatialHex.js');
 const { createRateLimiter } = require('./services/rateLimiter.js');
 const { processMediaUpload, MEDIA_DIR } = require('./services/mediaService.js');
 const { publicIncident } = require('./services/publicIncident');
+const { insideCity } = require('./services/liveData');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,9 +22,24 @@ if (process.env.TRUST_PROXY === 'true') {
   app.set('trust proxy', 1);
 }
 
-// Enable CORS for frontend client
+// Enable CORS for frontend client. Mutating API routes require Firebase auth
+// in production, but a restrictive allow-list avoids cross-site calls to
+// dev/local servers. Configure FRONTEND_ORIGINS (comma-separated) on deploy.
+const corsOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3002',
+  'http://127.0.0.1:3002',
+  'http://localhost:5001',
+  'http://127.0.0.1:5001',
+  ...(process.env.FRONTEND_ORIGINS ? process.env.FRONTEND_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) : []),
+];
+function corsOrigin(origin, cb) {
+  if (!origin || corsOrigins.includes(origin)) return cb(null, true);
+  return cb(new Error('CORS request not allowed'));
+}
 app.use(cors({
-  origin: '*',
+  origin: corsOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -32,13 +48,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Setup Socket.io for Real-Time Event Dispatch
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
   },
 });
 
-const liveData = require('./services/liveData').createLiveData({ reserveGeocode: async () => {
-  if (!firebaseStore) { const wait = Math.max(0, localGeocodeAt - Date.now()); localGeocodeAt = Math.max(Date.now(), localGeocodeAt) + 1100; await new Promise(r => setTimeout(r, wait)); return; }
+const liveData = require('./services/liveData').createLiveData({ reserveGeocode: async () => {  if (!firebaseStore) { const wait = Math.max(0, localGeocodeAt - Date.now()); localGeocodeAt = Math.max(Date.now(), localGeocodeAt) + 1100; await new Promise(r => setTimeout(r, wait)); return; }
   const ref = firebaseStore.db.collection('_coordination').doc('geocoder');
   const owner = require('crypto').randomUUID();
   const wait = await firebaseStore.db.runTransaction(async tx => {
@@ -168,14 +183,14 @@ try {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
     if (raw.trim()) {
       incidents = JSON.parse(raw);
-      // Backfill integrity fields for legacy persisted records (timestamp stays
-      // as reported — missing createdAt simply means the record is aged "now")
+      // Legacy persisted records (timestamp stays as reported — missing
+      // createdAt is quarantined to cleanup, never fabricated to "now")
       incidents = incidents.map((inc) => {
         const lat = inc.position?.lat || 12.9716;
         const lng = inc.position?.lng || 77.5946;
         return {
           ...inc,
-          createdAt: inc.createdAt || new Date().toISOString(),
+          createdAt: inc.createdAt || null,
           hexIndex: inc.hexIndex || getHexIndex(lat, lng, 8),
           verificationScore: inc.verificationScore || inc.verificationCount || 1.0,
         };
@@ -254,7 +269,9 @@ function cleanupExpiredIncidents() {
   for (const incident of incidents) {
     const createdMs = incident.createdAt ? new Date(incident.createdAt).getTime() : NaN;
     if (Number.isNaN(createdMs)) {
-      keptIncidents.push(incident);
+      // Records without a verifiable creation time are quarantined via normal
+      // expiry instead of living forever in the live feed.
+      expiredIncidents.push({ incident, ageMs: 0 });
       continue;
     }
 
@@ -326,6 +343,12 @@ const mediaLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 15,
   message: 'Media upload rate limit reached. Please wait before uploading more photos.',
+});
+
+const resolveLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  message: 'Too many clearance votes recorded. Please wait a minute before voting again.',
 });
 
 const sosLimiter = createRateLimiter({
@@ -439,6 +462,15 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
   let { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability, observedAt } = req.body || {};
 
   if (urgency !== undefined && !['Low', 'Medium', 'High'].includes(urgency)) return res.status(400).json({ error: 'Invalid urgency.' });
+  const WATER_DEPTH_ENUM = ['< 6 in (Ankle Deep)', '1 - 1.5 ft (Exhaust Level)', '> 2.0 ft (Engine Submersion)'];
+  const PASSABILITY_ENUM = ['Passable with Caution', '2-Wheelers Blocked', 'Cars Blocked / SUV Only', 'Completely Impassable'];
+  if (waterDepth !== undefined && waterDepth !== null && waterDepth !== '' && !WATER_DEPTH_ENUM.includes(waterDepth)) return res.status(400).json({ error: 'Invalid waterDepth selection.' });
+  if (vehiclePassability !== undefined && vehiclePassability !== null && vehiclePassability !== '' && !PASSABILITY_ENUM.includes(vehiclePassability)) return res.status(400).json({ error: 'Invalid vehiclePassability selection.' });
+  if (req.body.reportedBy !== undefined) {
+    const rawReportedBy = String(req.body.reportedBy);
+    if (rawReportedBy.length > 60) return res.status(400).json({ error: 'Invalid reportedBy.' });
+    if (/(bengaluru traffic police|btp|bbmp|official|police|highway patrol|patrol|traffic monitor|monitor|authority)/i.test(rawReportedBy)) return res.status(400).json({ error: 'Citizen reports cannot use official titles.' });
+  }
   if (id !== undefined && (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(id))) return res.status(400).json({ error: 'Invalid incident ID.' });
   if (ward !== undefined && (typeof ward !== 'string' || ward.length > 200)) return res.status(400).json({ error: 'Invalid ward.' });
   const trimmedTitle = typeof title === 'string' ? title.trim() : '';
@@ -469,6 +501,7 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return res.status(400).json({ error: 'Invalid geographic position coordinates (lat, lng must be valid finite numbers).' });
   }
+  if (!insideCity(lat, lng)) return res.status(400).json({ error: 'Outside Bengaluru metro coverage.' });
 
   // Media source hygiene: only HTTPS/HTTP URLs (<=2KB) or inline base64 image data URLs are accepted.
   // Blocks javascript:, file:, path traversal, and executable injection payloads.
@@ -720,7 +753,7 @@ app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
 });
 
 // 4. MULTI-CITIZEN CLEARANCE ENDPOINT
-app.post('/api/incidents/:id/resolve', async (req, res) => {
+app.post('/api/incidents/:id/resolve', resolveLimiter, async (req, res) => {
   const { id } = req.params;
   const index = incidents.findIndex((i) => i.id === id && !i.moderationHidden);
 
@@ -852,7 +885,14 @@ async function requireModerator(req,res,next) {
   }catch {res.status(401).json({error:'Moderator sign-in required'});}
 }
 app.get('/api/moderation', requireModerator, async(req,res)=>{
-  try {res.json({incidents,audit:await records.list('moderationAudit')});}catch {res.status(503).json({error:'Audit unavailable'});}
+  try {
+    const rows = incidents.map((item) => {
+      const visible = publicIncident(item) || {};
+      return { ...visible, reporterCount: Array.isArray(item.reporters) ? item.reporters.length : 0, voterCount: Array.isArray(item.verifiedVoters) ? item.verifiedVoters.length : 0, clearanceVotes: item.clearanceVotes || 0 };
+    });
+    const audit = await records.list('moderationAudit');
+    res.json({ incidents: rows.slice(0, 200), truncated: rows.length > 200, total: rows.length, audit: audit.slice(0, 200) });
+  } catch { res.status(503).json({ error: 'Audit unavailable' }); }
 });
 app.post('/api/moderation/:id', requireModerator, async(req,res)=>{
   if(!['hide','restore'].includes(req.body.action)||typeof req.body.reason!=='string'||req.body.reason.trim().length<5||req.body.reason.length>500)return res.status(400).json({error:'Action and reason (5–500 characters) required'});
@@ -950,8 +990,9 @@ ready.catch(() => console.error('[Startup] Cloud storage unavailable'));
 
 // Start Server if executed directly
 if (require.main === module) {
-  if (process.env.NODE_ENV === 'production' && !firebaseStore) {
-    console.error('[Startup] Production requires FIREBASE_PROJECT_ID and backend credentials.');
+  const allowLocalMode = process.env.ALLOW_LOCAL_MODE === 'true' || process.env.NODE_ENV === 'test';
+  if (!firebaseStore && !allowLocalMode) {
+    console.error('[Startup] Firebase is not configured. Set FIREBASE_PROJECT_ID for production, or ALLOW_LOCAL_MODE=true only for explicit local development.');
     process.exit(1);
   }
   const PORT = process.env.PORT || 5001;

@@ -3,7 +3,7 @@ import {useOfflineCopy} from '../../data/offlineCopy';
 import './SavedActions.css';
 export default function SavedActions({actions=[],gate={},storageError,legacy=false,invalidCount=0,onChange,onEdit}) {
  const copy=useOfflineCopy(),[error,setError]=useState(null),[busy,setBusy]=useState(null);
- async function change(action,operation){setBusy(action.id);setError(null);try{const result=await onChange(action,operation);if(result?.errorCode)setError(copy[result.errorCode]||copy['storage-unavailable']);}catch{setError(copy['storage-unavailable']);}finally{setBusy(null);}}
+ async function change(action,operation,payload){setBusy(action.id);setError(null);try{const result=await onChange(action,operation,payload);if(result?.errorCode)setError(copy[result.errorCode]||copy['storage-unavailable']);}catch{setError(copy['storage-unavailable']);}finally{setBusy(null);}}
  return <section className="saved-actions" aria-labelledby="saved-actions-title">
   <h3 id="saved-actions-title">{copy.title} <span>{actions.length}</span></h3><p>{copy.intro}</p>
   {legacy&&<p role="note">{copy.legacy}</p>}{invalidCount>0&&<p role="alert">{copy.invalid}</p>}
@@ -20,7 +20,8 @@ export default function SavedActions({actions=[],gate={},storageError,legacy=fal
     {action.uncertain&&<p>{copy.uncertain}</p>}
     {action.kind==='report'&&<details><summary>{copy.report}</summary><p>{action.payload.description}</p><p>{action.payload.ward}</p>{action.payload.mediaUrl&&<img src={action.payload.mediaUrl} alt={copy.photo}/>}</details>}
     <div className="saved-actions__buttons">{action.reason!=='stale'&&<button type="button" disabled={sending||busy!==null} onClick={()=>change(action,'retry')}>{copy.retry}</button>}
-    {action.kind==='report'&&action.state==='failed'&&!action.uncertain&&<button type="button" disabled={sending||busy!==null} onClick={()=>onEdit(action)}>{action.reason==='stale'?copy.review:copy.edit}</button>}
+    {action.kind==='report'&&action.state==='failed'&&(!action.uncertain||action.reason==='stale')&&<button type="button" disabled={sending||busy!==null} onClick={()=>onEdit(action)}>{action.reason==='stale'?copy.review:copy.edit}</button>}
+     {action.kind!=='report'&&action.reason==='stale'&&<button type="button" disabled={sending||busy!==null} onClick={()=>change(action,'retry',{confirmedFreshObservation:true})}>{copy.reverify}</button>}
     <button type="button" disabled={sending||busy!==null} onClick={()=>change(action,'discard')}>{copy.discard}</button></div>
    </li>;
   })}</ul>

@@ -25,19 +25,18 @@ const PersonalizedFeed = ({
     return `${currentAppOrigin()}?incident=${encodeURIComponent(item.id)}`;
   };
 
+  const [copyNotice, setCopyNotice] = useState('');
   const handleCopyLink = async (e, item) => {
     e.stopPropagation();
     const link = buildIncidentLink(item);
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(link);
-      } else {
-        window.prompt("Copy this incident link:", link);
-      }
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(link);
       setCopiedEventId(item.id);
-      setTimeout(() => setCopiedEventId((cur) => (cur === item.id ? null : cur)), 2000);
+      setCopyNotice(t.ui?.["Link copied"] || 'Link copied');
+      setTimeout(() => { setCopiedEventId((cur) => (cur === item.id ? null : cur)); setCopyNotice(''); }, 2000);
     } catch (err) {
-      window.prompt("Copy this incident link:", link);
+      setCopyNotice(`${link}`);
     }
   };
 
@@ -108,6 +107,7 @@ const PersonalizedFeed = ({
           <span className="feed-count-badge">{filteredEvents.length}</span>
         </h4>
       </div>
+      {copyNotice && <p role="status" className="copy-notice">{copyNotice}</p>}
 
       <div className="feed-items-list">
         {filteredEvents.length === 0 ? (
@@ -120,11 +120,10 @@ const PersonalizedFeed = ({
             const isSelected = selectedEvent && selectedEvent.id === item.id;
 
             return (
-              <div
+              <article
                 key={item.id}
                 className={`feed-item-card ${isSelected ? "selected" : ""}`}
-
-                onClick={() => onEventSelect && onEventSelect(item)}
+                aria-current={isSelected || undefined}
               >
                 <div className="card-top-row">
                   <span className={`urgency-dot ${getUrgencyClass(item.urgency)}`}></span>
@@ -144,7 +143,7 @@ const PersonalizedFeed = ({
                   <span className="card-time">{incidentTime(item,lang)}</span>
                 </div>
 
-                <h5 className="card-title"><button type="button" className="incident-title-btn" onClick={e => { e.stopPropagation(); onEventSelect?.(item); }}>{item.title}</button></h5>
+                <h5 className="card-title"><button type="button" className="incident-title-btn" onClick={() => onEventSelect?.(item)}>{item.title}</button></h5>
                 <p className="card-desc">{item.description}</p>
                 {item.waterDepth && (
                   <div className="card-water-depth-pill" style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4', padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', marginTop: '6px', marginBottom: '4px' }}>
@@ -178,7 +177,7 @@ const PersonalizedFeed = ({
                     </div>
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })
         )}

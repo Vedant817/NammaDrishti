@@ -105,10 +105,10 @@ const Sidebar = ({
 
   return (
     <aside className="sidebar-container">
-      <nav className="sidebar-tab-nav" aria-label={copy.today+' / '+copy.reports+' / '+copy.help}>
+      <nav className="sidebar-tab-nav" role="tablist" aria-label={copy.today+' / '+copy.reports+' / '+copy.help}>
         {[['today',copy.today],['feed',copy.reports],['helpline',copy.help]].map(([id,label])=>{
           const active=id==='today'? !['feed','helpline'].includes(activeTab):activeTab===id;
-          return <button key={id} type="button" className={`sidebar-tab-btn ${active?'active':''}`} aria-pressed={active} onClick={()=>onTabChange(id)}>{label}</button>;
+          return <button key={id} type="button" role="tab" aria-selected={active} className={`sidebar-tab-btn ${active?'active':''}`} onClick={()=>onTabChange(id)}>{label}</button>;
         })}
       </nav>
 

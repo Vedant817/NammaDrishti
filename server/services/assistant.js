@@ -6,12 +6,13 @@ const STRINGS={
 };
 async function answer({message,language,incidents,liveData}) {
   const lang=STRINGS[language]?language:'en',copy=STRINGS[lang],query=message.toLowerCase();
-  const publicItems=incidents.filter(i=>!i.isResolved&&!i.moderationHidden).slice(0,100).map(i=>({id:i.id,title:i.title,description:i.description,type:i.type,ward:i.ward,createdAt:i.createdAt,waterDepth:i.waterDepth,confirmations:i.verificationCount}));
+  const allItems=incidents.filter(i=>!i.isResolved&&!i.moderationHidden);
+  const publicItems=allItems.slice(0,100).map(i=>({id:i.id,title:i.title,description:i.description,type:i.type,ward:i.ward,createdAt:i.createdAt,waterDepth:i.waterDepth,confirmations:i.verificationCount}));
   let weather=null;
   if(/rain|weather|radar|storm|ಮಳೆ|ಹವಾಮಾನ|बारिश|मौसम/.test(query)||process.env.GEMINI_API_KEY){try{weather=await liveData.weather();}catch{}}
   const tokens=query.split(/\s+/).filter(w=>w.length>2);
   const matches=publicItems.filter(i=>tokens.some(w=>`${i.ward} ${i.title} ${i.type}`.toLowerCase().includes(w))).slice(0,5);
-  let reply=`${copy.count}: ${publicItems.length}.\n${matches.length?matches.map(i=>`${i.title}: ${i.description} (${i.createdAt})`).join('\n'):copy.none}`;
+  let reply=`${copy.count}: ${allItems.length}.\n${matches.length?matches.map(i=>`${i.title}: ${i.description} (${i.createdAt})`).join('\n'):copy.none}`;
   if(/rain|weather|radar|storm|ಮಳೆ|ಹವಾಮಾನ|बारिश|मौसम/.test(query))reply=weather&&!weather.isOffline?`${copy.weather}: ${weather.precipitationAmountMm} mm / ${weather.intervalSeconds/60} min · ${weather.observedAt}.`:copy.unavailable;
   if(/report|pothole|ವರದಿ|रिपोर्ट/.test(query))reply=copy.help;
   reply+=`\n${copy.caution}`;
@@ -28,6 +29,6 @@ async function answer({message,language,incidents,liveData}) {
       reply=parsed.reply;mode='gemini-grounded';providerStatus='available';sources=[...sources,...publicItems.filter(i=>parsed.incidentIds.includes(i.id)).map(i=>({id:i.id,title:i.title}))];
     }catch(error){mode='grounded-summary-provider-unavailable';providerStatus=Number.isInteger(error.status)?`HTTP ${error.status}`:'invalid-provider-response';}
   }
-  return {reply,mode,providerStatus,sources,timestamp:new Date().toISOString(),activeIncidentCount:publicItems.length};
+  return {reply,mode,providerStatus,sources,timestamp:new Date().toISOString(),activeIncidentCount:allItems.length};
 }
 module.exports={answer};

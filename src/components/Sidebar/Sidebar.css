@@ -299,6 +299,7 @@
   border: 1px solid rgba(16, 185, 129, 0.3);
   color: #34D399;
   padding: 3px 8px;
+  min-height: 44px;
   border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 600;
@@ -316,6 +317,7 @@
   border: 1px solid rgba(59, 130, 246, 0.3);
   color: #60A5FA;
   padding: 3px 8px;
+  min-height: 44px;
   border-radius: 4px;
   font-size: 0.7rem;
   font-weight: 600;
