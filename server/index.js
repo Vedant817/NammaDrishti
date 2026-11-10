@@ -860,11 +860,17 @@ app.get('/api/sos/dispatches',async(req,res)=>{
 app.get('/api/sos/status/:id',async(req,res)=>{
   try {
     const token=/^Bearer (.+)$/.exec(req.headers.authorization||'');
-    const uid=firebaseStore&&token?(await firebaseStore.auth.verifyIdToken(token[1],true)).uid:null;
+    let uid=null;
+    if(firebaseStore&&token){
+      try{
+        const verified=await firebaseStore.auth.verifyIdToken(token[1],true);
+        uid=verified?.uid||null;
+      }catch{uid=null;}
+    }
     const item=await records.get('emergencyOutbox',req.params.id);
     if(!item || (!hasAuthorityAccess(req.headers['x-authority-token']) && (!uid || uid!==item.uid)))return res.status(404).json({error:'Dispatch not found'});
     res.json({id:item.id,status:item.status,attempts:item.attempts});
-  }catch {res.status(401).json({error:'Sign in required'});}
+  }catch {res.status(503).json({error:'Status unavailable'});}
 });
 
 // 6. CONVERSATIONAL AI TRANSIT ASSISTANT ENDPOINT

@@ -60,8 +60,12 @@ const Sidebar = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
-        }).then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); setDelivery(data.status); }).catch(() => setDelivery('SAVE_FAILED'));
+        }).then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); setDelivery(data.status||'SAVED'); }).catch((err) => {
+          if (err?.code === 'identity-changed' || err?.message === 'identity-changed') { setDelivery('AUTH_NOT_READY'); return; }
+          setDelivery('SAVE_FAILED');
+        });
       } catch (err) {
+        if (err?.code === 'identity-changed' || err?.message === 'identity-changed') { setDelivery('AUTH_NOT_READY'); return; }
         // Continue even if network is restricted
       }
 

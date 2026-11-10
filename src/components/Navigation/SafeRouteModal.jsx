@@ -133,11 +133,7 @@ const SafeRouteModal = ({
 
   const resolveEndpoint = async (text, pickedPlace, fieldName) => {
     if (pickedPlace) return pickedPlace;
-    const resolved = await geocodeBengaluruPlace(text);
-    if (!resolved) {
-      throw new Error(copy.placeMissing);
-    }
-    return resolved;
+    throw new Error(copy.placeMissing);
   };
 
   const handleCalculateRoute = async () => {
