@@ -235,7 +235,7 @@ const SafeRouteModal = ({
               {useCurrentGps && userLocation ? (
                 <div className="route-place-badge">
                   <span className="route-place-text">
-                    📍 My GPS ({userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)})
+                    📍 {copy.myGps} ({userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)})
                   </span>
                 </div>
               ) : (
@@ -246,7 +246,7 @@ const SafeRouteModal = ({
                     place={startPlace}
                     onChange={setStartText}
                     onPick={setStartPlace}
-                    placeholder="e.g. Silk Board Junction, MG Road…"
+                    placeholder={copy.originPlaceholder}
                   />
                 </div>
               )}
@@ -255,9 +255,9 @@ const SafeRouteModal = ({
                   type="button"
                   className={`gps-toggle-btn ${useCurrentGps ? "active" : ""}`}
                   onClick={() => setUseCurrentGps(!useCurrentGps)}
-                  title="Use current GPS as starting waypoint"
+                  title={copy.useGpsTitle}
                 >
-                  📍 My GPS
+                  📍 {copy.myGps}
                 </button>
               )}
             </div>
@@ -270,7 +270,7 @@ const SafeRouteModal = ({
                 place={endPlace}
                 onChange={setEndText}
                 onPick={setEndPlace}
-                placeholder="e.g. Whitefield, Kempegowda Airport…"
+                placeholder={copy.destinationPlaceholder}
               />
             </div>
 

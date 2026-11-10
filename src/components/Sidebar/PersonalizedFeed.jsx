@@ -119,7 +119,7 @@ const PersonalizedFeed = ({
         {filteredEvents.length === 0 ? (
           <div className="feed-empty-state">
             <MapPin size={28} strokeWidth={1.4} aria-hidden="true" />
-            <h5>{searchQuery ? ui.noMatches : t.sidebar.emptyState}</h5><p>{searchQuery ? ui.tryOther : "Reports from people nearby will appear here. See something on your route? Add it to the map."}</p>
+            <h5>{searchQuery ? ui.noMatches : t.sidebar.emptyState}</h5><p>{searchQuery ? ui.tryOther : ui.emptyFeedHint}</p>
           </div>
         ) : (
           filteredEvents.map((item) => {
@@ -159,7 +159,7 @@ const PersonalizedFeed = ({
                 )}
 
                 <div className="card-bottom-row">
-                  <span className="card-ward">{item.ward || "Bengaluru"}</span>
+                  <span className="card-ward">{item.ward || ui.bengaluru}</span>
                   <div className="card-actions-right">
                     <button
                       type="button"

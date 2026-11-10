@@ -230,7 +230,7 @@ const CityPulseDashboard = () => {
               type="button"
               className="action-fab report-fab report-trigger-btn"
               onClick={handleOpenReportModal}
-              title="Report Civic Hazard"
+              title={copy.reportFabTitle}
             >
               <Plus size={17} aria-hidden="true" />
               <span>{copy.report}</span>
@@ -239,7 +239,7 @@ const CityPulseDashboard = () => {
               type="button"
               className="action-fab route-fab safe-route-trigger-btn"
               onClick={() => setShowRouteModal(true)}
-              title="Plan a route around reported hazards"
+              title={copy.routeFabTitle}
             >
               <Route size={17} aria-hidden="true" />
               <span>{copy.plan}</span>
@@ -248,7 +248,7 @@ const CityPulseDashboard = () => {
               type="button"
               className="action-fab chatbot-fab chatbot-trigger-btn"
               onClick={() => setShowChatbotModal(true)}
-              title="Open NammaDrishti AI Assistant"
+              title={copy.chatFabTitle}
             >
               <MessageSquare size={17} aria-hidden="true" />
               <span>{copy.ask}</span>

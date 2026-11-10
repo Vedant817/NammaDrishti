@@ -7,7 +7,7 @@ export default function TrafficPanel({ traffic, clock, onSelectLocation, onOverv
   return <section className="traffic-panel">
     <h3>{copy.traffic}</h3>
     <p>{copy.flowHelp}</p>
-    <div className="traffic-key" aria-label="Traffic colour legend"><span>🟢 {copy.moving}</span><span>🟠 {copy.slower}</span><span>🔴 {copy.congested}</span></div>
+    <div className="traffic-key" aria-label={copy.trafficLegend}><span>🟢 {copy.moving}</span><span>🟠 {copy.slower}</span><span>🔴 {copy.congested}</span></div>
     <h4>{copy.sampleDetails}</h4>
     <p>{copy.samplesHelp}</p>
     {traffic.status === 'loading' && <p role="status">{copy.loading}</p>}
@@ -22,7 +22,7 @@ export default function TrafficPanel({ traffic, clock, onSelectLocation, onOverv
       </article>;
     })}
     <a href="https://www.tomtom.com/" target="_blank" rel="noreferrer">Traffic data © TomTom</a>
-    <div className="traffic-other"><h4>Rain & underpasses</h4><p>See rainfall estimates, regional river forecasts and mapped underpass locations in Overview.</p><button type="button" onClick={onOverview}>{copy.openOverview}</button></div>
+    <div className="traffic-other"><h4>{copy.rainUnderpasses}</h4><p>{copy.rainUnderpassesHint}</p><button type="button" onClick={onOverview}>{copy.openOverview}</button></div>
     <p>{copy.caution}</p>
   </section>;
 }

@@ -246,7 +246,7 @@ const ReportModal = ({
               maxLength={200}
               type="text"
               required
-              placeholder="e.g. Waterlogging under the railway bridge"
+              placeholder={copy.titlePlaceholder}
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             />
@@ -260,7 +260,7 @@ const ReportModal = ({
                 maxLength={200}
                 type="text"
                 required
-                placeholder="e.g. Silk Board, Panathur, Indiranagar"
+                placeholder={copy.wardPlaceholder}
                 value={formData.ward}
                 onChange={(e) => setFormData({ ...formData, ward: e.target.value })}
               />
@@ -286,7 +286,7 @@ const ReportModal = ({
               maxLength={2000}
               rows="3"
               required
-              placeholder="Describe what you can see and how it affects the road."
+              placeholder={copy.descPlaceholder}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
