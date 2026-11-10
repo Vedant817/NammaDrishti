@@ -50,6 +50,15 @@ test('fresh re-observation keeps the original draft if replacement save fails (n
  expect(view.result.current.savedActions[0].payload.title).toBe('Private A draft');
  expect(auth.request).not.toHaveBeenCalled();
 });
+test('age-expired pending vote can be re-verified without network transition to failed',async()=>{
+ const view=renderHook(()=>useOfflineActions());await waitFor(()=>expect(view.result.current.actionIdentity?.uid).toBe('A'));
+ await act(async()=>{await view.result.current.verifyEvent('inc-9',{lat:12.97,lng:77.59},auth.identity,{title:'Road X'});});
+ const aged={...view.result.current.savedActions[0],state:'pending',reason:null,observedAt:Date.now()-35*60*1000};
+ await act(async()=>{expect(await view.result.current.changeAction(aged,'retry',{confirmedFreshObservation:true})).toEqual({saved:true});});
+ expect(view.result.current.savedActions).toHaveLength(1);
+ expect(view.result.current.savedActions[0].state).toBe('pending');
+ expect(auth.request).not.toHaveBeenCalled();
+});
 test('queued votes retain recognizable road names without claiming public consensus',async()=>{
  const view=renderHook(()=>useOfflineActions());await waitFor(()=>expect(view.result.current.actionIdentity?.uid).toBe('A'));
  await act(async()=>{await view.result.current.verifyEvent('road',null,auth.identity,{title:'Fixture junction',ward:'Fixture ward'});});

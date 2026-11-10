@@ -1,3 +1,4 @@
+import {MAX_ACTION_AGE_MS} from './actionRunner';
 const KINDS=new Set(['report','verify','clear']);
 const STATES=new Set(['pending','blocked','failed']);
 const idMatches=(item)=>item.kind==='report'?item.id===item.payload?.id:item.id===`${item.kind}:${item.payload?.incidentId}`;
@@ -114,7 +115,9 @@ export function createOfflineStore({getIndexedDB=()=>globalThis.indexedDB,name='
       const get=actions.get([owner,id]);get.onsuccess=()=>{
         const current=get.result;
         if(!validAction(current,owner)||current.revision!==revision||(token?current.leaseToken!==token||current.leaseUntil<=now():current.leaseUntil>now())){set(null);return;}
-        if(manual&&!token&&patch.payload&&current.state!=='failed'){set(null);return;}
+        const isStale = current.reason === 'stale' || (now() - (current.observedAt ?? current.createdAt) > MAX_ACTION_AGE_MS);
+        const isReobserve = patch.payload && (patch.payload.confirmedFreshObservation || patch.uncertain === false || (patch.state === 'pending' && manual));
+        if(manual&&!token&&patch.payload&&current.state!=='failed'&&!isStale&&!isReobserve){set(null);return;}
         const safe=Object.fromEntries(['state','uncertain','reason','nextAt','attempts','httpStatus','payload'].filter(key=>Object.hasOwn(patch,key)).map(key=>[key,patch[key]]));
         const next={...current,...safe,...(manual&&!token&&patch.payload?{observedAt:now()}:{}),revision:current.revision+1,updatedAt:Math.max(now(),current.updatedAt),...(manual?{leaseToken:null,leaseUntil:0}:{})};
         if(!validAction(next,owner)){set(null);return;}
