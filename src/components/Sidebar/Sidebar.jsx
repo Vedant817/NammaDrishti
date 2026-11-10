@@ -50,7 +50,7 @@ const Sidebar = ({
     const onCoordsAcquired = (lat, lng) => {
       setAcquiringGps(false);
       const mapUrl = `https://www.openstreetmap.org/?mlat=${lat.toFixed(5)}&mlon=${lng.toFixed(5)}#map=17/${lat.toFixed(5)}/${lng.toFixed(5)}`;
-      const message = `🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n📍 Location: ${mapUrl}\n🆘 Immediate road/civic assistance required in Bengaluru!`;
+      const message = copy.sosMessageLocation.replace('{location}', () => mapUrl);
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
 
       // Post dispatch event to backend
@@ -84,10 +84,8 @@ const Sidebar = ({
           setAcquiringGps(false);
           setSosStatus({
             isVerifiedGps: false,
-            error: "GPS Location unavailable or permission denied. Please call 112 directly.",
-            whatsappUrl: `https://wa.me/?text=${encodeURIComponent(
-              "🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n🆘 Immediate road/civic assistance required in Bengaluru! (GPS coordinates unavailable - calling 112)"
-            )}`,
+            error: copy.sosErrorDenied,
+            whatsappUrl: `https://wa.me/?text=${encodeURIComponent(copy.sosMessageNoGps)}`,
           });
         },
         { timeout: 7000, enableHighAccuracy: true, maximumAge: 0 }
@@ -96,10 +94,8 @@ const Sidebar = ({
       setAcquiringGps(false);
       setSosStatus({
         isVerifiedGps: false,
-        error: "Geolocation is not supported on this device. Please call 112 directly.",
-        whatsappUrl: `https://wa.me/?text=${encodeURIComponent(
-          "🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n🆘 Immediate road/civic assistance required in Bengaluru! (GPS coordinates unavailable - calling 112)"
-        )}`,
+        error: copy.sosErrorUnsupported,
+        whatsappUrl: `https://wa.me/?text=${encodeURIComponent(copy.sosMessageNoGps)}`,
       });
     }
   };
@@ -157,7 +153,7 @@ const Sidebar = ({
             {/* One-Tap Emergency SOS Dispatch Section */}
             <div className="emergency-sos-box">
               <div className="sos-box-header">
-                <span className="sos-badge">Need urgent help?</span>
+                <span className="sos-badge">{copy.sosBadge}</span>
                 <a className="sos-network" href="tel:112">{t.ui["Call 112"]}</a>
               </div>
               <h5>{t.sidebar?.sosTitle || "One-Tap Bengaluru Emergency SOS Dispatch"}</h5>
@@ -169,7 +165,7 @@ const Sidebar = ({
                 onClick={handleTriggerSos}
                 disabled={acquiringGps}
               >
-                {acquiringGps ? "Finding your location…" : t.ui["Share emergency location"]}
+                {acquiringGps ? copy.locating : t.ui["Share emergency location"]}
               </button>
 
               {sosStatus && (
@@ -200,7 +196,7 @@ const Sidebar = ({
                     </a>
                     <a
                       href={`sms:?body=${encodeURIComponent(
-                        sosStatus.isVerifiedGps ? `EMERGENCY ALERT [NammaDrishti]: Stranded in Bengaluru at GPS: ${sosStatus.lat.toFixed(5)}, ${sosStatus.lng.toFixed(5)}. Need urgent assistance.` : 'EMERGENCY ALERT [NammaDrishti]: Need urgent assistance in Bengaluru. GPS unavailable; contact me for my location.'
+                        sosStatus.isVerifiedGps ? copy.sosSmsWithGps.replace('{lat}', () => sosStatus.lat.toFixed(5)).replace('{lng}', () => sosStatus.lng.toFixed(5)) : copy.sosSmsNoGps
                       )}`}
                       className="sos-sms-btn"
                     >

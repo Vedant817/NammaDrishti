@@ -80,7 +80,13 @@ const PersonalizedFeed = ({
       ? `https://www.openstreetmap.org/?mlat=${item.position.lat}&mlon=${item.position.lng}#map=17/${item.position.lat}/${item.position.lng}`
       : currentAppOrigin();
     const appLink = buildIncidentLink(item);
-    const text = `🚨 *NammaDrishti Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n*Open live on map:* ${appLink}\n_Stay safe & take alternate routes._`;
+    const text = ui.shareTemplate
+      .replace('{title}', () => item.title)
+      .replace('{type}', () => item.type)
+      .replace('{ward}', () => item.ward || ui.bengaluru)
+      .replace('{details}', () => item.description)
+      .replace('{location}', () => mapLink)
+      .replace('{app}', () => appLink);
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 

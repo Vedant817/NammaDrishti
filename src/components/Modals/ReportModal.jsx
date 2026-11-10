@@ -304,9 +304,9 @@ const ReportModal = ({
                 <span>{reportT.autoDetectGps}</span>
               </button>
               <span className="location-status-badge">
-                {locationSource === "GPS" && "✓ GPS Locked"}
-                {locationSource === "PIN_SELECTED" && "✓ Map Pin Selected"}
-                {locationSource === "MANUAL" && "Choose a map location or enter an area."}
+                {locationSource === "GPS" && copy.gpsLocked}
+                {locationSource === "PIN_SELECTED" && copy.pinSelected}
+                {locationSource === "MANUAL" && copy.chooseLocation}
               </span>
             </div>
           </div>
@@ -321,7 +321,7 @@ const ReportModal = ({
               onChange={handleImageChange}
               className="file-input"
             />
-            {compressing && <span className="compressing-hint">Compressing for low-bandwidth uplink...</span>}
+            {compressing && <span className="compressing-hint">{copy.compressingHint}</span>}
             {formData.mediaUrl && (
               <div className="image-preview">
                 <img src={formData.mediaUrl} alt={offline.photo} />
@@ -340,7 +340,7 @@ const ReportModal = ({
               type="submit"
               disabled={compressing || submitting}
             >
-              {compressing ? "Optimizing Photo..." : submitting ? "Submitting..." : reportT.broadcastHazard}
+              {compressing ? copy.optimizingPhoto : submitting ? copy.submitting : reportT.broadcastHazard}
             </Button>
           </div>
         </form>

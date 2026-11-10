@@ -149,7 +149,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
 
   return (
     <div className="chatbot-modal-overlay" onClick={onClose}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="NammaDrishti AI" tabIndex={-1} className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={copy.assistantTitle} tabIndex={-1} className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
         <div className="chatbot-modal-header">
           <div className="bot-header-info">
             <span className="bot-avatar">🤖</span>
@@ -163,7 +163,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
               type="button"
               className={`tts-toggle-btn ${voiceEnabled ? "active" : ""}`}
               onClick={() => setVoiceEnabled((prev) => !prev)}
-              title={voiceEnabled ? "Mute Voice Speech" : "Enable Hands-Free Speech"}
+              title={voiceEnabled ? copy.muteVoice : copy.enableVoice}
             >
               {voiceEnabled ? "🔊" : "🔇"}
             </button>
@@ -192,7 +192,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
             {messages.map((message, index) => (
               <div key={index} className={`message ${message.type}`}>
                 <div className="message-content">
-                  {message.mode && <small>{message.mode==='gemini-grounded'?'AI answer using current reports':message.mode==='grounded-summary-provider-unavailable'?'Report summary · AI service unavailable':message.mode==='cached-summary'?'Offline summary · cached reports':'Source summary'}</small>}
+                  {message.mode && <small>{message.mode==='gemini-grounded'?copy.modeGrounded:message.mode==='grounded-summary-provider-unavailable'?copy.modeProviderUnavailable:message.mode==='cached-summary'?copy.modeCached:copy.modeSource}</small>}
                   {message.text.split("\n").map((line, i) => (
                     <p key={i}>{line}</p>
                   ))}

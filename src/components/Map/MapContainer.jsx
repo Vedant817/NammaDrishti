@@ -395,7 +395,7 @@ const CustomMapContainer = ({
             maxNativeZoom={7}
             maxZoom={19}
             attribution='Radar: <a href="https://www.rainviewer.com/">RainViewer</a>'
-            eventHandlers={{ tileerror: () => setRadarError("Radar tiles unavailable; coverage is not confirmed.") }}
+            eventHandlers={{ tileerror: () => setRadarError(copy.radarTilesError) }}
             opacity={0.65}
             zIndex={200}
           />
@@ -436,10 +436,10 @@ const CustomMapContainer = ({
                 <Popup className="clean-popup">
                   <div className="popup-body">
                     <span className="popup-type-tag" style={{ background: isHigh ? "#EF4444" : "#F59E0B", color: "#fff" }}>
-                      Community report location
+                      {copy.communityReportLocation}
                     </span>
                     <h4 className="popup-title">{evt.title}</h4>
-                    <p className="popup-desc">Confirmations: {evt.verificationCount || 1}. Community report; not a sensor measurement.</p>
+                    <p className="popup-desc">{copy.confirmationsLabel} {evt.verificationCount || 1}. {copy.communityNotSensor}</p>
                   </div>
                 </Popup>
               </CircleMarker>

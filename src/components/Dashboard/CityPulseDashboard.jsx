@@ -205,7 +205,7 @@ const CityPulseDashboard = () => {
 
       {/* Main split viewport: Map (interactive) + Sidebar (Feed/Helplines/Diagnostic) */}
       <div className="main-content">
-        <main className="map-section" role="region" aria-label="Interactive Map">
+        <main className="map-section" role="region" aria-label={copy.interactiveMap}>
           <MapContainer
             reportPin={reportPin}
             providerIncidents={publicContext.traffic}
