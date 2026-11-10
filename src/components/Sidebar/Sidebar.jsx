@@ -41,8 +41,10 @@ const Sidebar = ({
   const [delivery, setDelivery] = useState(null);
   const [sosStatus, setSosStatus] = useState(null);
   const [acquiringGps, setAcquiringGps] = useState(false);
+  const sosAttemptRef = React.useRef(0);
 
   const handleTriggerSos = () => {
+    const attemptId = ++sosAttemptRef.current;
     setAcquiringGps(true);
     setSosStatus(null);
     setDelivery(null);
@@ -61,32 +63,43 @@ const Sidebar = ({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
         }).then(async response => {
+          if (sosAttemptRef.current !== attemptId) return;
           if (!response.ok) throw new Error();
           const data = await response.json();
+          if (sosAttemptRef.current !== attemptId) return;
           const dispatchId = data.dispatchId || data.id;
-          setDelivery(data.status||'SAVED');
+          setDelivery(data.status||'LOCATION_RECORDED');
           if (dispatchId) {
             let attempts = 0;
             const poll = async () => {
+              if (sosAttemptRef.current !== attemptId) return;
               attempts++;
               try {
                 const res = await fetch(`${API_BASE}/sos/status/${encodeURIComponent(dispatchId)}`, { signal: AbortSignal.timeout(2000) });
+                if (sosAttemptRef.current !== attemptId) return;
                 if (res.ok) {
                   const statusData = await res.json();
-                  setDelivery(statusData.status || data.status || 'SAVED');
+                  if (sosAttemptRef.current !== attemptId) return;
+                  setDelivery(statusData.status || data.status || 'LOCATION_RECORDED');
                   if (statusData.status === 'ACKNOWLEDGED_BY_OPERATOR' || statusData.status === 'FAILED') return;
                 }
               } catch {}
+              if (sosAttemptRef.current !== attemptId) return;
               if (attempts < 12) setTimeout(poll, 3000);
-              else setDelivery((d) => d === 'ACKNOWLEDGED_BY_OPERATOR' ? d : (d || 'STATUS_UNKNOWN'));
+              else setDelivery((d) => {
+                if (sosAttemptRef.current !== attemptId) return d;
+                return d === 'ACKNOWLEDGED_BY_OPERATOR' ? d : (d || 'STATUS_UNKNOWN');
+              });
             };
             setTimeout(poll, 1500);
           }
         }).catch((err) => {
+          if (sosAttemptRef.current !== attemptId) return;
           if (err?.code === 'identity-changed' || err?.message === 'identity-changed') { setDelivery('AUTH_NOT_READY'); return; }
           setDelivery('SAVE_FAILED');
         });
       } catch (err) {
+        if (sosAttemptRef.current !== attemptId) return;
         if (err?.code === 'identity-changed' || err?.message === 'identity-changed') { setDelivery('AUTH_NOT_READY'); return; }
         // Continue even if network is restricted
       }
@@ -145,7 +158,14 @@ const Sidebar = ({
 
         {activeTab === 'sources' && <PublicSourcesPanel context={publicContext} clock={sourceClock} onSelectLocation={onEventSelect}/>}
         {activeTab === 'traffic' && <TrafficPanel traffic={traffic} clock={clock} onSelectLocation={onEventSelect} onOverview={() => onTabChange('recap')} />}
-        {delivery && <p role="status">{delivery==='LOCATION_RECORDED'?copy.locationSaved:delivery==='SAVE_FAILED'?copy.locationSaveFailed:copy.locationQueued} {t.live.call112}</p>}
+        {delivery && <p role="status">{
+          delivery==='ACKNOWLEDGED_BY_OPERATOR'?copy.sosAcknowledged||'Operator acknowledged your SOS location.'
+          :delivery==='FAILED'?copy.sosFailed||'SOS dispatch failed. Please call 112 directly.'
+          :delivery==='STATUS_UNKNOWN'?copy.sosStatusUnknown||'SOS status could not be confirmed. Please call 112 directly.'
+          :delivery==='AUTH_NOT_READY'?copy.sosAuthNotReady||'Sign-in/session not ready. Please call 112 directly.'
+          :delivery==='RETRYING'||delivery==='QUEUED'?copy.sosRetrying||'SOS location queued for dispatch. Please call 112 directly.'
+          :delivery==='LOCATION_RECORDED'||delivery==='SAVED'?copy.locationSaved||copy.locationQueued:''
+        } {t.live.call112}</p>}
         {activeTab==='feed'&&savedActionsProps&&<SavedActions key={actionSessionKey} {...savedActionsProps}/>}
         {activeTab === "feed" && (
           <PersonalizedFeed

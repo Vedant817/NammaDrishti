@@ -526,7 +526,7 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
 
   // Deduplicate if client supplied specific ID
   if (id) {
-    const existing = incidents.find((i) => i.id === id);
+    const existing = incidents.find((i) => i.id === id || (Array.isArray(i.reportIds) && i.reportIds.includes(id)));
     if (existing?.moderationHidden) return res.status(409).json({error:"This report is under moderation."});
     if (existing) {
       return res.status(200).json(publicIncident(existing));
@@ -565,6 +565,10 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
 
   if (clusterMatch) {
     const previousCluster = JSON.parse(JSON.stringify(clusterMatch));
+    if (id) {
+      if (!Array.isArray(clusterMatch.reportIds)) clusterMatch.reportIds = [clusterMatch.id];
+      if (!clusterMatch.reportIds.includes(id)) clusterMatch.reportIds.push(id);
+    }
     // Auto-clustering Sybil check: verify reporter has not already contributed to this cluster
     if (!Array.isArray(clusterMatch.reporters)) {
       clusterMatch.reporters = [clusterMatch.reportedBy || 'initial_reporter'];

@@ -140,8 +140,8 @@ const SafeRouteModal = ({
   };
 
   const handleCalculateRoute = async () => {
+    if(loading)return;
     const requestId = ++routeRequestId.current;
-    if(loading && routeRequestId.current !== requestId)return;
     setLoading(true);
     setRoutingError(null);
     setRouteResult(null);
