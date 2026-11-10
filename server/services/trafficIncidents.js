@@ -4,7 +4,7 @@ const categories = {1:'Accident',2:'Fog',3:'Dangerous conditions',4:'Rain',5:'Ic
 // A road can cross Bengaluru while both vertices fall outside the city box.
 function cityIntersection(a,b) {
   let lo=0,hi=1;
-  for(const [axis,min,max] of [[0,77.3,77.88],[1,12.7,13.28]]) {
+  for(const [axis,min,max] of [[0,77.25,77.95],[1,12.6,13.35]]) {
     const delta=b[axis]-a[axis];
     if(delta===0){if(a[axis]<min||a[axis]>max)return null;continue;}
     const u=(min-a[axis])/delta,v=(max-a[axis])/delta;

@@ -49,5 +49,5 @@ test('provider denies access distinctly from an empty working incident feed',asy
 test('a provider road crossing the city box retains its entire geometry',()=>{
  const geometry={type:'LineString',coordinates:[[77.1,13],[78,13]]};
  const result=normalizeIncidents({incidents:[{geometry,properties:{id:'crossing',iconCategory:8,timeValidity:'present'}}]},now);
- assert.equal(result.incidents.length,1);assert.deepEqual(result.incidents[0].geometry,geometry);assert.ok(result.incidents[0].position.lng>=77.3);
+ assert.equal(result.incidents.length,1);assert.deepEqual(result.incidents[0].geometry,geometry);assert.ok(result.incidents[0].position.lng>=77.25);
 });

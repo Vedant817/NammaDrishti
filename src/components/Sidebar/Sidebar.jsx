@@ -1,5 +1,6 @@
+import SavedActions from './SavedActions';
 import { API_BASE } from "../../services/api";
-import { authenticatedFetch as fetch } from "../../services/firebaseService";
+import { authenticatedFetch } from "../../services/firebaseService";
 // src/components/Sidebar/Sidebar.jsx
 import React, { useState } from "react";
 import PersonalizedFeed from "./PersonalizedFeed";
@@ -16,7 +17,7 @@ import "./Sidebar.css";
 
 
 const Sidebar = ({
-  weather, onPlan, onReport, onFilterChange,
+  weather, onPlan, onReport, onFilterChange, savedActionsProps, actionSessionKey,
   publicContext = {official:{status:'loading',alerts:[]},traffic:{status:'loading',incidents:[]}},
   sourceClock = Date.now(),
   traffic = { status: 'loading', segments: [] },
@@ -29,6 +30,7 @@ const Sidebar = ({
   onEventSelect,
   onVerifyEvent,
   onResolveEvent,
+  hasUserVoted,
   activeFilter = "All",
   rainIntensity = 0,
   isWeatherOffline = false,
@@ -39,8 +41,10 @@ const Sidebar = ({
   const [delivery, setDelivery] = useState(null);
   const [sosStatus, setSosStatus] = useState(null);
   const [acquiringGps, setAcquiringGps] = useState(false);
+  const sosAttemptRef = React.useRef(0);
 
   const handleTriggerSos = () => {
+    const attemptId = ++sosAttemptRef.current;
     setAcquiringGps(true);
     setSosStatus(null);
     setDelivery(null);
@@ -48,18 +52,60 @@ const Sidebar = ({
     const onCoordsAcquired = (lat, lng) => {
       setAcquiringGps(false);
       const mapUrl = `https://www.openstreetmap.org/?mlat=${lat.toFixed(5)}&mlon=${lng.toFixed(5)}#map=17/${lat.toFixed(5)}/${lng.toFixed(5)}`;
-      const message = `🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n📍 Location: ${mapUrl}\n🆘 Immediate road/civic assistance required in Bengaluru!`;
+      const message = copy.sosMessageLocation.replace('{location}', () => mapUrl);
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
 
       // Post dispatch event to backend
       try {
-        fetch(`${API_BASE}/sos/dispatch`, {
+        authenticatedFetch(`${API_BASE}/sos/dispatch`, {
           signal: AbortSignal.timeout(3000),
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
-        }).then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); setDelivery(data.status); }).catch(() => setDelivery('SAVE_FAILED'));
+        }).then(async response => {
+          if (sosAttemptRef.current !== attemptId) return;
+          if (!response.ok) throw new Error();
+          const data = await response.json();
+          if (sosAttemptRef.current !== attemptId) return;
+          const dispatchId = data.dispatchId || data.id;
+          setDelivery(data.status||'LOCATION_RECORDED');
+          if (dispatchId) {
+            let attempts = 0;
+            const poll = async () => {
+              if (sosAttemptRef.current !== attemptId) return;
+              attempts++;
+              try {
+                const res = await authenticatedFetch(`${API_BASE}/sos/status/${encodeURIComponent(dispatchId)}`, { signal: AbortSignal.timeout(2000) });
+                if (sosAttemptRef.current !== attemptId) return;
+                if (res.ok) {
+                  const statusData = await res.json();
+                  if (sosAttemptRef.current !== attemptId) return;
+                  const st = statusData.status || data.status || 'LOCATION_RECORDED';
+                  setDelivery(st);
+                  if (st === 'ACKNOWLEDGED_BY_OPERATOR' || st === 'FAILED' || st === 'LOCATION_RECORDED' || st === 'SAVED') return;
+                } else if (res.status === 404) {
+                  // keep last known state
+                }
+              } catch {}
+              if (sosAttemptRef.current !== attemptId) return;
+              if (attempts < 12) setTimeout(poll, 3000);
+              else setDelivery((d) => {
+                if (sosAttemptRef.current !== attemptId) return d;
+                if (d === 'ACKNOWLEDGED_BY_OPERATOR' || d === 'FAILED' || d === 'LOCATION_RECORDED' || d === 'SAVED') return d;
+                if (d === 'QUEUED' || d === 'RETRYING') return d === 'RETRYING' ? 'RETRYING' : 'QUEUED';
+                return d || 'STATUS_UNKNOWN';
+              });
+            };
+            setTimeout(poll, 1500);
+          }
+        }).catch((err) => {
+          if (sosAttemptRef.current !== attemptId) return;
+          if (err?.code === 'identity-changed' || err?.message === 'identity-changed') { setDelivery('AUTH_NOT_READY'); return; }
+          setDelivery('SAVE_FAILED');
+        });
       } catch (err) {
+        if (sosAttemptRef.current !== attemptId) return;
+        if (err?.code === 'identity-changed' || err?.message === 'identity-changed') { setDelivery('AUTH_NOT_READY'); return; }
         // Continue even if network is restricted
       }
 
@@ -82,10 +128,8 @@ const Sidebar = ({
           setAcquiringGps(false);
           setSosStatus({
             isVerifiedGps: false,
-            error: "GPS Location unavailable or permission denied. Please call 112 directly.",
-            whatsappUrl: `https://wa.me/?text=${encodeURIComponent(
-              "🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n🆘 Immediate road/civic assistance required in Bengaluru! (GPS coordinates unavailable - calling 112)"
-            )}`,
+            error: copy.sosErrorDenied,
+            whatsappUrl: `https://wa.me/?text=${encodeURIComponent(copy.sosMessageNoGps)}`,
           });
         },
         { timeout: 7000, enableHighAccuracy: true, maximumAge: 0 }
@@ -94,10 +138,8 @@ const Sidebar = ({
       setAcquiringGps(false);
       setSosStatus({
         isVerifiedGps: false,
-        error: "Geolocation is not supported on this device. Please call 112 directly.",
-        whatsappUrl: `https://wa.me/?text=${encodeURIComponent(
-          "🚨 EMERGENCY SOS DISPATCH [NammaDrishti]\n🆘 Immediate road/civic assistance required in Bengaluru! (GPS coordinates unavailable - calling 112)"
-        )}`,
+        error: copy.sosErrorUnsupported,
+        whatsappUrl: `https://wa.me/?text=${encodeURIComponent(copy.sosMessageNoGps)}`,
       });
     }
   };
@@ -106,8 +148,10 @@ const Sidebar = ({
     <aside className="sidebar-container">
       <nav className="sidebar-tab-nav" aria-label={copy.today+' / '+copy.reports+' / '+copy.help}>
         {[['today',copy.today],['feed',copy.reports],['helpline',copy.help]].map(([id,label])=>{
-          const active=id==='today'? !['feed','helpline'].includes(activeTab):activeTab===id;
-          return <button key={id} type="button" className={`sidebar-tab-btn ${active?'active':''}`} aria-pressed={active} onClick={()=>onTabChange(id)}>{label}</button>;
+          // Strict match: sources/traffic/recap sub-views must not fake-match
+          // Today. They render under the back-to-today path instead.
+          const active=activeTab===id;
+          return <button key={id} type="button" aria-current={active?'page':undefined} className={`sidebar-tab-btn ${active?'active':''}`} onClick={()=>onTabChange(id)}>{label}</button>;
         })}
       </nav>
 
@@ -119,7 +163,15 @@ const Sidebar = ({
 
         {activeTab === 'sources' && <PublicSourcesPanel context={publicContext} clock={sourceClock} onSelectLocation={onEventSelect}/>}
         {activeTab === 'traffic' && <TrafficPanel traffic={traffic} clock={clock} onSelectLocation={onEventSelect} onOverview={() => onTabChange('recap')} />}
-        {delivery && <p role="status">{delivery==='LOCATION_RECORDED'?copy.locationSaved:delivery==='SAVE_FAILED'?copy.locationSaveFailed:copy.locationQueued} {t.live.call112}</p>}
+        {delivery && <p role="status">{
+          delivery==='ACKNOWLEDGED_BY_OPERATOR'?copy.sosAcknowledged||'Operator acknowledged your SOS location.'
+          :delivery==='FAILED'?copy.sosFailed||'SOS dispatch failed. Please call 112 directly.'
+          :delivery==='STATUS_UNKNOWN'?copy.sosStatusUnknown||'SOS status could not be confirmed. Please call 112 directly.'
+          :delivery==='AUTH_NOT_READY'?copy.sosAuthNotReady||'Sign-in/session not ready. Please call 112 directly.'
+          :delivery==='RETRYING'||delivery==='QUEUED'?copy.sosRetrying||'SOS location queued for dispatch. Please call 112 directly.'
+          :delivery==='LOCATION_RECORDED'||delivery==='SAVED'?copy.locationSaved||copy.locationQueued:''
+        } {t.live.call112}</p>}
+        {activeTab==='feed'&&savedActionsProps&&<SavedActions key={actionSessionKey} {...savedActionsProps}/>}
         {activeTab === "feed" && (
           <PersonalizedFeed
             events={events}
@@ -128,6 +180,7 @@ const Sidebar = ({
             onEventSelect={onEventSelect}
             onVerifyEvent={onVerifyEvent}
             onResolveEvent={onResolveEvent}
+            hasUserVoted={hasUserVoted}
             activeFilter={activeFilter}
           />
         )}
@@ -151,7 +204,7 @@ const Sidebar = ({
             {/* One-Tap Emergency SOS Dispatch Section */}
             <div className="emergency-sos-box">
               <div className="sos-box-header">
-                <span className="sos-badge">Need urgent help?</span>
+                <span className="sos-badge">{copy.sosBadge}</span>
                 <a className="sos-network" href="tel:112">{t.ui["Call 112"]}</a>
               </div>
               <h5>{t.sidebar?.sosTitle || "One-Tap Bengaluru Emergency SOS Dispatch"}</h5>
@@ -163,14 +216,14 @@ const Sidebar = ({
                 onClick={handleTriggerSos}
                 disabled={acquiringGps}
               >
-                {acquiringGps ? "Finding your location…" : t.ui["Share emergency location"]}
+                {acquiringGps ? copy.locating : t.ui["Share emergency location"]}
               </button>
 
               {sosStatus && (
                 <div className="sos-active-panel">
                   {sosStatus.isVerifiedGps ? (
                     <div className="sos-coords-row">
-                      <span>✓ GPS Acquired:</span>
+                      <span>✓ {copy.gpsAcquired}</span>
                       <strong>{sosStatus.lat.toFixed(4)}, {sosStatus.lng.toFixed(4)}</strong>
                     </div>
                   ) : (
@@ -180,7 +233,7 @@ const Sidebar = ({
                   )}
                   {sosStatus.popupBlocked && (
                     <div className="sos-coords-row" style={{ color: "#F59E0B", fontSize: "0.82rem" }}>
-                      <span>ℹ️ Location ready. Choose how to share it below:</span>
+                      <span>ℹ️ {copy.locationReady}</span>
                     </div>
                   )}
                   <div className="sos-actions-row" style={{ flexWrap: 'wrap' }}>
@@ -190,18 +243,18 @@ const Sidebar = ({
                       rel="noopener noreferrer"
                       className="sos-whatsapp-btn"
                     >
-                      💬 Send WhatsApp SOS
+                      💬 {copy.whatsappSos}
                     </a>
                     <a
                       href={`sms:?body=${encodeURIComponent(
-                        sosStatus.isVerifiedGps ? `EMERGENCY ALERT [NammaDrishti]: Stranded in Bengaluru at GPS: ${sosStatus.lat.toFixed(5)}, ${sosStatus.lng.toFixed(5)}. Need urgent assistance.` : 'EMERGENCY ALERT [NammaDrishti]: Need urgent assistance in Bengaluru. GPS unavailable; contact me for my location.'
+                        sosStatus.isVerifiedGps ? copy.sosSmsWithGps.replace('{lat}', () => sosStatus.lat.toFixed(5)).replace('{lng}', () => sosStatus.lng.toFixed(5)) : copy.sosSmsNoGps
                       )}`}
                       className="sos-sms-btn"
                     >
                       📱 SMS
                     </a>
                     <a href="tel:112" className="sos-dial-btn">
-                      📞 Call 112 (Police/Med)
+                      📞 {copy.call112Police}
                     </a>
                   </div>
                 </div>

@@ -1,3 +1,5 @@
+import {incidentTime} from '../../utils/incidentTime';
+import {useInterfaceCopy} from '../../hooks/useInterfaceCopy';
 // src/components/Sidebar/PersonalizedFeed.jsx
 import React, { useState } from "react";
 import { MapPin } from "lucide-react";
@@ -13,30 +15,33 @@ const PersonalizedFeed = ({
   allEvents = null,
   selectedEvent,
   onEventSelect,
+  onVerifyEvent,
+  onResolveEvent,
+  hasUserVoted,
   activeFilter = "All",
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedEventId, setCopiedEventId] = useState(null);
-  const { t } = useLanguage();
+  const { t,lang } = useLanguage();
+  const ui = useInterfaceCopy();
 
   // Direct link that re-opens this incident on the map (?incident=<id>)
   const buildIncidentLink = (item) => {
     return `${currentAppOrigin()}?incident=${encodeURIComponent(item.id)}`;
   };
 
+  const [copyNotice, setCopyNotice] = useState('');
   const handleCopyLink = async (e, item) => {
     e.stopPropagation();
     const link = buildIncidentLink(item);
     try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(link);
-      } else {
-        window.prompt("Copy this incident link:", link);
-      }
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(link);
       setCopiedEventId(item.id);
-      setTimeout(() => setCopiedEventId((cur) => (cur === item.id ? null : cur)), 2000);
+      setCopyNotice(t.ui?.["Link copied"] || 'Link copied');
+      setTimeout(() => { setCopiedEventId((cur) => (cur === item.id ? null : cur)); setCopyNotice(''); }, 2000);
     } catch (err) {
-      window.prompt("Copy this incident link:", link);
+      setCopyNotice(`${link}`);
     }
   };
 
@@ -75,7 +80,13 @@ const PersonalizedFeed = ({
       ? `https://www.openstreetmap.org/?mlat=${item.position.lat}&mlon=${item.position.lng}#map=17/${item.position.lat}/${item.position.lng}`
       : currentAppOrigin();
     const appLink = buildIncidentLink(item);
-    const text = `🚨 *NammaDrishti Civic Alert - Bengaluru*\n*Hazard:* ${item.title} (${item.type})\n*Ward:* ${item.ward || "Bengaluru"}\n*Details:* ${item.description}\n*Location:* ${mapLink}\n*Open live on map:* ${appLink}\n_Stay safe & take alternate routes._`;
+    const text = ui.shareTemplate
+      .replace('{title}', () => item.title)
+      .replace('{type}', () => item.type)
+      .replace('{ward}', () => item.ward || ui.bengaluru)
+      .replace('{details}', () => item.description)
+      .replace('{location}', () => mapLink)
+      .replace('{app}', () => appLink);
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -94,6 +105,7 @@ const PersonalizedFeed = ({
           <button
             type="button"
             className="clear-search-btn"
+            aria-label={ui.clearSearch || t.ui["Clear search"] || 'Clear search'}
             onClick={() => setSearchQuery("")}
           >
             ✕
@@ -107,23 +119,23 @@ const PersonalizedFeed = ({
           <span className="feed-count-badge">{filteredEvents.length}</span>
         </h4>
       </div>
+      {copyNotice && <p role="status" className="copy-notice">{copyNotice}</p>}
 
       <div className="feed-items-list">
         {filteredEvents.length === 0 ? (
           <div className="feed-empty-state">
             <MapPin size={28} strokeWidth={1.4} aria-hidden="true" />
-            <h5>{searchQuery ? "No matching reports" : t.sidebar.emptyState}</h5><p>{searchQuery ? "Try another area or clear your search." : "Reports from people nearby will appear here. See something on your route? Add it to the map."}</p>
+            <h5>{searchQuery ? ui.noMatches : t.sidebar.emptyState}</h5><p>{searchQuery ? ui.tryOther : ui.emptyFeedHint}</p>
           </div>
         ) : (
           filteredEvents.map((item) => {
             const isSelected = selectedEvent && selectedEvent.id === item.id;
 
             return (
-              <div
+              <article
                 key={item.id}
                 className={`feed-item-card ${isSelected ? "selected" : ""}`}
-
-                onClick={() => onEventSelect && onEventSelect(item)}
+                aria-current={isSelected || undefined}
               >
                 <div className="card-top-row">
                   <span className={`urgency-dot ${getUrgencyClass(item.urgency)}`}></span>
@@ -131,53 +143,55 @@ const PersonalizedFeed = ({
                     {(t.filters && t.filters[item.type]) || item.type}
                   </span>
                   {item.clusterCount > 1 && (
-                    <span className="card-cluster-pill" title="Multiple citizen reports merged within 200m">
-                      🔗 {item.clusterCount} merged
+                    <span className="card-cluster-pill" title={ui.mergedHint}>
+                      🔗 {item.clusterCount} {ui.merged}
                     </span>
                   )}
                   {item.groundVerified && (
-                    <span className="card-ground-pill" title="Verified within 1.5km of incident location">
-                      📍 On-Ground
+                    <span className="card-ground-pill" title={ui.groundHint}>
+                      📍 {ui.onGround}
                     </span>
                   )}
-                  <span className="card-time">{item.timestamp}</span>
+                  <span className="card-time">{incidentTime(item,lang)}</span>
                 </div>
 
-                <h5 className="card-title"><button type="button" className="incident-title-btn" onClick={e => { e.stopPropagation(); onEventSelect?.(item); }}>{item.title}</button></h5>
+                <h5 className="card-title"><button type="button" className="incident-title-btn" onClick={() => onEventSelect?.(item)}>{item.title}</button></h5>
                 <p className="card-desc">{item.description}</p>
                 {item.waterDepth && (
                   <div className="card-water-depth-pill" style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', background: 'rgba(6, 182, 212, 0.12)', color: '#06B6D4', padding: '3px 8px', borderRadius: '4px', fontSize: '0.72rem', marginTop: '6px', marginBottom: '4px' }}>
-                    <span>🌊 Depth: <strong>{item.waterDepth}</strong></span>
+                    <span>🌊 {ui.depthLabel} <strong>{item.waterDepth}</strong></span>
                     {item.vehiclePassability && <span>• 🚫 {item.vehiclePassability}</span>}
                   </div>
                 )}
 
                 <div className="card-bottom-row">
-                  <span className="card-ward">{item.ward || "Bengaluru"}</span>
+                  <span className="card-ward">{item.ward || ui.bengaluru}</span>
                   <div className="card-actions-right">
                     <button
                       type="button"
                       className="copy-link-btn"
                       onClick={(e) => handleCopyLink(e, item)}
-                      title="Copy a direct link that opens this incident on the map"
+                      title={ui.copyLinkHint}
                     >
-                      {copiedEventId === item.id ? "Copied" : "Copy link"}
+                      {copiedEventId === item.id ? ui.copied : ui.copyLink}
                     </button>
                     <button
                       type="button"
                       className="whatsapp-share-btn"
                       onClick={(e) => handleWhatsAppShare(e, item)}
-                      title="Share emergency hazard alert via WhatsApp"
+                      title={ui.shareHint}
                     >
-                      Share
+                      {ui.shareBtn}
                     </button>
                     <div className="card-verifications">
                       <span>{item.verificationCount || 1} {t.actions.confirmations}</span>
                       {item.isVerified && <span className="verified-glyph">✓</span>}
                     </div>
+                    {onVerifyEvent && <button type="button" className="feed-action-btn" disabled={hasUserVoted?.(item.id,'verify')===true} aria-label={`${ui.confirmAction} — ${item.title}`} onClick={() => onVerifyEvent(item.id)}>{ui.confirmAction}</button>}
+                    {onResolveEvent && <button type="button" className="feed-action-btn" disabled={hasUserVoted?.(item.id,'clear')===true} aria-label={`${ui.clearAction} — ${item.title}`} onClick={() => onResolveEvent(item.id)}>{ui.clearAction}</button>}
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })
         )}

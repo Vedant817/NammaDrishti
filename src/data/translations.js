@@ -182,7 +182,7 @@ export const translations = {
     ui: { ...copy.ui.hi, ...extras.hi },
     brandName: "नम्मा दृष्टि",
     brandTagline: "रियल-टाइम नागरिक और यातायात आसूचना",
-    city: "Bengaluru",
+    city: "बेंगलुरु",
     activeHazards: "सक्रिय खतरे",
     consensusRate: "सत्यापन दर",
     floodRiskPrefix: "जलभराव जोखिम:",

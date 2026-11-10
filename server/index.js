@@ -12,6 +12,7 @@ const { getHexIndex, getHexRing } = require('./services/spatialHex.js');
 const { createRateLimiter } = require('./services/rateLimiter.js');
 const { processMediaUpload, MEDIA_DIR } = require('./services/mediaService.js');
 const { publicIncident } = require('./services/publicIncident');
+const { insideCity } = require('./services/liveData');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,9 +22,25 @@ if (process.env.TRUST_PROXY === 'true') {
   app.set('trust proxy', 1);
 }
 
-// Enable CORS for frontend client
+// Enable CORS for frontend client. Mutating API routes require Firebase auth
+// in production, but a restrictive allow-list avoids cross-site calls to
+// dev/local servers. Configure FRONTEND_ORIGINS (comma-separated) on deploy.
+const corsOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3002',
+  'http://127.0.0.1:3002',
+  'http://localhost:5001',
+  'http://127.0.0.1:5001',
+  ...(process.env.FRONTEND_ORIGINS ? process.env.FRONTEND_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) : []),
+];
+function corsOrigin(origin, cb) {
+  // Disallowed origins get a clean no-ACAO denial, not an error response.
+  if (!origin || corsOrigins.includes(origin)) return cb(null, true);
+  return cb(null, false);
+}
 app.use(cors({
-  origin: '*',
+  origin: corsOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -32,13 +49,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Setup Socket.io for Real-Time Event Dispatch
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
   },
 });
 
-const liveData = require('./services/liveData').createLiveData({ reserveGeocode: async () => {
-  if (!firebaseStore) { const wait = Math.max(0, localGeocodeAt - Date.now()); localGeocodeAt = Math.max(Date.now(), localGeocodeAt) + 1100; await new Promise(r => setTimeout(r, wait)); return; }
+const liveData = require('./services/liveData').createLiveData({ reserveGeocode: async () => {  if (!firebaseStore) { const wait = Math.max(0, localGeocodeAt - Date.now()); localGeocodeAt = Math.max(Date.now(), localGeocodeAt) + 1100; await new Promise(r => setTimeout(r, wait)); return; }
   const ref = firebaseStore.db.collection('_coordination').doc('geocoder');
   const owner = require('crypto').randomUUID();
   const wait = await firebaseStore.db.runTransaction(async tx => {
@@ -137,7 +153,7 @@ app.use('/api', async (req, res, next) => {
       const match = /^Bearer (.+)$/.exec(req.headers.authorization || '');
       if (!match) return res.status(401).json({ error: 'Firebase sign-in required.' });
       req.citizen = await firebaseStore.auth.verifyIdToken(match[1], true);
-      if(req.path.startsWith('/incidents') && process.env.REQUIRE_VERIFIED_IDENTITY !== 'false' && !req.citizen.email_verified) return res.status(403).json({error:'Verify your email in Citizen account before reporting or voting.'});
+      if(req.path.startsWith('/incidents') && process.env.REQUIRE_VERIFIED_IDENTITY !== 'false' && !req.citizen.email_verified) return res.status(403).json({code:'EMAIL_VERIFICATION_REQUIRED',error:'Verify your email in Citizen account before reporting or voting.'});
       req.body = { ...req.body, voterId: req.citizen.uid };
     } catch { return res.status(401).json({ error: 'Invalid Firebase sign-in token.' }); }
   }
@@ -168,14 +184,20 @@ try {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
     if (raw.trim()) {
       incidents = JSON.parse(raw);
-      // Backfill integrity fields for legacy persisted records (timestamp stays
-      // as reported — missing createdAt simply means the record is aged "now")
+      // Legacy persisted records (timestamp stays as reported — missing
+      // createdAt is quarantined to cleanup, never fabricated to "now")
       incidents = incidents.map((inc) => {
         const lat = inc.position?.lat || 12.9716;
         const lng = inc.position?.lng || 77.5946;
+        // Pre-fix records may carry official-title reportedBy values; the
+        // write path rejects those, so the load path must re-sanitize them.
+        const cleanReporter = typeof inc.reportedBy === 'string'
+          ? inc.reportedBy.replace(/(bengaluru traffic police|btp|bbmp|official|police|highway patrol|patrol|traffic monitor|monitor|authority)/gi, 'Citizen').trim() || 'Citizen Contributor'
+          : inc.reportedBy;
         return {
           ...inc,
-          createdAt: inc.createdAt || new Date().toISOString(),
+          reportedBy: cleanReporter,
+          createdAt: inc.createdAt || null,
           hexIndex: inc.hexIndex || getHexIndex(lat, lng, 8),
           verificationScore: inc.verificationScore || inc.verificationCount || 1.0,
         };
@@ -254,7 +276,9 @@ function cleanupExpiredIncidents() {
   for (const incident of incidents) {
     const createdMs = incident.createdAt ? new Date(incident.createdAt).getTime() : NaN;
     if (Number.isNaN(createdMs)) {
-      keptIncidents.push(incident);
+      // Records without a verifiable creation time are quarantined via normal
+      // expiry instead of living forever in the live feed.
+      expiredIncidents.push({ incident, ageMs: 0 });
       continue;
     }
 
@@ -328,6 +352,12 @@ const mediaLimiter = createRateLimiter({
   message: 'Media upload rate limit reached. Please wait before uploading more photos.',
 });
 
+const resolveLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  message: 'Too many clearance votes recorded. Please wait a minute before voting again.',
+});
+
 const sosLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 5,
@@ -340,7 +370,7 @@ app.get('/api/health', (req, res) => {
   res.status(storageReady ? 200 : 503).json({
     status: storageReady ? 'online' : 'initializing',
     app: 'NammaDrishti Real-Time Civic & Transit Radar Backend',
-    activeIncidents: incidents.length,
+    activeIncidents: incidents.filter((i) => !i.moderationHidden).length,
     storage: firebaseStore ? 'firestore' : 'local-json',
     authentication: firebaseStore ? 'firebase' : 'device-id',
     replicaMode: firebaseStore ? 'fenced-writer-with-live-snapshots' : 'single-process',
@@ -369,7 +399,7 @@ app.get('/api/incidents', (req, res) => {
   }
   if (verified !== undefined) {
     const isVer = verified === 'true';
-    filtered = filtered.filter((i) => (i.isVerified || (i.verificationCount && i.verificationCount >= 3)) === isVer);
+    filtered = filtered.filter((i) => (i.isVerified === true) === isVer);
   }
   if (hex) {
     const ring = getHexRing(hex);
@@ -436,9 +466,18 @@ app.get('/api/media/status', (req, res) => {
 });
 
 app.post('/api/incidents', reportLimiter, async (req, res) => {
-  let { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability } = req.body || {};
+  let { id, type, title, ward, description, position, urgency, mediaUrl, waterDepth, vehiclePassability, observedAt } = req.body || {};
 
   if (urgency !== undefined && !['Low', 'Medium', 'High'].includes(urgency)) return res.status(400).json({ error: 'Invalid urgency.' });
+  const WATER_DEPTH_ENUM = ['< 6 in (Ankle Deep)', '1 - 1.5 ft (Exhaust Level)', '> 2.0 ft (Engine Submersion)'];
+  const PASSABILITY_ENUM = ['Passable with Caution', '2-Wheelers Blocked', 'Cars Blocked / SUV Only', 'Completely Impassable'];
+  if (waterDepth !== undefined && waterDepth !== null && waterDepth !== '' && !WATER_DEPTH_ENUM.includes(waterDepth)) return res.status(400).json({ error: 'Invalid waterDepth selection.' });
+  if (vehiclePassability !== undefined && vehiclePassability !== null && vehiclePassability !== '' && !PASSABILITY_ENUM.includes(vehiclePassability)) return res.status(400).json({ error: 'Invalid vehiclePassability selection.' });
+  if (req.body.reportedBy !== undefined) {
+    const rawReportedBy = String(req.body.reportedBy);
+    if (rawReportedBy.length > 60) return res.status(400).json({ error: 'Invalid reportedBy.' });
+    if (/(bengaluru traffic police|btp|bbmp|official|police|highway patrol|patrol|traffic monitor|monitor|authority)/i.test(rawReportedBy)) return res.status(400).json({ error: 'Citizen reports cannot use official titles.' });
+  }
   if (id !== undefined && (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(id))) return res.status(400).json({ error: 'Invalid incident ID.' });
   if (ward !== undefined && (typeof ward !== 'string' || ward.length > 200)) return res.status(400).json({ error: 'Invalid ward.' });
   const trimmedTitle = typeof title === 'string' ? title.trim() : '';
@@ -469,6 +508,7 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     return res.status(400).json({ error: 'Invalid geographic position coordinates (lat, lng must be valid finite numbers).' });
   }
+  if (!insideCity(lat, lng)) return res.status(400).json({ error: 'Outside Bengaluru metro coverage.' });
 
   // Media source hygiene: only HTTPS/HTTP URLs (<=2KB) or inline base64 image data URLs are accepted.
   // Blocks javascript:, file:, path traversal, and executable injection payloads.
@@ -486,13 +526,18 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
 
   // Deduplicate if client supplied specific ID
   if (id) {
-    const existing = incidents.find((i) => i.id === id);
+    const existing = incidents.find((i) => i.id === id || (Array.isArray(i.reportIds) && i.reportIds.includes(id)));
     if (existing?.moderationHidden) return res.status(409).json({error:"This report is under moderation."});
     if (existing) {
       return res.status(200).json(publicIncident(existing));
     }
   }
 
+  // Citizen device time is an observation claim, never trusted telemetry. Bound
+  // its age and retain it rather than labeling a delayed report as just seen.
+  const receivedAt=Date.now();
+  if(observedAt!==undefined&&(!Number.isFinite(observedAt)||observedAt<receivedAt-30*60000||observedAt>receivedAt+5*60000))return res.status(422).json({code:'OBSERVATION_EXPIRED',error:'Check the location again before sending an old observation.'});
+  const observationTime=new Date(Math.min(observedAt??receivedAt,receivedAt)).toISOString();
   const allowedTypes = ['Traffic', 'Waterlogging', 'Accident', 'Infrastructure'];
   const category = allowedTypes.includes(type) ? type : 'Infrastructure';
   const hexIndex = getHexIndex(lat, lng, 8);
@@ -520,6 +565,10 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
 
   if (clusterMatch) {
     const previousCluster = JSON.parse(JSON.stringify(clusterMatch));
+    if (id) {
+      if (!Array.isArray(clusterMatch.reportIds)) clusterMatch.reportIds = [clusterMatch.id];
+      if (!clusterMatch.reportIds.includes(id)) clusterMatch.reportIds.push(id);
+    }
     // Auto-clustering Sybil check: verify reporter has not already contributed to this cluster
     if (!Array.isArray(clusterMatch.reporters)) {
       clusterMatch.reporters = [clusterMatch.reportedBy || 'initial_reporter'];
@@ -555,7 +604,7 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
       clusterMatch.updates = [];
     }
     clusterMatch.updates.unshift({
-      timestamp: 'Just now',
+      timestamp: observationTime,
       description: String(description).trim(),
       reportedBy: sanitizedReportedBy,
       mediaUrl: mediaUrl || null,
@@ -602,8 +651,8 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
     description: String(description).trim(),
     position: { lat, lng },
     hexIndex,
-    timestamp: 'Just now',
-    createdAt: new Date().toISOString(),
+    timestamp: observationTime,
+    createdAt: observationTime,
     urgency: urgency || 'Medium',
     verificationCount: 1,
     verificationScore: 1.0,
@@ -641,7 +690,12 @@ app.post('/api/incidents', reportLimiter, async (req, res) => {
 // 3. PROXIMITY-WEIGHTED VERIFICATION ENDPOINT
 app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
   const { id } = req.params;
-  const { voterPosition, voterId } = req.body || {};
+  const { voterPosition, voterId, observedAt } = req.body || {};
+  // Votes inherit the same 30-minute freshness window as reports: a stale
+  // approval must fail closed as OBSERVATION_EXPIRED, not record a 200.
+  // observedAt is required — an omitted value is not evidence of presence.
+  const receivedAt = Date.now();
+  if (!Number.isFinite(observedAt) || observedAt < receivedAt - 30 * 60000 || observedAt > receivedAt + 5 * 60000) return res.status(422).json({ code: 'OBSERVATION_EXPIRED', error: 'Check the location again before voting on an old observation.' });
   const incident = incidents.find((i) => i.id === id && !i.moderationHidden);
 
   if (!incident) {
@@ -715,8 +769,11 @@ app.post('/api/incidents/:id/verify', verifyLimiter, async (req, res) => {
 });
 
 // 4. MULTI-CITIZEN CLEARANCE ENDPOINT
-app.post('/api/incidents/:id/resolve', async (req, res) => {
+app.post('/api/incidents/:id/resolve', resolveLimiter, async (req, res) => {
   const { id } = req.params;
+  const { observedAt } = req.body || {};
+  const receivedAt = Date.now();
+  if (!Number.isFinite(observedAt) || observedAt < receivedAt - 30 * 60000 || observedAt > receivedAt + 5 * 60000) return res.status(422).json({ code: 'OBSERVATION_EXPIRED', error: 'Check the location again before voting on an old observation.' });
   const index = incidents.findIndex((i) => i.id === id && !i.moderationHidden);
 
   if (index === -1) {
@@ -732,7 +789,7 @@ app.post('/api/incidents/:id/resolve', async (req, res) => {
 
   // Multi-citizen consensus: prevent duplicate clearance votes from the same citizen/device
   if (incident.resolutionVoterKeys.includes(voterKey)) {
-    return res.status(400).json({ error: 'You have already voted to clear this incident.' });
+    return res.status(409).json({ error: 'You have already voted to clear this incident.',alreadyVoted:true,id:incident.id,clearanceVotes:incident.clearanceVotes||incident.resolutionVoterKeys.length,cleared:false });
   }
 
   incident.resolutionVoterKeys.push(voterKey);
@@ -807,11 +864,17 @@ app.get('/api/sos/dispatches',async(req,res)=>{
 app.get('/api/sos/status/:id',async(req,res)=>{
   try {
     const token=/^Bearer (.+)$/.exec(req.headers.authorization||'');
-    const uid=firebaseStore&&token?(await firebaseStore.auth.verifyIdToken(token[1])).uid:null;
+    let uid=null;
+    if(firebaseStore&&token){
+      try{
+        const verified=await firebaseStore.auth.verifyIdToken(token[1],true);
+        uid=verified?.uid||null;
+      }catch{uid=null;}
+    }
     const item=await records.get('emergencyOutbox',req.params.id);
     if(!item || (!hasAuthorityAccess(req.headers['x-authority-token']) && (!uid || uid!==item.uid)))return res.status(404).json({error:'Dispatch not found'});
     res.json({id:item.id,status:item.status,attempts:item.attempts});
-  }catch {res.status(401).json({error:'Sign in required'});}
+  }catch {res.status(503).json({error:'Status unavailable'});}
 });
 
 // 6. CONVERSATIONAL AI TRANSIT ASSISTANT ENDPOINT
@@ -847,7 +910,17 @@ async function requireModerator(req,res,next) {
   }catch {res.status(401).json({error:'Moderator sign-in required'});}
 }
 app.get('/api/moderation', requireModerator, async(req,res)=>{
-  try {res.json({incidents,audit:await records.list('moderationAudit')});}catch {res.status(503).json({error:'Audit unavailable'});}
+  try {
+    const rows = incidents.map((item) => {
+      // Moderators see hidden rows too (with id for the restore action), but
+      // never voter/reporter identity arrays — counts only.
+      const visible = publicIncident(item) || { id: item.id };
+      return { ...visible, title: item.title, description: item.description, position: item.position, type: item.type, ward: item.ward, urgency: item.urgency, moderationHidden: !!item.moderationHidden, reporterCount: Array.isArray(item.reporters) ? item.reporters.length : 0, voterCount: Array.isArray(item.verifiedVoters) ? item.verifiedVoters.length : 0, clearanceVotes: item.clearanceVotes || 0 };
+    });
+    const audit = await records.list('moderationAudit');
+    const auditRows = audit.map(({ actor, ...row }) => row);
+    res.json({ incidents: rows.slice(0, 200), truncated: rows.length > 200, total: rows.length, audit: auditRows.slice(0, 200) });
+  } catch { res.status(503).json({ error: 'Audit unavailable' }); }
 });
 app.post('/api/moderation/:id', requireModerator, async(req,res)=>{
   if(!['hide','restore'].includes(req.body.action)||typeof req.body.reason!=='string'||req.body.reason.trim().length<5||req.body.reason.length>500)return res.status(400).json({error:'Action and reason (5–500 characters) required'});
@@ -945,8 +1018,9 @@ ready.catch(() => console.error('[Startup] Cloud storage unavailable'));
 
 // Start Server if executed directly
 if (require.main === module) {
-  if (process.env.NODE_ENV === 'production' && !firebaseStore) {
-    console.error('[Startup] Production requires FIREBASE_PROJECT_ID and backend credentials.');
+  const allowLocalMode = process.env.ALLOW_LOCAL_MODE === 'true' || process.env.NODE_ENV === 'test';
+  if (!firebaseStore && !allowLocalMode) {
+    console.error('[Startup] Firebase is not configured. Set FIREBASE_PROJECT_ID for production, or ALLOW_LOCAL_MODE=true only for explicit local development.');
     process.exit(1);
   }
   const PORT = process.env.PORT || 5001;

@@ -3,9 +3,11 @@ import { BENGALURU_UNDERPASSES } from '../../data/bengaluruUnderpasses';
 import { calculateDistance } from '../../services/routingService';
 import { API_BASE } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
+import { useInterfaceCopy } from '../../hooks/useInterfaceCopy';
 import { cityDate, cityTime } from '../../utils/sourceTime';
 const CityRecap = ({ events = [], onSelectLocation }) => {
   const { t } = useLanguage();
+  const copy = useInterfaceCopy();
   const [river, setRiver] = useState({status:'loading'});
   const [readings, setReadings] = useState({});
   const [observations, setObservations] = useState([]);
@@ -27,8 +29,8 @@ const CityRecap = ({ events = [], onSelectLocation }) => {
   return <div className="recap-content">
     <div className="recap-header"><h4>{t.live.overview}</h4><span>{t.live.citizenData}</span></div>
     <div className="recap-grid">{['Traffic','Waterlogging','Accident','Infrastructure'].map(type => <div className="recap-stat-card" key={type}><span className="recap-num">{events.filter(e => e.type === type).length}</span><span>{t.filters[type]}</span></div>)}</div>
-    {river.status !== 'available' && <section><h5>{t.live.riverContext}</h5><p role="status">{river.status === 'loading' ? 'Loading regional river forecast…' : 'Regional river forecast unavailable. Retrying automatically.'}</p></section>}
-    {river?.status === 'available' && <section><h5>{t.live.riverContext}</h5><p>{t.live.riverLimit}</p><p>{river.latitude.toFixed(3)}, {river.longitude.toFixed(3)} · {cityTime(river.fetchedAt)}</p>{river.date!==cityDate(clock)?<p role="status">River model is from a previous date. Refreshing automatically.</p>:river.forecast.filter(f=>f.date>=cityDate(clock)).map(f=><p key={f.date}>{f.date}: {f.discharge} m³/s</p>)}<a href={river.sourceUrl} target="_blank" rel="noreferrer">{river.source}</a></section>}
+    {river.status !== 'available' && <section><h5>{t.live.riverContext}</h5><p role="status">{river.status === 'loading' ? copy.riverLoading : copy.riverUnavailable}</p></section>}
+    {river?.status === 'available' && <section><h5>{t.live.riverContext}</h5><p>{t.live.riverLimit}</p><p>{river.latitude.toFixed(3)}, {river.longitude.toFixed(3)} · {cityTime(river.fetchedAt)}</p>{river.date!==cityDate(clock)?<p role="status">{copy.riverPreviousDate}</p>:river.forecast.filter(f=>f.date>=cityDate(clock)).map(f=><p key={f.date}>{f.date}: {f.discharge} m³/s</p>)}<a href={river.sourceUrl} target="_blank" rel="noreferrer">{river.source}</a></section>}
     <h5>{t.live.underpasses}</h5><p>{t.live.unverifiedCatalog}</p>
     <div className="underpass-watch-list">{BENGALURU_UNDERPASSES.map(p => {
       const reports = events.filter(e => e.type === 'Waterlogging' && e.position && calculateDistance(e.position.lat,e.position.lng,p.lat,p.lng) <= 1.2);
@@ -41,7 +43,7 @@ const CityRecap = ({ events = [], onSelectLocation }) => {
         {sensor.map(o => <p key={`${o.source}-${o.observedAt}`}><a href={o.sourceUrl} target="_blank" rel="noreferrer">{o.source}</a>: {o.depthCm} cm · {new Date(o.observedAt).toLocaleString()}</p>)}
         <button type="button" onClick={() => onSelectLocation?.({ id:`underpass_${p.id}`,title:p.name,ward:p.zone,description:t.live.unknownCondition,position:{lat:p.lat,lng:p.lng} })}>{t.live.viewMap}</button>
       </div>;
-    })}</div><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather data by Open-Meteo</a>
+    })}</div><a href="https://open-meteo.com/" target="_blank" rel="noreferrer">{copy.weatherBy}</a>
   </div>;
 };
 export default CityRecap;

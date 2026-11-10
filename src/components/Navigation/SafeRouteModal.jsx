@@ -128,20 +128,20 @@ const SafeRouteModal = ({
   const [loading, setLoading] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
   const [routingError, setRoutingError] = useState(null);
+  const routeRequestId = useRef(0);
+  const mountedRef = useRef(true);
 
-  useEffect(() => { if (activeRoute) setRouteResult(activeRoute); }, [activeRoute]);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+  useEffect(() => { if (activeRoute) setRouteResult(activeRoute); else { setRouteResult(null); setRoutingError(null); } }, [activeRoute]);
 
   const resolveEndpoint = async (text, pickedPlace, fieldName) => {
     if (pickedPlace) return pickedPlace;
-    const resolved = await geocodeBengaluruPlace(text);
-    if (!resolved) {
-      throw new Error(copy.placeMissing);
-    }
-    return resolved;
+    throw new Error(copy.placeMissing);
   };
 
   const handleCalculateRoute = async () => {
     if(loading)return;
+    const requestId = ++routeRequestId.current;
     setLoading(true);
     setRoutingError(null);
     setRouteResult(null);
@@ -151,13 +151,21 @@ const SafeRouteModal = ({
     try {
       if (useCurrentGps && userLocation) {
         startCoords = userLocation;
+      } else if (useCurrentGps && !userLocation) {
+        if (routeRequestId.current !== requestId || !mountedRef.current) return;
+        setRoutingError(copy.gpsError || copy.placeMissing);
+        setLoading(false);
+        return;
       } else {
         const resolvedStart = await resolveEndpoint(startText, startPlace, "origin");
+        if (routeRequestId.current !== requestId || !mountedRef.current) return;
         startCoords = { lat: resolvedStart.lat, lng: resolvedStart.lng, label: resolvedStart.label };
       }
       const resolvedEnd = await resolveEndpoint(endText, endPlace, "destination");
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
       endCoords = { lat: resolvedEnd.lat, lng: resolvedEnd.lng, label: resolvedEnd.label };
     } catch (resolveErr) {
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
       setRoutingError(copy.placeMissing);
       setLoading(false);
       return;
@@ -167,21 +175,23 @@ const SafeRouteModal = ({
       Math.abs(startCoords.lat - endCoords.lat) < 0.0001 &&
       Math.abs(startCoords.lng - endCoords.lng) < 0.0001
     ) {
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
       setRoutingError(copy.samePlace);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
     try {
       let routeData;
       if (autoDetour) {
         routeData = await fetchDetourRoute(startCoords, endCoords, resolvedHazards);
       } else {
         const base = await fetchDrivingRoute(startCoords, endCoords);
+        if (routeRequestId.current !== requestId || !mountedRef.current) return;
         const conflicts = detectRouteHazards(base.coordinates, resolvedHazards, 0.45);
         routeData = { ...base, conflicts, isDetour: false };
       }
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
 
       setRouteResult({
         ...routeData,
@@ -200,15 +210,18 @@ const SafeRouteModal = ({
         });
       }
     } catch (err) {
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
       setRoutingError(
         copy.routeFailure
       );
       setRouteResult(null);
       if (onApplyRouteToMap) {
-        onApplyRouteToMap(null); // Clear previous route line from map on failure
+        onApplyRouteToMap(null);
       }
     } finally {
-      setLoading(false);
+      if (routeRequestId.current === requestId && mountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -235,7 +248,7 @@ const SafeRouteModal = ({
               {useCurrentGps && userLocation ? (
                 <div className="route-place-badge">
                   <span className="route-place-text">
-                    📍 My GPS ({userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)})
+                    📍 {copy.myGps} ({userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)})
                   </span>
                 </div>
               ) : (
@@ -246,7 +259,7 @@ const SafeRouteModal = ({
                     place={startPlace}
                     onChange={setStartText}
                     onPick={setStartPlace}
-                    placeholder="e.g. Silk Board Junction, MG Road…"
+                    placeholder={copy.originPlaceholder}
                   />
                 </div>
               )}
@@ -255,9 +268,9 @@ const SafeRouteModal = ({
                   type="button"
                   className={`gps-toggle-btn ${useCurrentGps ? "active" : ""}`}
                   onClick={() => setUseCurrentGps(!useCurrentGps)}
-                  title="Use current GPS as starting waypoint"
+                  title={copy.useGpsTitle}
                 >
-                  📍 My GPS
+                  📍 {copy.myGps}
                 </button>
               )}
             </div>
@@ -270,7 +283,7 @@ const SafeRouteModal = ({
                 place={endPlace}
                 onChange={setEndText}
                 onPick={setEndPlace}
-                placeholder="e.g. Whitefield, Kempegowda Airport…"
+                placeholder={copy.destinationPlaceholder}
               />
             </div>
 
@@ -361,11 +374,11 @@ const SafeRouteModal = ({
                         <p>{c.hazard.description}</p>
                         {c.hazard.waterDepth && (
                           <span className="conflict-depth-badge" style={{ color: '#06B6D4', fontSize: '0.74rem', display: 'block', marginTop: '2px', fontWeight: 600 }}>
-                            🌊 Depth: {c.hazard.waterDepth} {c.hazard.vehiclePassability ? `• 🚫 ${c.hazard.vehiclePassability}` : ''}
+                            🌊 {copy.depthLabel} {c.hazard.waterDepth} {c.hazard.vehiclePassability ? `• 🚫 ${c.hazard.vehiclePassability}` : ''}
                           </span>
                         )}
                         <span className="conflict-dist">
-                          Approx. {Math.round(c.distanceKm * 1000)}m from roadway
+                          {copy.approxDistance.replace('{m}', () => String(Math.round(c.distanceKm * 1000)))}
                         </span>
                       </div>
                     </div>

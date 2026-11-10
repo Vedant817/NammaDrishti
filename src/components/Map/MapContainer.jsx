@@ -1,3 +1,4 @@
+import {incidentTime} from '../../utils/incidentTime';
 import {useInterfaceCopy} from '../../hooks/useInterfaceCopy';
 import { API_BASE } from '../../services/api';
 import { CloudRain, Route, Layers } from "lucide-react";
@@ -78,6 +79,20 @@ const MapEventsHandler = ({ onMapClick, onZoom }) => {
   return null;
 };
 
+// Selection moves the camera. Open details after that movement, since Leaflet
+// can close a popup opened during the same marker click/fly-to update.
+const IncidentMarker=({selected,...props})=>{
+  const marker=useRef(null),map=useMap();
+  useEffect(()=>{
+    if(!selected)return;
+    let timer;
+    const open=()=>{clearTimeout(timer);map.off?.('moveend',open);marker.current?.openPopup();};
+    map.once?.('moveend',open);timer=setTimeout(open,1350);
+    return()=>{clearTimeout(timer);map.off?.('moveend',open);};
+  },[selected,map]);
+  return <Marker ref={marker} bubblingMouseEvents={false} {...props}/>;
+};
+
 const CustomMapContainer = ({
   events = [],
   providerIncidents = {status:'loading',incidents:[]},
@@ -87,12 +102,13 @@ const CustomMapContainer = ({
   onMapClick = null,
   onVerifyEvent = null,
   onResolveEvent = null,
+  hasUserVoted = null,
   reportPin = null,
   navigationRoute = null,
   onClearNavigationRoute = () => {},
   initialCamera = null,
 }) => {
-  const { t } = useLanguage();
+  const { t,lang } = useLanguage();
   const copy=useInterfaceCopy();
   const [showRadar, setShowRadar] = useState(false);
   const [showTraffic, setShowTraffic] = useState(true);
@@ -252,7 +268,7 @@ const CustomMapContainer = ({
           type="button"
           className={`toolbar-btn ${showTraffic ? "active-amber" : ""}`}
           onClick={() => setShowTraffic(!showTraffic)}
-          aria-pressed={showTraffic} title="Toggle citywide traffic flow"
+          aria-pressed={showTraffic} title={copy.toggleTrafficTitle}
         >
           <Route size={16} aria-hidden="true" /> {copy.traffic}
         </button>
@@ -261,7 +277,7 @@ const CustomMapContainer = ({
           type="button"
           className={`toolbar-btn ${showHeatmap ? "active-rose" : ""}`}
           onClick={() => setShowHeatmap(!showHeatmap)}
-          aria-pressed={showHeatmap} title="Toggle reported hazard density"
+          aria-pressed={showHeatmap} title={copy.toggleHeatmapTitle}
         >
           <Layers size={16} aria-hidden="true" /> {copy.clusters}
         </button>
@@ -277,10 +293,11 @@ const CustomMapContainer = ({
             <button
               type="button"
               className="toolbar-btn"
+              aria-pressed={isPlayingRadar}
               onClick={() => setIsPlayingRadar((p) => !p)}
-              title="Animate past radar observations"
+              title={copy.radarAnimate}
             >
-              {isPlayingRadar ? "⏸ Pause" : "▶ Play"}
+              {isPlayingRadar ? `⏸ ${copy.radarPause}` : `▶ ${copy.radarPlay}`}
             </button>
             <input
               type="range"
@@ -292,7 +309,8 @@ const CustomMapContainer = ({
                 setIsPlayingRadar(false);
                 setRadarIndex(Number(e.target.value));
               }}
-              aria-label="Scrub monsoon radar timeline"
+              aria-label={copy.radarScrub}
+              aria-valuetext={formatRadarLabel(currentRadarFrame)}
             />
             <span className="radar-frame-label">{formatRadarLabel(currentRadarFrame)}</span>
             <button
@@ -302,14 +320,14 @@ const CustomMapContainer = ({
                 setIsPlayingRadar(false);
                 setRadarIndex(radarData.nowIndex);
               }}
-              title="Jump to latest observed radar frame"
+              title={copy.radarLatest}
             >
-              ⏭ Latest
+              ⏭ {copy.radarLatestShort}
             </button>
           </div>
         )}
 
-        {showRadar && <span role="status">{radarError || (currentRadarFrame && clock - currentRadarFrame.time * 1000 > 1800000 ? "Radar observation stale" : "Observed radar · coverage may be incomplete")}</span>}
+        {showRadar && <span role="status">{radarError || (currentRadarFrame && clock - currentRadarFrame.time * 1000 > 1800000 ? copy.radarStale : copy.radarObserved)}</span>}
         {showTraffic && <div className="map-layer-status" role="status">{mapZoom < 10 ? copy.zoomTraffic : tileStatus === 'error' ? copy.trafficIncomplete : tileStatus === 'loading' ? copy.loading : copy.flowLegend}</div>}
         {showHeatmap && <div className="map-layer-status" role="status">{events.length ? `${events.length} · ${copy.reportClustersHint}` : copy.noReports}</div>}
         {showUnderpasses && <div className="map-layer-status">{copy.underpassHint}</div>}
@@ -323,7 +341,7 @@ const CustomMapContainer = ({
                 onClearNavigationRoute();
               }
             }}
-            title="Clear active navigation route from map"
+            title={copy.clearRouteTitle}
           >
             ✕ {copy.clearRoute}
           </button>
@@ -377,7 +395,7 @@ const CustomMapContainer = ({
             maxNativeZoom={7}
             maxZoom={19}
             attribution='Radar: <a href="https://www.rainviewer.com/">RainViewer</a>'
-            eventHandlers={{ tileerror: () => setRadarError("Radar tiles unavailable; coverage is not confirmed.") }}
+            eventHandlers={{ tileerror: () => setRadarError(copy.radarTilesError) }}
             opacity={0.65}
             zIndex={200}
           />
@@ -395,7 +413,7 @@ const CustomMapContainer = ({
         {(selectedEvent?.id?.startsWith('traffic_')||selectedEvent?.id?.startsWith('tomtom_')) && <CircleMarker center={[selectedEvent.position.lat, selectedEvent.position.lng]} radius={10} pathOptions={{ color: '#176582' }}><Popup>{selectedEvent.title} · TomTom</Popup></CircleMarker>}
         {showRoadIncidents && activeTrafficIncidents(providerIncidents,clock).map(item=><CircleMarker key={item.id} center={[item.position.lat,item.position.lng]} radius={6} bubblingMouseEvents={false} pathOptions={{color:'#AD5139',fillOpacity:.65}}><Popup><strong>{item.category} · TomTom</strong><p>{item.title}</p><p>{item.from}{item.to?' → '+item.to:''}</p></Popup></CircleMarker>)}
         {showUnderpasses && BENGALURU_UNDERPASSES.map(point => <CircleMarker key={point.id} bubblingMouseEvents={false} center={[point.lat, point.lng]} radius={7} pathOptions={{ color: '#176582', fillColor: '#fff', fillOpacity: 0.85, weight: 2 }}>
-          <Popup><strong>{point.name}</strong><p>Approximate underpass location. Current flooding and road clearance are unverified.</p></Popup>
+          <Popup><strong>{point.name}</strong><p>{copy.underpassApprox}</p></Popup>
         </CircleMarker>)}
         {/* Citizen report density is distinct from measured traffic. */}
         {showHeatmap &&
@@ -418,10 +436,10 @@ const CustomMapContainer = ({
                 <Popup className="clean-popup">
                   <div className="popup-body">
                     <span className="popup-type-tag" style={{ background: isHigh ? "#EF4444" : "#F59E0B", color: "#fff" }}>
-                      Community report location
+                      {copy.communityReportLocation}
                     </span>
                     <h4 className="popup-title">{evt.title}</h4>
-                    <p className="popup-desc">Confirmations: {evt.verificationCount || 1}. Community report; not a sensor measurement.</p>
+                    <p className="popup-desc">{copy.confirmationsLabel} {evt.verificationCount || 1}. {copy.communityNotSensor}</p>
                   </div>
                 </Popup>
               </CircleMarker>
@@ -456,7 +474,7 @@ const CustomMapContainer = ({
           Number.isFinite(reportPin.lng) && (
             <Marker position={[reportPin.lat, reportPin.lng]} icon={reportIcon}>
               <Popup autoPan={false}>
-                <div className="pin-hint-popup">Selected Location for Report</div>
+                <div className="pin-hint-popup">{copy.pinHint}</div>
               </Popup>
             </Marker>
           )}
@@ -485,17 +503,17 @@ const CustomMapContainer = ({
               >
                 <Popup className="clean-popup">
                   <div className="popup-body">
-                    <div className="popup-badge rain">Rain Cell</div>
+                    <div className="popup-badge rain">{copy.rainCell}</div>
                     <h4 className="popup-title">{event.title}</h4>
                     <p className="popup-desc">{event.description}</p>
                   {event.waterDepth && (
                     <div className="popup-water-depth-badge" style={{ margin: '6px 0', padding: '4px 8px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.15)', color: '#06B6D4', fontSize: '0.78rem', fontWeight: 600 }}>
-                      🌊 Depth: {event.waterDepth} {event.vehiclePassability ? `• 🚫 ${event.vehiclePassability}` : ''}
+                      🌊 {copy.depthLabel} {event.waterDepth} {event.vehiclePassability ? `• 🚫 ${event.vehiclePassability}` : ''}
                     </div>
                   )}
                     <div className="popup-meta">
                       <span>{event.ward}</span>
-                      <span>{event.timestamp}</span>
+                      <span>{incidentTime(event,lang)}</span>
                     </div>
                   </div>
                 </Popup>
@@ -507,8 +525,9 @@ const CustomMapContainer = ({
             (t.filters && t.filters[event.type]) || event.type;
 
           return (
-            <Marker
+            <IncidentMarker
               key={event.id}
+              selected={isSelected}
               position={[event.position.lat, event.position.lng]}
               icon={createCustomIcon(event.type, isSelected)}
               eventHandlers={{
@@ -535,22 +554,22 @@ const CustomMapContainer = ({
 
                   {(event.waterDepth || event.vehiclePassability) && (
                     <div className="popup-water-depth-badge" style={{ margin: '6px 0', padding: '4px 8px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.15)', color: '#06B6D4', fontSize: '0.78rem', fontWeight: 600 }}>
-                      🌊 Depth: {event.waterDepth || 'Measured'} {event.vehiclePassability ? `• 🚫 ${event.vehiclePassability}` : ''}
+                      🌊 {copy.waterDepth}: {event.waterDepth || copy.unknown} {event.vehiclePassability ? `• 🚫 ${event.vehiclePassability}` : ''}
                     </div>
                   )}
                   {event.clusterCount > 1 && (
                     <div className="popup-cluster-badge" style={{ margin: '4px 0', padding: '2px 8px', borderRadius: '4px', background: 'rgba(139, 92, 246, 0.15)', color: '#A78BFA', fontSize: '0.72rem', fontWeight: 600, display: 'inline-block' }}>
-                      🔗 {event.clusterCount} merged citizen reports
+                      🔗 {event.clusterCount} {copy.mergedReports}
                     </div>
                   )}
 
                   <div className="popup-ward-row">
-                    <span className="ward-label">Ward:</span> {event.ward || "Bengaluru"}
+                    <span className="ward-label">{copy.wardLabel}</span> {event.ward || copy.bengaluru}
                   </div>
 
                   {event.mediaUrl && (
                     <div className="popup-image-preview">
-                      <img src={event.mediaUrl} alt="Report attachment" />
+                      <img src={event.mediaUrl} alt={copy.reportAttachment} />
                     </div>
                   )}
 
@@ -567,6 +586,8 @@ const CustomMapContainer = ({
                     <button
                       type="button"
                       className="popup-btn confirm"
+                      disabled={hasUserVoted?.(event.id,'verify')===true}
+                      aria-label={`${t.actions.confirm} — ${event.title}`}
                       onClick={() => onVerifyEvent && onVerifyEvent(event.id)}
                     >
                       {t.actions.confirm}
@@ -574,6 +595,8 @@ const CustomMapContainer = ({
                     <button
                       type="button"
                       className="popup-btn resolve"
+                      disabled={hasUserVoted?.(event.id,'clear')===true}
+                      aria-label={`${t.actions.markCleared} — ${event.title}`}
                       onClick={() => onResolveEvent && onResolveEvent(event.id)}
                     >
                       {t.actions.markCleared}
@@ -581,7 +604,7 @@ const CustomMapContainer = ({
                   </div>
                 </div>
               </Popup>
-            </Marker>
+            </IncidentMarker>
           );
         })}
 

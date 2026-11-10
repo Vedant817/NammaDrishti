@@ -1,5 +1,5 @@
 const POINTS = [{id:'silk',name:'Silk Board',lat:12.9171,lng:77.6238},{id:'orr',name:'ORR Bellandur',lat:12.935,lng:77.685},{id:'tin',name:'Tin Factory',lat:12.9972,lng:77.6672},{id:'hebbal',name:'Hebbal',lat:13.0358,lng:77.597}];
-const insideCity = (lat,lng) => Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=12.7&&lat<=13.28&&lng>=77.3&&lng<=77.88;
+const insideCity = (lat,lng) => Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=12.6&&lat<=13.35&&lng>=77.25&&lng<=77.95;
 const { cityDate, CITY_ZONE } = require('./sourceTime');
 async function textFetch(url, options={}) {
   const res=await fetch(url,{...options,signal:AbortSignal.timeout(7000),redirect:'error'});
@@ -33,7 +33,7 @@ function createLiveData({fetchJson=jsonFetch,fetchText=textFetch,now=Date.now,re
       if(!process.env.TOMTOM_API_KEY)return Promise.resolve({status:'unconfigured',source:'TomTom',incidents:[]});
       return cached('traffic-incidents',60000,async()=>{
         const url=new URL('https://api.tomtom.com/traffic/services/5/incidentDetails');
-        url.search=new URLSearchParams({key:process.env.TOMTOM_API_KEY,bbox:'77.30,12.70,77.88,13.28',language:'en-GB',timeValidityFilter:'present',fields:'{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description},startTime,endTime,from,to,length,delay,timeValidity,lastReportTime}}}'});
+        url.search=new URLSearchParams({key:process.env.TOMTOM_API_KEY,bbox:'77.25,12.60,77.95,13.35',language:'en-GB',timeValidityFilter:'present',fields:'{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description},startTime,endTime,from,to,length,delay,timeValidity,lastReportTime}}}'});
         let raw;
         try{raw=await fetchJson(url.toString());}catch(error){if([401,403].includes(error.status))return {status:'access-denied',source:'TomTom',incidents:[]};throw error;}
         return require('./trafficIncidents').normalizeIncidents(raw,now());
@@ -53,7 +53,7 @@ function createLiveData({fetchJson=jsonFetch,fetchText=textFetch,now=Date.now,re
           if(reserveGeocode)release=await reserveGeocode();
           else {await pause(Math.max(0,nextAt-now()));nextAt=now()+1100;}
           const url=new URL(process.env.GEOCODING_URL||'https://nominatim.openstreetmap.org/search');
-          url.search=new URLSearchParams({q,format:'jsonv2',countrycodes:'in',viewbox:'77.30,13.28,77.88,12.70',bounded:'1',limit:'5'});
+          url.search=new URLSearchParams({q,format:'jsonv2',countrycodes:'in',viewbox:'77.25,13.35,77.95,12.60',bounded:'1',limit:'5'});
           let raw;
           try {raw=await fetchJson(url.toString(),{headers:{'User-Agent':process.env.GEOCODING_USER_AGENT||'NammaDrishti/1.0 (Bengaluru civic reports)',Accept:'application/json'}}); } finally { if(release)await release(); }
           if(!Array.isArray(raw))throw new Error('Invalid geocoder response');

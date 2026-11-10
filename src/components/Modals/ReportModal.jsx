@@ -1,7 +1,8 @@
+import {useOfflineCopy} from '../../data/offlineCopy';
 import { useDialog } from "../../hooks/useDialog";
 import { useInterfaceCopy } from '../../hooks/useInterfaceCopy';
 // src/components/Modals/ReportModal.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Button from "../Common/Button";
 import { useGeolocation } from "../../hooks/useGeolocation";
 import { useLanguage } from "../../context/LanguageContext";
@@ -14,11 +15,18 @@ const ReportModal = ({
   onClose,
   onSubmitReport,
   initialCoordinates,
+  initialReport,
+  requiresFreshObservation=false,
 }) => {
   const dialogRef = useDialog(onClose);
   const { getPosition } = useGeolocation();
   const { t } = useLanguage();
   const copy=useInterfaceCopy();
+  const offline=useOfflineCopy();
+  const submissionId=useRef(initialReport?.id||`namma_${crypto.randomUUID()}`);
+  const alive=useRef(true);
+  const submitLock=useRef(false),photoSelection=useRef(0);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
 
   const reportT = {
     modalTitle: t?.report?.modalTitle || t?.reportModal?.title || "Report Civic or Traffic Incident",
@@ -50,21 +58,30 @@ const ReportModal = ({
     mediaUrl: null,
     waterDepth: "",
     vehiclePassability: "",
+    ...initialReport,
+    waterDepth:initialReport?.waterDepth||"",
+    vehiclePassability:initialReport?.vehiclePassability||"",
   });
 
   const [locationSource, setLocationSource] = useState(
-    initialCoordinates ? "PIN_SELECTED" : "MANUAL"
+    initialCoordinates || initialReport?.position ? "PIN_SELECTED" : "MANUAL"
   );
   const [compressing, setCompressing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [freshConfirmed,setFreshConfirmed]=useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (initialCoordinates) {
       setFormData((prev) => ({ ...prev, position: initialCoordinates }));
       setLocationSource("PIN_SELECTED");
+      return;
     }
-  }, [initialCoordinates]);
+    if (initialReport?.position) {
+      setFormData((prev) => ({ ...prev, position: initialReport.position }));
+      setLocationSource("PIN_SELECTED");
+    }
+  }, [initialCoordinates, initialReport]);
 
   const handleUseGps = () => {
     getPosition(
@@ -77,45 +94,36 @@ const ReportModal = ({
         setErrorMsg("");
       },
       (err) => {
-        setErrorMsg("Could not fetch GPS. Please select location on map or type landmark name.");
+        setErrorMsg(copy.gpsError);
       }
     );
   };
 
-  const handleImageChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setCompressing(true);
-    setErrorMsg("");
-    try {
-      const result = await compressImage(file, 800, 800, 0.7);
-      if (result && result.dataUrl) {
-        setFormData((prev) => ({ ...prev, mediaUrl: result.dataUrl }));
-      } else {
-        const reader = new FileReader();
-        reader.onload = () => {
-          setFormData((prev) => ({ ...prev, mediaUrl: reader.result }));
-        };
-        reader.readAsDataURL(file);
-      }
-    } catch (err) {
-      console.warn("Client compression error, using fallback reader", err);
-    } finally {
-      setCompressing(false);
-    }
+  const handleImageChange=async(event)=>{
+    const input=event.target,file=input.files[0];if(!file)return;
+    const selection=++photoSelection.current;setCompressing(true);setErrorMsg('');
+    try{
+      const result=await compressImage(file,800,800,0.7);
+      if(!result?.dataUrl)throw new Error();
+      if(alive.current&&photoSelection.current===selection)setFormData(prev=>({...prev,mediaUrl:result.dataUrl}));
+    }catch{
+      if(alive.current&&photoSelection.current===selection){input.value='';setErrorMsg(offline.photoError);}
+    }finally{if(alive.current&&photoSelection.current===selection)setCompressing(false);}
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (submitting) return; // Prevent double-submit race condition
+    if (submitLock.current||submitting||compressing) return;
     setErrorMsg("");
 
+    if((formData.title?.trim().length||0)>200||(formData.ward?.length||0)>200||(formData.description?.trim().length||0)>2000){setErrorMsg(offline.fieldLimit);return;}
     if (!formData.description || !formData.description.trim()) {
-      setErrorMsg("Please provide detailed field notes / description for fellow commuters.");
+      setErrorMsg(copy.descRequired);
       return;
     }
 
+    if(requiresFreshObservation&&!freshConfirmed){setErrorMsg(offline['action-stale']);return;}
+    submitLock.current=true;
     let resolvedCoords = formData.position;
 
     // Fallback: If no GPS or map pin, resolve live coordinates via Nominatim
@@ -132,15 +140,15 @@ const ReportModal = ({
       } catch (geoErr) {
         geocoded = null;
       } finally {
-        setSubmitting(false);
+        if(alive.current)setSubmitting(false);
       }
+      if(!alive.current){submitLock.current=false;return;}
 
       if (geocoded) {
         resolvedCoords = { lat: geocoded.lat, lng: geocoded.lng };
       } else {
-        setErrorMsg(
-          "No live geocode match found for this location. Use \"Auto-Detect GPS\", click the map to drop a pin before reporting, or name a specific Bengaluru landmark."
-        );
+        submitLock.current=false;
+        setErrorMsg(copy.geocodeMissing);
         return;
       }
     }
@@ -149,19 +157,23 @@ const ReportModal = ({
     try {
       const res = await onSubmitReport({
         ...formData,
+        id:submissionId.current,
+        confirmedFreshObservation:requiresFreshObservation&&freshConfirmed,
         waterDepth: formData.type === "Waterlogging" ? formData.waterDepth || null : null,
         vehiclePassability: formData.type === "Waterlogging" ? formData.vehiclePassability || null : null,
         position: resolvedCoords,
       });
+      if(!alive.current)return;
       if (res && res.error) {
         setErrorMsg(res.error);
         return;
       }
       onClose();
     } catch (err) {
-      setErrorMsg(err?.message || "Failed to submit hazard report. Please check connection and try again.");
+      setErrorMsg(err?.message || copy.submitFailed);
     } finally {
-      setSubmitting(false);
+      submitLock.current=false;
+      if(alive.current)setSubmitting(false);
     }
   };
 
@@ -178,7 +190,7 @@ const ReportModal = ({
         </div>
 
         <form onSubmit={handleSubmit} className="report-form">
-          {errorMsg && <div className="report-error-banner">{errorMsg}</div>}
+          {errorMsg && <div role="alert" className="report-error-banner">{errorMsg}</div>}
 
           <div className="form-group">
             <label>{reportT.category}</label>
@@ -187,6 +199,7 @@ const ReportModal = ({
                 <button
                   type="button"
                   key={cat}
+                  aria-pressed={formData.type===cat}
                   className={`chip ${formData.type === cat ? "active" : ""}`}
                   onClick={() => setFormData({ ...formData, type: cat })}
                 >
@@ -235,9 +248,10 @@ const ReportModal = ({
             <label htmlFor="report-title">{reportT.hazardTitle}</label>
             <input
               id="report-title"
+              maxLength={200}
               type="text"
               required
-              placeholder="e.g. Waterlogging under the railway bridge"
+              placeholder={copy.titlePlaceholder}
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             />
@@ -248,9 +262,10 @@ const ReportModal = ({
               <label htmlFor="report-ward">{reportT.wardLocality}</label>
               <input
                 id="report-ward"
+                maxLength={200}
                 type="text"
                 required
-                placeholder="e.g. Silk Board, Panathur, Indiranagar"
+                placeholder={copy.wardPlaceholder}
                 value={formData.ward}
                 onChange={(e) => setFormData({ ...formData, ward: e.target.value })}
               />
@@ -273,9 +288,10 @@ const ReportModal = ({
             <label htmlFor="report-desc">{reportT.fieldNotes}</label>
             <textarea
               id="report-desc"
+              maxLength={2000}
               rows="3"
               required
-              placeholder="Describe what you can see and how it affects the road."
+              placeholder={copy.descPlaceholder}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             />
@@ -293,9 +309,9 @@ const ReportModal = ({
                 <span>{reportT.autoDetectGps}</span>
               </button>
               <span className="location-status-badge">
-                {locationSource === "GPS" && "✓ GPS Locked"}
-                {locationSource === "PIN_SELECTED" && "✓ Map Pin Selected"}
-                {locationSource === "MANUAL" && "Choose a map location or enter an area."}
+                {locationSource === "GPS" && copy.gpsLocked}
+                {locationSource === "PIN_SELECTED" && copy.pinSelected}
+                {locationSource === "MANUAL" && copy.chooseLocation}
               </span>
             </div>
           </div>
@@ -305,18 +321,21 @@ const ReportModal = ({
             <input
               id="report-photo"
               type="file"
+              disabled={submitting}
               accept="image/*"
               onChange={handleImageChange}
               className="file-input"
             />
-            {compressing && <span className="compressing-hint">Compressing for low-bandwidth uplink...</span>}
+            {compressing && <span className="compressing-hint">{copy.compressingHint}</span>}
             {formData.mediaUrl && (
               <div className="image-preview">
-                <img src={formData.mediaUrl} alt="Preview" />
+                <img src={formData.mediaUrl} alt={offline.photo} />
+                <button type="button" disabled={submitting||compressing} onClick={()=>setFormData(prev=>({...prev,mediaUrl:null}))}>{offline.removePhoto}</button>
               </div>
             )}
           </div>
 
+          {requiresFreshObservation&&<label><input type="checkbox" required checked={freshConfirmed} onChange={event=>setFreshConfirmed(event.target.checked)}/>{offline.freshConfirm}</label>}
           <div className="form-actions">
             <Button variant="secondary" onClick={onClose} type="button">
               {t?.actions?.cancel || "Cancel"}
@@ -326,7 +345,7 @@ const ReportModal = ({
               type="submit"
               disabled={compressing || submitting}
             >
-              {compressing ? "Optimizing Photo..." : submitting ? "Submitting..." : reportT.broadcastHazard}
+              {compressing ? copy.optimizingPhoto : submitting ? copy.submitting : reportT.broadcastHazard}
             </Button>
           </div>
         </form>

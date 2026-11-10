@@ -8,11 +8,11 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import "./ChatbotModal.css";
 
 const QUICK_PROMPTS = [
-  "Is Silk Board jammed?",
-  "Any flooded underpasses?",
-  "Rain radar status?",
-  "How to report a pothole?",
-  "Emergency helplines",
+  { query: "Is Silk Board jammed?", keys: ["Is Silk Board jammed?", "ಸಿಲ್ಕ್ ಬೋರ್ಡ್‌ನಲ್ಲಿ ಜಾಮ್ ಇದೆಯೇ?", "क्या सिल्क बोर्ड पर जाम है?"] },
+  { query: "Any flooded underpasses?", keys: ["Any flooded underpasses?", "ಯಾವುದೇ ಅಂಡರ್‌ಪಾಸ್ ಪ್ರವಾಹ?", "कोई अंडरपास भरा है?"] },
+  { query: "Rain radar status?", keys: ["Rain radar status?", "ಮಳೆಯ ರಡಾರ್ ಸ್ಥಿತಿ?", "बारिश रडार की स्थिति?"] },
+  { query: "How to report a pothole?", keys: ["How to report a pothole?", "ಗುಂಡಿಯ ಬಗ್ಗೆ ಹೇಗೆ ವರದಿ ಮಾಡುವುದು?", "गड्ढे की रिपोर्ट कैसे करें?"] },
+  { query: "Emergency helplines", keys: ["Emergency helplines", "ತುರ್ತು ಸಹಾಯ ಸಂಖ್ಯೆಗಳು", "आपातकालीन हेल्पलाइन"] },
 ];
 
 
@@ -31,6 +31,13 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
       text: t.live.assistantIntro,
     },
   ]);
+  // Reset the greeting when the UI language changes so the conversation does
+  // not keep a stale-language intro.
+  // Refresh only the greeting on a language change; keep conversation history.
+  useEffect(() => {
+    setMessages((prev) => (prev.some((m) => m.type === 'user') ? prev : [{ type: 'bot', text: t.live.assistantIntro }]));
+  }, [lang, t]);
+
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -120,13 +127,15 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
       };
       recognitionRef.current = recognition;
     }
-  }, []);
+  }, [lang]);
 
+  const [voiceNotice, setVoiceNotice] = useState('');
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert("Voice recognition is not supported in this browser. Please use Chrome or Edge.");
+      setVoiceNotice(t.ui["Voice input is not supported in this browser"] || "Voice input is not supported in this browser. Use Chrome or Edge.");
       return;
     }
+    setVoiceNotice('');
     if (isListening) {
       recognitionRef.current.stop();
     } else {
@@ -140,7 +149,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
 
   return (
     <div className="chatbot-modal-overlay" onClick={onClose}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="NammaDrishti AI" tabIndex={-1} className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={copy.assistantTitle} tabIndex={-1} className="chatbot-modal" onClick={(e) => e.stopPropagation()}>
         <div className="chatbot-modal-header">
           <div className="bot-header-info">
             <span className="bot-avatar">🤖</span>
@@ -154,7 +163,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
               type="button"
               className={`tts-toggle-btn ${voiceEnabled ? "active" : ""}`}
               onClick={() => setVoiceEnabled((prev) => !prev)}
-              title={voiceEnabled ? "Mute Voice Speech" : "Enable Hands-Free Speech"}
+              title={voiceEnabled ? copy.muteVoice : copy.enableVoice}
             >
               {voiceEnabled ? "🔊" : "🔇"}
             </button>
@@ -168,21 +177,22 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
           <div className="quick-prompts-bar">
             {QUICK_PROMPTS.map((prompt) => (
               <button
-                key={t.ui[prompt] || prompt}
+                key={prompt.query}
                 type="button"
                 className="quick-prompt-chip"
-                onClick={() => handleSendMessage(prompt)}
+                onClick={() => handleSendMessage(prompt.query)}
               >
-                {t.ui[prompt] || prompt}
+                {prompt.keys[lang === 'kn' ? 1 : lang === 'hi' ? 2 : 0] || t.ui[prompt.query] || prompt.query}
               </button>
             ))}
           </div>
 
           <div className="messages">
+            {voiceNotice && <p role="status" className="voice-notice">{voiceNotice}</p>}
             {messages.map((message, index) => (
               <div key={index} className={`message ${message.type}`}>
                 <div className="message-content">
-                  {message.mode && <small>{message.mode==='gemini-grounded'?'AI answer using current reports':message.mode==='grounded-summary-provider-unavailable'?'Report summary · AI service unavailable':message.mode==='cached-summary'?'Offline summary · cached reports':'Source summary'}</small>}
+                  {message.mode && <small>{message.mode==='gemini-grounded'?copy.modeGrounded:message.mode==='grounded-summary-provider-unavailable'?copy.modeProviderUnavailable:message.mode==='cached-summary'?copy.modeCached:copy.modeSource}</small>}
                   {message.text.split("\n").map((line, i) => (
                     <p key={i}>{line}</p>
                   ))}
@@ -203,7 +213,7 @@ const ChatbotModal = ({ onClose, events = [], currentEvents = null, weather }) =
               type="button"
               className={`voice-mic-btn ${isListening ? "listening" : ""}`}
               onClick={toggleListening}
-              title={isListening ? "Listening... click to stop" : "Speak your query (Speech to Text)"}
+              title={isListening ? ({en:"Listening... click to stop",kn:"ಕೇಳಲಾಗುತ್ತಿದೆ... ನಿಲ್ಲಿಸಲು ಒತ್ತಿ",hi:"सुन रहे हैं... रोकने के लिए दबाएँ"})[lang] || "Listening... click to stop" : ({en:"Speak your query (Speech to Text)",kn:"ನಿಮ್ಮ ಪ್ರಶ್ನೆ ಮಾತನಾಡಿ (ಧ್ವನಿ ಪಠ್ಯ)",hi:"अपना सवाल बोलें (स्पीच टू टेक्स्ट)"})[lang] || "Speak your query (Speech to Text)"}
             >
               {isListening ? "🎙️..." : "🎤"}
             </button>

@@ -119,12 +119,12 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     await fetch(`${BASE_URL}/api/incidents/${parent.id}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'voter_clean_alpha' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'voter_clean_alpha' }),
     });
     await fetch(`${BASE_URL}/api/incidents/${parent.id}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'voter_clean_beta' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'voter_clean_beta' }),
     });
   });
 
@@ -151,7 +151,7 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     const onGroundRes = await fetch(`${BASE_URL}/api/incidents/${targetId}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterPosition: { lat: 12.9180, lng: 77.6240 }, voterId: 'device_ground_1' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterPosition: { lat: 12.9180, lng: 77.6240 }, voterId: 'device_ground_1' }),
     });
     const onGroundData = await onGroundRes.json();
     assert.equal(onGroundData.groundVerified, false);
@@ -161,7 +161,7 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     const remoteRes = await fetch(`${BASE_URL}/api/incidents/${targetId}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterPosition: { lat: 13.1000, lng: 77.5900 }, voterId: 'device_remote_1' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterPosition: { lat: 13.1000, lng: 77.5900 }, voterId: 'device_remote_1' }),
     });
     const remoteData = await remoteRes.json();
     assert.equal(remoteData.groundVerified, false);
@@ -171,12 +171,12 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     await fetch(`${BASE_URL}/api/incidents/${targetId}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'voter_clean_5_a' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'voter_clean_5_a' }),
     });
     await fetch(`${BASE_URL}/api/incidents/${targetId}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'voter_clean_5_b' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'voter_clean_5_b' }),
     });
   });
 
@@ -316,25 +316,26 @@ test('NammaDrishti Backend API Comprehensive Test Suite', async (t) => {
     const vote1 = await fetch(`${BASE_URL}/api/incidents/${tempInc.id}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'device_alpha' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'device_alpha' }),
     });
     assert.equal(vote1.status, 200);
 
-    // Second vote from SAME device_alpha: Rejected (400)
+    // Second vote from SAME device_alpha: acknowledged duplicate (409)
     const vote2 = await fetch(`${BASE_URL}/api/incidents/${tempInc.id}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'device_alpha' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'device_alpha' }),
     });
-    assert.equal(vote2.status, 400);
+    assert.equal(vote2.status, 409);
     const errBody = await vote2.json();
     assert.ok(errBody.error.includes('already voted'));
+    assert.equal(errBody.alreadyVoted,true);assert.equal(errBody.id,tempInc.id);assert.equal(errBody.cleared,false);
 
     // Second vote from DIFFERENT device_beta: Allowed (200) and clears incident
     const vote3 = await fetch(`${BASE_URL}/api/incidents/${tempInc.id}/resolve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId: 'device_beta' }),
+      body: JSON.stringify({ observedAt: Date.now(), voterId: 'device_beta' }),
     });
     assert.equal(vote3.status, 200);
     const resolvedBody = await vote3.json();

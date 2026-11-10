@@ -21,7 +21,19 @@ function createEmergencyOutbox(records,{fetcher=fetch,now=Date.now,webhook=proce
             if(ack.acknowledged!==true||ack.dispatchId!==item.id)throw new Error('Recipient did not acknowledge dispatch ID');
             next.status='ACKNOWLEDGED_BY_OPERATOR';next.acknowledgedAt=new Date(now()).toISOString();
           }catch {next.status=next.attempts>=5?'FAILED':'RETRYING';next.nextAttemptAt=now()+Math.min(300000,10000*2**next.attempts);}
-          next.leaseUntil=0;await records.put('emergencyOutbox',item.id,next);
+          if(records.update){
+            const updated=await records.update('emergencyOutbox',item.id,owner,now,(current)=>{
+              const candidate={...next,leaseOwner:owner};
+              candidate.leaseUntil=0;
+              if(candidate.status==='ACKNOWLEDGED_BY_OPERATOR' && current.status==='ACKNOWLEDGED_BY_OPERATOR' && current.acknowledgedAt && !candidate.acknowledgedAt){
+                candidate.acknowledgedAt=current.acknowledgedAt;
+              }
+              return candidate;
+            });
+            if(!updated)continue;
+          }else{
+            next.leaseUntil=0;await records.put('emergencyOutbox',item.id,next);
+          }
         }
       } finally {running=false;}
     }

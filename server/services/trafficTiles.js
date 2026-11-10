@@ -4,7 +4,7 @@ function cityTile(z, x, y) {
   if (![z, x, y].every(Number.isInteger) || z < 10 || z > 18 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) return false;
   const n = 2 ** z;
   const latitude = row => Math.atan(Math.sinh(Math.PI * (1 - 2 * row / n))) * 180 / Math.PI;
-  return (x + 1) / n * 360 - 180 >= 77.3 && x / n * 360 - 180 <= 77.88 && latitude(y) >= 12.7 && latitude(y + 1) <= 13.28;
+  return (x + 1) / n * 360 - 180 >= 77.25 && x / n * 360 - 180 <= 77.95 && latitude(y) >= 12.6 && latitude(y + 1) <= 13.35;
 }
 
 function createTrafficTiles({ fetcher = fetch, now = Date.now, key = () => process.env.TOMTOM_API_KEY } = {}) {

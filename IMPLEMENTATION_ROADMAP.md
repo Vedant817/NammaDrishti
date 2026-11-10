@@ -26,7 +26,7 @@ The user requested one feature at a time, incremental commits, three independent
 
 - Baseline: main `134fd56`; working tree clean before starting. Node 24.13.1 and npm 11.8.0 available.
 - Three read-only QA agents assigned: app journeys, operational reliability, and provider contracts. Parent owns all implementation and shared-browser interaction.
-- Milestone 1: implementation, full local test/build gate, isolated live recovery and local citizen browser acceptance completed; reviewed release and hosted moderator acceptance pending. Milestones 2–8: pending. No external live integration is marked complete without actual access and acceptance evidence.
+- Milestone 1 completed: PR #5 merged as 24dcbbe, production deployment succeeded, hosted API and moderator acceptance passed. Account-scoped offline actions are now in progress as the prioritized next feature. Milestones 2–8: pending. No external live integration is marked complete without actual access and acceptance evidence.
 
 ### Delivery order after QA
 

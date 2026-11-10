@@ -21,7 +21,7 @@ const Header = ({ weather, isLiveConnected = false, offlineQueueCount = 0 }) => 
     <>
     {account && <AccountPanel onClose={() => setAccount(false)} />}
     <header className="dashboard-header">
-      <a className="brand-lockup" href="/" aria-label="NammaDrishti home">
+      <a className="brand-lockup" href="/" aria-label={copy.homeLabel}>
         <span className="brand-symbol" aria-hidden="true"><MapPin size={23} strokeWidth={1.7} /></span>
         <span><h1>{t.brandName}</h1><span className="brand-subtitle">{t.brandTagline}</span></span>
       </a>
@@ -46,7 +46,7 @@ const Header = ({ weather, isLiveConnected = false, offlineQueueCount = 0 }) => 
         {notice && <span role="status">{notice}</span>}
         </div></details>
         <span className={`connection-status ${isLiveConnected ? "connected" : ""}`}><Radio size={14} aria-hidden="true" />{isLiveConnected ? t.live.connected : t.live.reconnecting}</span>
-        {offlineQueueCount > 0 && <span className="offline-sync-chip">{offlineQueueCount} waiting to sync</span>}
+        {offlineQueueCount > 0 && <span className="offline-sync-chip">{offlineQueueCount} {copy.waitingToSync}</span>}
         <label className="language-control"><span className="sr-only">{t.ui["Select Language"]}</span><select aria-label={t.ui["Select Language"]} value={lang} onChange={e => setLang(e.target.value)}><option value="en">English</option><option value="kn">ಕನ್ನಡ</option><option value="hi">हिंदी</option></select></label>
       </div>
     </header>
