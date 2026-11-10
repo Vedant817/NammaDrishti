@@ -7,11 +7,7 @@ function hasAuthorityAccess(candidate) {
 }
 function voterKeyFor(req) {
   if (req.citizen?.uid) return req.citizen.uid;
-  if (typeof req.body?.voterId === 'string') {
-    const v = req.body.voterId.trim();
-    if (process.env.NODE_ENV === 'test' && v) return v;
-    if (/^dev_[a-zA-Z0-9_-]+$/.test(v) || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return v;
-  }
+  if (process.env.NODE_ENV === 'test' && typeof req.body?.voterId === 'string') return req.body.voterId;
   return req.ip;
 }
 module.exports = { hasAuthorityAccess, voterKeyFor };

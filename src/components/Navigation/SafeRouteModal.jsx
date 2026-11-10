@@ -151,6 +151,11 @@ const SafeRouteModal = ({
     try {
       if (useCurrentGps && userLocation) {
         startCoords = userLocation;
+      } else if (useCurrentGps && !userLocation) {
+        if (routeRequestId.current !== requestId || !mountedRef.current) return;
+        setRoutingError(copy.gpsError || copy.placeMissing);
+        setLoading(false);
+        return;
       } else {
         const resolvedStart = await resolveEndpoint(startText, startPlace, "origin");
         if (routeRequestId.current !== requestId || !mountedRef.current) return;

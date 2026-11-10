@@ -80,17 +80,20 @@ const Sidebar = ({
                 if (res.ok) {
                   const statusData = await res.json();
                   if (sosAttemptRef.current !== attemptId) return;
-                  setDelivery(statusData.status || data.status || 'LOCATION_RECORDED');
-                  if (statusData.status === 'ACKNOWLEDGED_BY_OPERATOR' || statusData.status === 'FAILED') return;
+                  const st = statusData.status || data.status || 'LOCATION_RECORDED';
+                  setDelivery(st);
+                  if (st === 'ACKNOWLEDGED_BY_OPERATOR' || st === 'FAILED' || st === 'LOCATION_RECORDED' || st === 'SAVED') return;
                 } else if (res.status === 404) {
-                  // If not found/unauthorized in some cases, keep last known state briefly
+                  // keep last known state
                 }
               } catch {}
               if (sosAttemptRef.current !== attemptId) return;
               if (attempts < 12) setTimeout(poll, 3000);
               else setDelivery((d) => {
                 if (sosAttemptRef.current !== attemptId) return d;
-                return d === 'ACKNOWLEDGED_BY_OPERATOR' ? d : (d || 'STATUS_UNKNOWN');
+                if (d === 'ACKNOWLEDGED_BY_OPERATOR' || d === 'FAILED' || d === 'LOCATION_RECORDED' || d === 'SAVED') return d;
+                if (d === 'QUEUED' || d === 'RETRYING') return d === 'RETRYING' ? 'RETRYING' : 'QUEUED';
+                return d || 'STATUS_UNKNOWN';
               });
             };
             setTimeout(poll, 1500);
