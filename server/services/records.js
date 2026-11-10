@@ -14,6 +14,28 @@ function createRecords({ db, directory = process.env.STATE_DIR || path.join(__di
       const change=value=>{if(!value||value.leaseUntil>now||(statuses&&!statuses.includes(value.status)))return null;return {...value,leaseOwner:owner,leaseUntil:now+30000};};
       if(db){const ref=db.collection(group).doc(id);return db.runTransaction(async tx=>{const snap=await tx.get(ref);const next=change(snap.data());if(next)tx.set(ref,next);return next;});}
       return edit(data=>{const next=change(data[group]?.[id]);if(next)data[group][id]=next;return next;});
+    },
+    async update(group,id,owner,now=Date.now(),updater) {
+      if(db){
+        const ref=db.collection(group).doc(id);
+        return db.runTransaction(async tx=>{
+          const snap=await tx.get(ref);
+          const current=snap.data();
+          if(!current||current.leaseOwner!==owner||current.leaseUntil<=now)return null;
+          const next=updater({...current});
+          if(!next)return null;
+          tx.set(ref,next);
+          return next;
+        });
+      }
+      return edit(data=>{
+        const current=data[group]?.[id];
+        if(!current||current.leaseOwner!==owner||current.leaseUntil<=now)return null;
+        const next=updater({...current});
+        if(!next)return null;
+        data[group][id]=next;
+        return next;
+      });
     }
   };
 }

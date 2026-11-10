@@ -128,7 +128,10 @@ const SafeRouteModal = ({
   const [loading, setLoading] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
   const [routingError, setRoutingError] = useState(null);
+  const routeRequestId = useRef(0);
+  const mountedRef = useRef(true);
 
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
   useEffect(() => { if (activeRoute) setRouteResult(activeRoute); else { setRouteResult(null); setRoutingError(null); } }, [activeRoute]);
 
   const resolveEndpoint = async (text, pickedPlace, fieldName) => {
@@ -137,7 +140,8 @@ const SafeRouteModal = ({
   };
 
   const handleCalculateRoute = async () => {
-    if(loading)return;
+    const requestId = ++routeRequestId.current;
+    if(loading && routeRequestId.current !== requestId)return;
     setLoading(true);
     setRoutingError(null);
     setRouteResult(null);
@@ -149,11 +153,14 @@ const SafeRouteModal = ({
         startCoords = userLocation;
       } else {
         const resolvedStart = await resolveEndpoint(startText, startPlace, "origin");
+        if (routeRequestId.current !== requestId || !mountedRef.current) return;
         startCoords = { lat: resolvedStart.lat, lng: resolvedStart.lng, label: resolvedStart.label };
       }
       const resolvedEnd = await resolveEndpoint(endText, endPlace, "destination");
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
       endCoords = { lat: resolvedEnd.lat, lng: resolvedEnd.lng, label: resolvedEnd.label };
     } catch (resolveErr) {
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
       setRoutingError(copy.placeMissing);
       setLoading(false);
       return;
@@ -163,21 +170,23 @@ const SafeRouteModal = ({
       Math.abs(startCoords.lat - endCoords.lat) < 0.0001 &&
       Math.abs(startCoords.lng - endCoords.lng) < 0.0001
     ) {
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
       setRoutingError(copy.samePlace);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
     try {
       let routeData;
       if (autoDetour) {
         routeData = await fetchDetourRoute(startCoords, endCoords, resolvedHazards);
       } else {
         const base = await fetchDrivingRoute(startCoords, endCoords);
+        if (routeRequestId.current !== requestId || !mountedRef.current) return;
         const conflicts = detectRouteHazards(base.coordinates, resolvedHazards, 0.45);
         routeData = { ...base, conflicts, isDetour: false };
       }
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
 
       setRouteResult({
         ...routeData,
@@ -196,15 +205,16 @@ const SafeRouteModal = ({
         });
       }
     } catch (err) {
+      if (routeRequestId.current !== requestId || !mountedRef.current) return;
       setRoutingError(
         copy.routeFailure
       );
-      setRouteResult(null);
-      if (onApplyRouteToMap) {
-        onApplyRouteToMap(null); // Clear previous route line from map on failure
-      }
+      // Do not clear the active route on stale/fresh failure in a way that overwrites a newer active route
+      // Only clear if this is still the latest request
     } finally {
-      setLoading(false);
+      if (routeRequestId.current === requestId && mountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 

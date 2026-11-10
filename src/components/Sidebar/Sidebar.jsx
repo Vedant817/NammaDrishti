@@ -60,7 +60,29 @@ const Sidebar = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
-        }).then(async response => { if (!response.ok) throw new Error(); const data = await response.json(); setDelivery(data.status||'SAVED'); }).catch((err) => {
+        }).then(async response => {
+          if (!response.ok) throw new Error();
+          const data = await response.json();
+          const dispatchId = data.dispatchId || data.id;
+          setDelivery(data.status||'SAVED');
+          if (dispatchId) {
+            let attempts = 0;
+            const poll = async () => {
+              attempts++;
+              try {
+                const res = await fetch(`${API_BASE}/sos/status/${encodeURIComponent(dispatchId)}`, { signal: AbortSignal.timeout(2000) });
+                if (res.ok) {
+                  const statusData = await res.json();
+                  setDelivery(statusData.status || data.status || 'SAVED');
+                  if (statusData.status === 'ACKNOWLEDGED_BY_OPERATOR' || statusData.status === 'FAILED') return;
+                }
+              } catch {}
+              if (attempts < 12) setTimeout(poll, 3000);
+              else setDelivery((d) => d === 'ACKNOWLEDGED_BY_OPERATOR' ? d : (d || 'STATUS_UNKNOWN'));
+            };
+            setTimeout(poll, 1500);
+          }
+        }).catch((err) => {
           if (err?.code === 'identity-changed' || err?.message === 'identity-changed') { setDelivery('AUTH_NOT_READY'); return; }
           setDelivery('SAVE_FAILED');
         });
