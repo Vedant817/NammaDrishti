@@ -1,6 +1,6 @@
 import SavedActions from './SavedActions';
 import { API_BASE } from "../../services/api";
-import { authenticatedFetch as fetch } from "../../services/firebaseService";
+import { authenticatedFetch } from "../../services/firebaseService";
 // src/components/Sidebar/Sidebar.jsx
 import React, { useState } from "react";
 import PersonalizedFeed from "./PersonalizedFeed";
@@ -57,7 +57,7 @@ const Sidebar = ({
 
       // Post dispatch event to backend
       try {
-        fetch(`${API_BASE}/sos/dispatch`, {
+        authenticatedFetch(`${API_BASE}/sos/dispatch`, {
           signal: AbortSignal.timeout(3000),
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -75,13 +75,15 @@ const Sidebar = ({
               if (sosAttemptRef.current !== attemptId) return;
               attempts++;
               try {
-                const res = await fetch(`${API_BASE}/sos/status/${encodeURIComponent(dispatchId)}`, { signal: AbortSignal.timeout(2000) });
+                const res = await authenticatedFetch(`${API_BASE}/sos/status/${encodeURIComponent(dispatchId)}`, { signal: AbortSignal.timeout(2000) });
                 if (sosAttemptRef.current !== attemptId) return;
                 if (res.ok) {
                   const statusData = await res.json();
                   if (sosAttemptRef.current !== attemptId) return;
                   setDelivery(statusData.status || data.status || 'LOCATION_RECORDED');
                   if (statusData.status === 'ACKNOWLEDGED_BY_OPERATOR' || statusData.status === 'FAILED') return;
+                } else if (res.status === 404) {
+                  // If not found/unauthorized in some cases, keep last known state briefly
                 }
               } catch {}
               if (sosAttemptRef.current !== attemptId) return;

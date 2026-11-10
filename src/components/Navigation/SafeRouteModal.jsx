@@ -209,8 +209,10 @@ const SafeRouteModal = ({
       setRoutingError(
         copy.routeFailure
       );
-      // Do not clear the active route on stale/fresh failure in a way that overwrites a newer active route
-      // Only clear if this is still the latest request
+      setRouteResult(null);
+      if (onApplyRouteToMap) {
+        onApplyRouteToMap(null);
+      }
     } finally {
       if (routeRequestId.current === requestId && mountedRef.current) {
         setLoading(false);
