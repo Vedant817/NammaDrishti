@@ -64,7 +64,7 @@ const ReportModal = ({
   });
 
   const [locationSource, setLocationSource] = useState(
-    initialCoordinates ? "PIN_SELECTED" : "MANUAL"
+    initialCoordinates || initialReport?.position ? "PIN_SELECTED" : "MANUAL"
   );
   const [compressing, setCompressing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -75,8 +75,13 @@ const ReportModal = ({
     if (initialCoordinates) {
       setFormData((prev) => ({ ...prev, position: initialCoordinates }));
       setLocationSource("PIN_SELECTED");
+      return;
     }
-  }, [initialCoordinates]);
+    if (initialReport?.position) {
+      setFormData((prev) => ({ ...prev, position: initialReport.position }));
+      setLocationSource("PIN_SELECTED");
+    }
+  }, [initialCoordinates, initialReport]);
 
   const handleUseGps = () => {
     getPosition(

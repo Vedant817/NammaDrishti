@@ -129,7 +129,7 @@ const SafeRouteModal = ({
   const [routeResult, setRouteResult] = useState(null);
   const [routingError, setRoutingError] = useState(null);
 
-  useEffect(() => { if (activeRoute) setRouteResult(activeRoute); }, [activeRoute]);
+  useEffect(() => { if (activeRoute) setRouteResult(activeRoute); else { setRouteResult(null); setRoutingError(null); } }, [activeRoute]);
 
   const resolveEndpoint = async (text, pickedPlace, fieldName) => {
     if (pickedPlace) return pickedPlace;
