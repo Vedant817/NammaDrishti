@@ -37,6 +37,19 @@ test('fresh re-observation of an uncertain report mints a new id instead of reus
  await act(async()=>{expect(await view.result.current.changeAction(stale,'retry',{...report,confirmedFreshObservation:true})).toEqual({saved:true});});
  const actions=view.result.current.savedActions;expect(actions).toHaveLength(1);expect(actions[0].id).not.toBe('stable');expect(actions[0].uncertain).toBe(false);expect(auth.request).not.toHaveBeenCalled();
 });
+test('fresh re-observation keeps the original draft if replacement save fails (no data loss)',async()=>{
+ const view=renderHook(()=>useOfflineActions());await waitFor(()=>expect(view.result.current.actionIdentity?.uid).toBe('A'));
+ await act(async()=>{await view.result.current.addEvent(report,auth.identity);});
+ const stale={...view.result.current.savedActions[0],state:'failed',reason:'stale',uncertain:true};
+ const enqueue=vi.spyOn(offlineStore,'enqueue');
+ enqueue.mockImplementationOnce(async()=>{throw Object.assign(new Error('storage-unavailable'),{code:'storage-unavailable'});});
+ await act(async()=>{expect(await view.result.current.changeAction(stale,'retry',{...report,title:'Edited',confirmedFreshObservation:true})).toEqual({errorCode:'storage-unavailable'});});
+ enqueue.mockRestore();
+ expect(view.result.current.savedActions).toHaveLength(1);
+ expect(view.result.current.savedActions[0].id).toBe('stable');
+ expect(view.result.current.savedActions[0].payload.title).toBe('Private A draft');
+ expect(auth.request).not.toHaveBeenCalled();
+});
 test('queued votes retain recognizable road names without claiming public consensus',async()=>{
  const view=renderHook(()=>useOfflineActions());await waitFor(()=>expect(view.result.current.actionIdentity?.uid).toBe('A'));
  await act(async()=>{await view.result.current.verifyEvent('road',null,auth.identity,{title:'Fixture junction',ward:'Fixture ward'});});

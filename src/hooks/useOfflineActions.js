@@ -55,13 +55,18 @@ export function useOfflineActions(onConfirmed) {
     // A fresh re-observation of an uncertain report must not reuse its
     // idempotency key: the server may already hold the original, and a 200
     // dedup reply would silently discard the citizen's new edits.
+    // Save the replacement first so a storage failure never discards the only draft.
     if(operation!=='discard'&&action.kind==='report'&&action.uncertain&&payload?.confirmedFreshObservation){
       try{
-        const removed=await offlineStore.discard(i.uid,action.id,action.revision);
-        if(!removed){await refresh(i);return {errorCode:'action-changed'};}
         const freshId='namma_'+crypto.randomUUID();
         const result=await persist({id:freshId,kind:'report',payload:{...action.payload,...payload,id:freshId}},i);
         if(result?.errorCode)return result;
+        const removed=await offlineStore.discard(i.uid,action.id,action.revision);
+        if(!removed){
+          // Replacement is safely saved; keep original too rather than losing data.
+          await refresh(i);void syncOfflineQueue();
+          return {saved:true,duplicateKept:true};
+        }
         await refresh(i);void syncOfflineQueue();return {saved:true};
       }catch(err){if(current(i))setStorageError(err.code||'storage-unavailable');return {errorCode:err.code||'storage-unavailable'};}
     }
